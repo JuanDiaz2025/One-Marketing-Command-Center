@@ -11,6 +11,7 @@ import {
   formatPercent,
 } from "@/components/dashboard/format"
 import TrendChart from "@/components/dashboard/trend-chart"
+import GoogleAdsMark from "@/components/google-ads-mark"
 import { Button } from "@/components/ui/button"
 import { adsConfig } from "@/lib/auth/config"
 import { requireSession, type Session } from "@/lib/auth/session"
@@ -110,7 +111,10 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
       <AppHeader current="/dashboard" user={user} />
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 lg:py-10">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Google Ads</h1>
+          <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight">
+            <GoogleAdsMark className="size-9" />
+            Google Ads
+          </h1>
           <p className="mt-1 text-muted-foreground">
             {loaded.kind === "report"
               ? `${loaded.report.account.name} · ${formatDateRange(loaded.report.start, loaded.report.end)}`

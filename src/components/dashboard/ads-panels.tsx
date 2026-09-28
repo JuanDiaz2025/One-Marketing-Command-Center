@@ -1,5 +1,6 @@
-import { CircleAlert, Plug, Settings } from "lucide-react"
+import { CircleAlert, Settings } from "lucide-react"
 
+import GoogleAdsMark from "@/components/google-ads-mark"
 import GoogleButton from "@/components/google-button"
 import { Button } from "@/components/ui/button"
 import { disconnectAdsAction } from "@/lib/google/actions"
@@ -12,7 +13,7 @@ export function Panel({
   children,
   tone = "default",
 }: {
-  icon: typeof Plug
+  icon: React.ComponentType<{ className?: string }>
   title: string
   children: React.ReactNode
   tone?: "default" | "error"
@@ -66,7 +67,7 @@ export function SetupNeeded({ missing }: { missing: string[] }) {
 
 export function ConnectAds() {
   return (
-    <Panel icon={Plug} title="Connect Google Ads">
+    <Panel icon={GoogleAdsMark} title="Connect Google Ads">
       <p className="text-muted-foreground">
         Sign in with the Google account you use for Google Ads, and allow this app to see your
         campaigns. It can be a different account from the one you signed in with here.

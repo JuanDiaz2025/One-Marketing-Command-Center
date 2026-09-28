@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils"
 import type { Session } from "@/lib/auth/session"
 import { signOutAction } from "@/lib/google/actions"
 import BrandLogo from "@/components/brand-logo"
+import GoogleAdsMark from "@/components/google-ads-mark"
 import { Button } from "@/components/ui/button"
 
 const links = [
@@ -27,10 +28,11 @@ export default function AppHeader({ current, user }: { current: Current; user: S
                 href={l.href}
                 aria-current={current === l.href ? "page" : undefined}
                 className={cn(
-                  "rounded-md px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground",
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground",
                   current === l.href && "bg-muted font-medium text-foreground",
                 )}
               >
+                {l.href === "/dashboard" && <GoogleAdsMark className="size-4" />}
                 {l.label}
               </Link>
             ))}
@@ -64,8 +66,9 @@ export default function AppHeader({ current, user }: { current: Current; user: S
             key={l.href}
             href={l.href}
             aria-current={current === l.href ? "page" : undefined}
-            className={cn("rounded-md px-2.5 py-1 text-muted-foreground", current === l.href && "bg-muted font-medium text-foreground")}
+            className={cn("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-muted-foreground", current === l.href && "bg-muted font-medium text-foreground")}
           >
+            {l.href === "/dashboard" && <GoogleAdsMark className="size-4" />}
             {l.label}
           </Link>
         ))}
