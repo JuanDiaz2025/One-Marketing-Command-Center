@@ -12,7 +12,7 @@ Your Google Ads results and your QR code leads in one place.
 
 1. The first time, it installs everything and creates a `.env.local` settings file, which it opens in Notepad.
 2. Fill in the settings (see [One-time Google setup](#one-time-google-setup)), save, and run `start.bat` again.
-3. Your browser opens at http://localhost:3000. Keep the black window open while you use the app.
+3. Your browser opens at http://localhost:4000. Keep the black window open while you use the app.
 
 **Mac or Linux:**
 
@@ -45,7 +45,7 @@ Open **Google Auth Platform** (under APIs & Services) and click **Get started**.
 
 1. **Google Auth Platform → Clients → Create client**, type **Web application**.
 2. Under **Authorized redirect URIs**, add exactly:
-   `http://localhost:3000/api/auth/google/callback`
+   `http://localhost:4000/api/auth/google/callback`
    (and `https://your-domain/api/auth/google/callback` once the app is on a website).
 3. Copy the **Client ID** and **Client secret** into `.env.local` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
 
@@ -70,7 +70,7 @@ Restart the app after saving `.env.local`.
 
 ## Using it
 
-1. Open http://localhost:3000 and click **Continue with Google**.
+1. Open http://localhost:4000 and click **Continue with Google**.
 2. On the **Google Ads** page, click **Connect Google Ads** and sign in with the Google account you use at ads.google.com. It can be a different account from the one you signed in with. Tick the box that lets the app see your Google Ads.
 3. If you can open more than one Google Ads account, pick one from the **Account** list. Accounts under a manager account are included.
 4. Under **Leads**, click **Create QR code**, then print the poster or download the PNG/PDF.

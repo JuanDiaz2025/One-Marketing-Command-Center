@@ -35,10 +35,10 @@ if not exist .env.local (
   exit /b 0
 )
 
-echo Starting One Marketing Command Center. Your browser will open at http://localhost:3000 when it's ready.
+echo Starting One Marketing Command Center. Your browser will open at http://localhost:4000 when it's ready.
 echo Keep this window open while you use the app. Close it to stop.
 start "" /min "%~f0" open-browser
-call npm run dev -- --port 3000
+call npm run dev
 echo.
 echo The app stopped. If you see "address already in use" above, another copy is already running:
 echo close its window or restart your computer, then run this file again.
@@ -56,11 +56,11 @@ set /a tries=0
 :wait
 set /a tries+=1
 if %tries% gtr 90 goto launch
-curl -s -o nul http://localhost:3000
+curl -s -o nul http://localhost:4000
 if errorlevel 1 (
   timeout /t 2 /nobreak >nul
   goto wait
 )
 :launch
-start "" http://localhost:3000
+start "" http://localhost:4000
 exit

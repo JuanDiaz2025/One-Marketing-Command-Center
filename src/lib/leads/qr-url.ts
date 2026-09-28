@@ -20,7 +20,7 @@ export async function getQrUrl(qrCodeId: string) {
   if (configured) return { url: `${configured}/s/${qrCodeId}`, localOnly: false, lan: false }
 
   const h = await headers()
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000"
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:4000"
   const proto = h.get("x-forwarded-proto") ?? "http"
   const url = new URL(`${proto}://${host}`)
 
