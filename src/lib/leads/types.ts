@@ -1,0 +1,38 @@
+// Color themes for the page people see after scanning.
+export const qrThemes = [
+  { id: "blue", label: "Blue", primary: "#1d4ed8", soft: "#e8eefc" },
+  { id: "green", label: "Green", primary: "#15803d", soft: "#e7f5ec" },
+  { id: "red", label: "Red", primary: "#b91c1c", soft: "#fbeaea" },
+  { id: "charcoal", label: "Charcoal", primary: "#1f2937", soft: "#eef0f3" },
+] as const
+
+export type QrThemeId = (typeof qrThemes)[number]["id"]
+
+export function qrTheme(id: string) {
+  return qrThemes.find((t) => t.id === id) ?? qrThemes[0]
+}
+
+// A QR code on a yard sign, postcard, door hanger or flyer. Scanning it opens a short form;
+// sending the form records a lead tagged with where the code was placed.
+export type QrCode = {
+  id: string
+  businessName: string
+  // Where the code goes, e.g. "Yard sign, 123 Main St" or "October postcard".
+  placement: string
+  headline: string
+  message: string
+  theme: QrThemeId
+  active: boolean
+  createdAt: string // ISO datetime
+}
+
+export type Lead = {
+  id: string
+  qrCodeId: string
+  createdAt: string // ISO datetime
+  name: string
+  phone?: string
+  email?: string
+  propertyAddress?: string
+  notes?: string
+}

@@ -1,20 +1,24 @@
 import Link from "next/link"
-import { Plus } from "lucide-react"
+import { LogOut } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import type { Session } from "@/lib/auth/session"
+import { signOutAction } from "@/lib/google/actions"
 import BrandLogo from "@/components/brand-logo"
-import { buttonVariants } from "@/components/ui/button"
+import { Button } from "@/components/ui/button"
 
 const links = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/conversions", label: "Conversion feed" },
-]
+  { href: "/dashboard", label: "Google Ads" },
+  { href: "/leads", label: "Leads" },
+] as const
 
-export default function AppHeader({ current }: { current: "/dashboard" | "/conversions" }) {
+type Current = (typeof links)[number]["href"]
+
+export default function AppHeader({ current, user }: { current: Current; user: Session }) {
   return (
     <header className="sticky top-0 z-20 border-b border-border/70 bg-background/80 backdrop-blur-md print:hidden">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <div className="flex items-center gap-6">
+        <div className="flex min-w-0 items-center gap-6">
           <BrandLogo href="/dashboard" compact />
           <nav aria-label="Main" className="hidden items-center gap-1 text-sm sm:flex">
             {links.map((l) => (
@@ -32,14 +36,25 @@ export default function AppHeader({ current }: { current: "/dashboard" | "/conve
             ))}
           </nav>
         </div>
-        <div className="flex items-center gap-2">
-          <Link href="/login" className={buttonVariants({ variant: "ghost", size: "lg" })}>
-            Log in
-          </Link>
-          <Link href="/setup" className={buttonVariants({ size: "lg" })}>
-            <Plus data-icon="inline-start" />
-            New campaign
-          </Link>
+        <div className="flex min-w-0 items-center gap-2">
+          {user.picture ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.picture}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="size-8 shrink-0 rounded-full"
+            />
+          ) : null}
+          <span className="hidden truncate text-sm text-muted-foreground md:inline" title={user.email}>
+            {user.email}
+          </span>
+          <form action={signOutAction}>
+            <Button type="submit" variant="ghost" size="lg">
+              <LogOut data-icon="inline-start" />
+              Sign out
+            </Button>
+          </form>
         </div>
       </div>
       {/* Small screens: main links on their own row */}

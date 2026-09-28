@@ -1,111 +1,351 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import { connection } from "next/server";
-import { QrCode, Sparkles } from "lucide-react";
+import type { Metadata } from "next"
+import Link from "next/link"
+import { CircleAlert, CircleCheck, ExternalLink, RefreshCw } from "lucide-react"
 
-import AppHeader from "@/components/app-header";
-import { buttonVariants } from "@/components/ui/button";
-import TopAds from "@/components/conversions/top-ads";
-import ConversionComparison from "@/components/dashboard/conversion-comparison";
-import CrmActions from "@/components/dashboard/crm-actions";
-import CustomersSection from "@/components/dashboard/customers-section";
-import { formatDateRange, formatUsd } from "@/components/dashboard/format";
-import KpiCards from "@/components/dashboard/kpi-cards";
-import PlatformSection from "@/components/dashboard/platform-section";
-import { listConversions } from "@/lib/conversions/store";
-import { getDashboardData, recommendedActions } from "@/lib/dashboard-data";
-import { demoCampaign } from "@/lib/demo-campaign";
+import AppHeader from "@/components/app-header"
+import { AdsError, ConnectAds, DisconnectButton, SetupNeeded } from "@/components/dashboard/ads-panels"
+import {
+  formatDateRange,
+  formatMoney,
+  formatNumber,
+  formatPercent,
+} from "@/components/dashboard/format"
+import TrendChart from "@/components/dashboard/trend-chart"
+import { Button } from "@/components/ui/button"
+import { adsConfig } from "@/lib/auth/config"
+import { requireSession, type Session } from "@/lib/auth/session"
+import { refreshAccountsAction, selectAccountAction } from "@/lib/google/actions"
+import {
+  AdsApiError,
+  formatCustomerId,
+  getReport,
+  listAccounts,
+  type AdsReport,
+} from "@/lib/google/ads"
+import { getConnection, updateConnection, type AdsConnection } from "@/lib/google/connections"
+import { listLeads } from "@/lib/leads/store"
+import { cn } from "@/lib/utils"
 
-export const metadata: Metadata = { title: "Dashboard · One Marketing Command Center" };
+export const metadata: Metadata = { title: "Google Ads · One Marketing Command Center" }
 
-export default async function Dashboard() {
-  await connection();
-  const data = getDashboardData(await listConversions());
-  const actions = recommendedActions(data);
+const ranges = [
+  { days: 7, label: "Last 7 days" },
+  { days: 30, label: "Last 30 days" },
+  { days: 90, label: "Last 90 days" },
+]
 
-  const sections = [
-    ...data.platforms.map((p) => ({ id: p.id, label: p.name })),
-    { id: "ads", label: "Ads" },
-    { id: "customers", label: "Customers" },
-    { id: "actions", label: "Next steps" },
-  ];
+const notices: Record<string, { tone: "ok" | "error"; text: string }> = {
+  connected: { tone: "ok", text: "Google Ads is connected." },
+  cancelled: { tone: "error", text: "Connecting Google Ads was cancelled." },
+  scope: {
+    tone: "error",
+    text: "Google Ads wasn't connected because the permission to see your Google Ads was left unticked. Try again and tick that box.",
+  },
+  no_refresh_token: {
+    tone: "error",
+    text: "Google didn't grant lasting access. Try connecting again.",
+  },
+  failed: { tone: "error", text: "Connecting Google Ads didn't go through. Please try again." },
+}
+
+// Accounts are looked up once and kept for a day; "Refresh account list" looks again.
+const ACCOUNTS_MAX_AGE = 24 * 60 * 60 * 1000
+
+type Loaded =
+  | { kind: "setup"; missing: string[] }
+  | { kind: "connect" }
+  | { kind: "error"; message: string; code?: string }
+  | { kind: "no-accounts"; connection: AdsConnection }
+  | { kind: "report"; connection: AdsConnection; report: AdsReport }
+
+async function load(user: Session, days: number): Promise<Loaded> {
+  if (!adsConfig().developerToken) return { kind: "setup", missing: ["GOOGLE_ADS_DEVELOPER_TOKEN"] }
+  const connection = await getConnection(user.sub)
+  if (!connection) return { kind: "connect" }
+
+  try {
+    const fresh =
+      connection.accountsFetchedAt &&
+      Date.now() - Date.parse(connection.accountsFetchedAt) < ACCOUNTS_MAX_AGE
+    if (!connection.accounts.length || !fresh) {
+      connection.accounts = await listAccounts(connection)
+      await updateConnection(user.sub, {
+        accounts: connection.accounts,
+        accountsFetchedAt: new Date().toISOString(),
+      })
+    }
+    const account =
+      connection.accounts.find((a) => a.customerId === connection.selectedCustomerId) ??
+      connection.accounts[0]
+    if (!account) return { kind: "no-accounts", connection }
+    return { kind: "report", connection, report: await getReport(connection, account, days) }
+  } catch (error) {
+    if (error instanceof AdsApiError) return { kind: "error", message: error.message, code: error.code }
+    console.error("Google Ads request failed:", error)
+    return { kind: "error", message: "Couldn't reach Google Ads. Check your internet connection and try again." }
+  }
+}
+
+const humanize = (value: string) =>
+  value
+    .toLowerCase()
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ")
+
+const statusLabel: Record<string, string> = { ENABLED: "Active", PAUSED: "Paused" }
+
+export default async function Dashboard({ searchParams }: PageProps<"/dashboard">) {
+  const user = await requireSession("/dashboard")
+  const q = await searchParams
+  const days = ranges.find((r) => String(r.days) === q.days)?.days ?? 30
+  const [loaded, leads] = await Promise.all([load(user, days), listLeads()])
+
+  const noticeKey =
+    q.connected === "1" ? "connected" : typeof q.ads_error === "string" ? q.ads_error : null
+  const notice = noticeKey ? (notices[noticeKey] ?? notices.failed) : null
 
   return (
     <div className="flex flex-1 flex-col">
-      <AppHeader current="/dashboard" />
-
+      <AppHeader current="/dashboard" user={user} />
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 lg:py-10">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">Campaign dashboard</h1>
-              <p className="mt-1 text-muted-foreground">
-                {demoCampaign.business.businessName} · {formatDateRange(data.period.start, data.period.end)}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full bg-secondary px-3 py-1 text-xs font-medium text-secondary-foreground">
-                Sample data
-              </span>
-              <Link href="/conversions" className={buttonVariants({ variant: "outline", size: "lg" })}>
-                <QrCode data-icon="inline-start" />
-                Conversion feed
-              </Link>
-            </div>
-          </div>
-
-          {/* The campaign set up in setup, at a glance. */}
-          <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-primary/10 to-fuchsia-500/10 px-3 py-1 font-medium text-primary">
-              <Sparkles className="size-3.5" />
-              {demoCampaign.splitMode === "auto" ? "Auto mode" : "Custom split"}
-            </span>
-            <span className="rounded-full border bg-card px-3 py-1">
-              {formatUsd(demoCampaign.monthlyBudget)}/month
-            </span>
-            {demoCampaign.platforms.map((p) => (
-              <span key={p.value} className="rounded-full border bg-card px-3 py-1">
-                {p.label} {p.share}%
-              </span>
-            ))}
-            <span className="rounded-full border bg-card px-3 py-1">
-              {demoCampaign.placements.length} placements · {demoCampaign.ads.length} ads
-            </span>
-            <span className="rounded-full border bg-card px-3 py-1">Conversions from QR codes</span>
-          </div>
-
-          <nav aria-label="Dashboard sections" className="flex flex-wrap gap-1.5 text-sm">
-            {sections.map((s) => (
-              <a
-                key={s.id}
-                href={`#${s.id}`}
-                className="rounded-full border bg-card px-3 py-1 text-muted-foreground hover:text-foreground"
-              >
-                {s.label}
-              </a>
-            ))}
-          </nav>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Google Ads</h1>
+          <p className="mt-1 text-muted-foreground">
+            {loaded.kind === "report"
+              ? `${loaded.report.account.name} · ${formatDateRange(loaded.report.start, loaded.report.end)}`
+              : "Your campaigns, straight from your Google Ads account."}
+          </p>
         </div>
 
-        <KpiCards data={data} />
+        {notice && (
+          <p
+            role={notice.tone === "error" ? "alert" : "status"}
+            className={cn(
+              "flex gap-2 rounded-xl p-3 text-sm",
+              notice.tone === "error" ? "bg-destructive/10 text-destructive" : "bg-emerald-500/10 text-emerald-800",
+            )}
+          >
+            {notice.tone === "error" ? (
+              <CircleAlert className="mt-0.5 size-4 shrink-0" />
+            ) : (
+              <CircleCheck className="mt-0.5 size-4 shrink-0" />
+            )}
+            {notice.text}
+          </p>
+        )}
 
-        {data.platforms.map((p) => (
-          <PlatformSection key={p.id} platform={p} />
-        ))}
-
-        <div id="ads" className="grid scroll-mt-20 gap-6 lg:grid-cols-2">
-          <TopAds conversions={data.matched} impressions={data.adImpressions} />
-          <ConversionComparison placements={data.placements} />
-        </div>
-
-        <div id="customers" className="scroll-mt-20">
-          <CustomersSection data={data} />
-        </div>
-
-        <div id="actions" className="scroll-mt-20">
-          <CrmActions actions={actions} />
-        </div>
+        {loaded.kind === "setup" && <SetupNeeded missing={loaded.missing} />}
+        {loaded.kind === "connect" && <ConnectAds />}
+        {loaded.kind === "error" && <AdsError message={loaded.message} code={loaded.code} />}
+        {loaded.kind === "no-accounts" && (
+          <section className="flex flex-col gap-3 rounded-2xl border bg-card p-6 shadow-xs sm:p-8">
+            <h2 className="text-xl font-semibold tracking-tight">No Google Ads accounts found</h2>
+            <p className="text-muted-foreground">
+              {loaded.connection.email} doesn&apos;t have access to any active Google Ads accounts.
+              Connect a different Google account, or ask the account owner to invite this one.
+            </p>
+            <AccountActions />
+          </section>
+        )}
+        {loaded.kind === "report" && (
+          <Report
+            report={loaded.report}
+            connection={loaded.connection}
+            days={days}
+            leadCount={
+              leads.filter((l) => {
+                const day = l.createdAt.slice(0, 10)
+                return day >= loaded.report.start && day <= loaded.report.end
+              }).length
+            }
+          />
+        )}
       </main>
     </div>
-  );
+  )
+}
+
+function AccountActions() {
+  return (
+    <div className="flex flex-wrap items-center gap-1 text-sm">
+      <a
+        href="https://ads.google.com/"
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <ExternalLink className="size-4" />
+        Open Google Ads
+      </a>
+      <form action={refreshAccountsAction}>
+        <Button type="submit" variant="ghost" size="lg" className="text-muted-foreground">
+          <RefreshCw data-icon="inline-start" />
+          Refresh account list
+        </Button>
+      </form>
+      <DisconnectButton />
+    </div>
+  )
+}
+
+function Report({
+  report,
+  connection,
+  days,
+  leadCount,
+}: {
+  report: AdsReport
+  connection: AdsConnection
+  days: number
+  leadCount: number
+}) {
+  const { account, totals } = report
+  const money = (n: number, cents = false) => formatMoney(n, account.currency, cents)
+  const kpis = [
+    { label: "Spend", value: money(totals.cost), note: `${formatNumber(totals.impressions)} impressions` },
+    {
+      label: "Clicks",
+      value: formatNumber(totals.clicks),
+      note: `${formatPercent(totals.impressions ? totals.clicks / totals.impressions : 0)} click rate`,
+    },
+    {
+      label: "Conversions",
+      value: formatNumber(Math.round(totals.conversions * 10) / 10),
+      note: totals.conversions ? `${money(totals.cost / totals.conversions, true)} each` : "none yet",
+    },
+    { label: "QR code leads", value: formatNumber(leadCount), note: "from your signs and mailers" },
+  ]
+
+  return (
+    <>
+      <div className="flex flex-col gap-4">
+        {connection.accounts.length > 1 && (
+          <form action={selectAccountAction} className="flex flex-wrap items-center gap-2">
+            <label htmlFor="customerId" className="text-sm font-medium">
+              Account
+            </label>
+            <select
+              id="customerId"
+              name="customerId"
+              defaultValue={account.customerId}
+              className="h-10 max-w-full min-w-0 rounded-lg border bg-card px-3 text-sm"
+            >
+              {connection.accounts.map((a) => (
+                <option key={a.customerId} value={a.customerId}>
+                  {a.name} ({formatCustomerId(a.customerId)}){a.managerName ? ` · via ${a.managerName}` : ""}
+                </option>
+              ))}
+            </select>
+            <input type="hidden" name="days" value={days} />
+            <Button type="submit" variant="outline" size="lg">
+              Show
+            </Button>
+          </form>
+        )}
+        <nav aria-label="Date range" className="flex flex-wrap gap-1.5 text-sm">
+          {ranges.map((r) => (
+            <Link
+              key={r.days}
+              href={`/dashboard?days=${r.days}`}
+              aria-current={r.days === days ? "page" : undefined}
+              className={cn(
+                "rounded-full border px-3 py-1",
+                r.days === days
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "bg-card text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {r.label}
+            </Link>
+          ))}
+        </nav>
+        {account.test && (
+          <p className="rounded-xl bg-muted p-3 text-sm">
+            This is a Google Ads test account, so these numbers aren&apos;t real ad spend.
+          </p>
+        )}
+      </div>
+
+      <section aria-label="Summary" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {kpis.map((kpi) => (
+          <div key={kpi.label} className="rounded-2xl border bg-card p-5 shadow-xs">
+            <p className="text-sm text-muted-foreground">{kpi.label}</p>
+            <p className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{kpi.value}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{kpi.note}</p>
+          </div>
+        ))}
+      </section>
+
+      <section className="grid gap-6 rounded-2xl border bg-card p-5 shadow-xs sm:p-6 lg:grid-cols-2">
+        <TrendChart
+          label={`Spend per day (${account.currency})`}
+          color="var(--primary)"
+          data={report.daily.map((d) => ({ date: d.date, value: Math.round(d.cost * 100) / 100 }))}
+        />
+        <TrendChart
+          label="Clicks per day"
+          color="var(--chart-2, #0ea5e9)"
+          data={report.daily.map((d) => ({ date: d.date, value: d.clicks }))}
+        />
+      </section>
+
+      <section className="rounded-2xl border bg-card shadow-xs">
+        <h2 className="px-5 pt-5 text-lg font-semibold sm:px-6">Campaigns</h2>
+        {report.campaigns.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] text-sm">
+              <thead className="text-left text-xs text-muted-foreground">
+                <tr className="border-b">
+                  <th className="px-5 py-3 font-medium sm:px-6">Campaign</th>
+                  <th className="px-3 py-3 text-right font-medium">Spend</th>
+                  <th className="px-3 py-3 text-right font-medium">Impr.</th>
+                  <th className="px-3 py-3 text-right font-medium">Clicks</th>
+                  <th className="px-3 py-3 text-right font-medium">Click rate</th>
+                  <th className="px-3 py-3 text-right font-medium">Conv.</th>
+                  <th className="px-5 py-3 text-right font-medium sm:px-6">Cost / conv.</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y tabular-nums">
+                {report.campaigns.map((c) => (
+                  <tr key={c.id}>
+                    <td className="px-5 py-3 sm:px-6">
+                      <p className="font-medium">{c.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {statusLabel[c.status] ?? humanize(c.status)}
+                        {c.channel && ` · ${humanize(c.channel)}`}
+                      </p>
+                    </td>
+                    <td className="px-3 py-3 text-right">{money(c.cost, true)}</td>
+                    <td className="px-3 py-3 text-right">{formatNumber(c.impressions)}</td>
+                    <td className="px-3 py-3 text-right">{formatNumber(c.clicks)}</td>
+                    <td className="px-3 py-3 text-right">
+                      {formatPercent(c.impressions ? c.clicks / c.impressions : 0)}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {formatNumber(Math.round(c.conversions * 10) / 10)}
+                    </td>
+                    <td className="px-5 py-3 text-right sm:px-6">
+                      {c.conversions ? money(c.cost / c.conversions, true) : "–"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="px-5 py-6 text-sm text-muted-foreground sm:px-6">
+            No campaign activity in this period.
+          </p>
+        )}
+      </section>
+
+      <p className="text-xs text-muted-foreground">
+        Connected as {connection.email}. Account {formatCustomerId(account.customerId)}
+        {account.managerName ? `, through ${account.managerName}` : ""}. Today&apos;s numbers show up
+        tomorrow.
+      </p>
+      <AccountActions />
+    </>
+  )
 }

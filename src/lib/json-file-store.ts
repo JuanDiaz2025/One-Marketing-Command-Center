@@ -1,4 +1,4 @@
-// Tiny JSON-file persistence for the demo (files live in .data/, not committed).
+// Tiny JSON-file persistence (files live in .data/, not committed).
 // If the file system is read-only (e.g. serverless hosting), data is kept in
 // memory until the server restarts.
 import { mkdir, readFile, writeFile } from "node:fs/promises"

@@ -26,6 +26,15 @@ if not exist node_modules (
   )
 )
 
+if not exist .env.local (
+  copy /y .env.example .env.local >nul
+  echo Created .env.local. Open it in Notepad and fill in your Google settings,
+  echo then close this window and run start.bat again. The README explains each one.
+  start "" notepad .env.local
+  pause
+  exit /b 0
+)
+
 echo Starting One Marketing Command Center. Your browser will open at http://localhost:3000 when it's ready.
 echo Keep this window open while you use the app. Close it to stop.
 start "" /min "%~f0" open-browser
