@@ -222,7 +222,7 @@ export default function QrLanding({ content, items, live }: QrLandingProps) {
         </Container>
       )}
 
-      <p className="mt-auto pb-5 text-center text-xs text-neutral-400">Powered by AdPilot</p>
+      <p className="mt-auto pb-5 text-center text-xs text-neutral-400">Powered by One Marketing Command Center</p>
     </div>
   )
 }

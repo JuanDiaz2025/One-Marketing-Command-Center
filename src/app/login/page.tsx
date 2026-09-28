@@ -5,7 +5,7 @@ import LoginForm from "@/components/login-form"
 import { DEMO_ACCOUNT } from "@/lib/demo-account"
 
 export const metadata: Metadata = {
-  title: "Log in · AdPilot",
+  title: "Log in · One Marketing Command Center",
 }
 
 export default function LoginPage() {

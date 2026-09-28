@@ -101,7 +101,7 @@ export default function LoginForm() {
       )}
 
       <p className="text-center text-sm text-muted-foreground">
-        New to AdPilot?{" "}
+        New to One Marketing Command Center?{" "}
         <Link href="/setup" className="font-medium text-foreground underline underline-offset-4">
           Get started
         </Link>

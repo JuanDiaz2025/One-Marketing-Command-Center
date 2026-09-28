@@ -17,7 +17,7 @@ export const currency = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 0,
 })
 
-// "suggested" until the owner changes something AdPilot filled in, then "edited".
+// "suggested" until the owner changes something One Marketing Command Center filled in, then "edited".
 export type SectionStatus = "suggested" | "edited" | null
 
 // A card for one part of a setup form, with a colored icon and a Suggested/Edited badge.

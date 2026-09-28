@@ -236,7 +236,7 @@ export default function CreativesStep() {
   return (
     <div className="mx-auto flex max-w-4xl flex-col gap-10">
       <StepHeader title="Pick your favorite" highlight="ads">
-        AdPilot reimagined your photos as {creatives.length} vertical ads. Each one tries a
+        One Marketing Command Center reimagined your photos as {creatives.length} vertical ads. Each one tries a
         different angle to see what your customers respond to.
       </StepHeader>
 

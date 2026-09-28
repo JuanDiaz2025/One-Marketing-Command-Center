@@ -47,7 +47,7 @@ export default function ProfileForm({ suggestion, initial }: ProfileFormProps) {
   const router = useRouter()
   const suggested = suggestion.sources.length > 0
 
-  // Defaults are the suggestion, so "dirty" means "changed from what AdPilot suggested".
+  // Defaults are the suggestion, so "dirty" means "changed from what One Marketing Command Center suggested".
   const form = useForm<BusinessProfile>({
     resolver: zodResolver(profileSchema),
     defaultValues: suggestion.profile,

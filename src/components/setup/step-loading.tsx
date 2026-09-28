@@ -14,7 +14,7 @@ type StepLoadingProps = {
   children?: React.ReactNode
 }
 
-// A loading screen that ticks through what AdPilot is doing. Let it run for at least
+// A loading screen that ticks through what One Marketing Command Center is doing. Let it run for at least
 // steps.length * LOADING_STEP_MS so every step gets its moment.
 export default function StepLoading({ title, steps, children }: StepLoadingProps) {
   const [active, setActive] = useState(0)

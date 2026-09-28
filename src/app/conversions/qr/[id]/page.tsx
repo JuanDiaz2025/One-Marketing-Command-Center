@@ -17,7 +17,7 @@ import { getQrUrl } from "@/lib/conversions/qr-url"
 import { getQrCode, listConversions } from "@/lib/conversions/store"
 import { qrTheme } from "@/lib/conversions/types"
 
-export const metadata: Metadata = { title: "QR code · AdPilot" }
+export const metadata: Metadata = { title: "QR code · One Marketing Command Center" }
 
 export default async function QrCodePage({ params }: PageProps<"/conversions/qr/[id]">) {
   await connection()

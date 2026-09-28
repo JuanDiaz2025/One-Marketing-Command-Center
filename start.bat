@@ -1,7 +1,7 @@
 @echo off
-REM Double-click this file to install and start AdPilot on Windows.
+REM Double-click this file to install and start One Marketing Command Center on Windows.
 cd /d "%~dp0"
-title AdPilot
+title One Marketing Command Center
 
 where node >/dev/null 2>nul
 if errorlevel 1 (
@@ -13,7 +13,7 @@ if errorlevel 1 (
 )
 
 if not exist node_modules (
-  echo Installing AdPilot. This takes a minute or two the first time...
+  echo Installing One Marketing Command Center. This takes a minute or two the first time...
   call npm install
   if errorlevel 1 (
     echo Install failed. Take a screenshot of this window and send it over.
@@ -22,7 +22,7 @@ if not exist node_modules (
   )
 )
 
-echo Starting AdPilot. Your browser will open at http://localhost:3000
+echo Starting One Marketing Command Center. Your browser will open at http://localhost:3000
 echo Keep this window open while you use the app. Close it to stop.
 start "" cmd /c "timeout /t 8 >/dev/null & start http://localhost:3000"
 call npm run dev

@@ -118,7 +118,7 @@ export default function CampaignForm({
   qr,
   onLaunch,
 }: CampaignFormProps) {
-  // Defaults are the suggestion, so "dirty" means "changed from what AdPilot suggested".
+  // Defaults are the suggestion, so "dirty" means "changed from what One Marketing Command Center suggested".
   const form = useForm<CampaignSettings>({
     resolver: zodResolver(campaignSchema),
     defaultValues: suggestion.campaign,
@@ -263,7 +263,7 @@ export default function CampaignForm({
                         label: "Auto",
                         badge: "Recommended",
                         detail:
-                          "AdPilot uses what it knows about your business to split the budget and pick where your ads show.",
+                          "One Marketing Command Center uses what it knows about your business to split the budget and pick where your ads show.",
                       },
                       {
                         value: "custom",
@@ -292,7 +292,7 @@ export default function CampaignForm({
                           checked={checked}
                           onChange={() => {
                             field.onChange(option.value)
-                            // Going back to auto restores AdPilot's split.
+                            // Going back to auto restores One Marketing Command Center's split.
                             if (option.value === "auto") {
                               form.setValue(
                                 "budget.metaShare",
@@ -388,7 +388,7 @@ export default function CampaignForm({
         icon={Target}
         iconClassName="bg-emerald-100 text-emerald-600"
         title="Conversions"
-        description="How AdPilot counts the customers your ads bring in."
+        description="How One Marketing Command Center counts the customers your ads bring in."
         status={status("conversionSources")}
       >
         <FeedbackLoop

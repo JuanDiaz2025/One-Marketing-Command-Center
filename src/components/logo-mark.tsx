@@ -1,4 +1,4 @@
-// AdPilot's mark: a vertical 9:16 ad with a play button, and a spark for the AI that makes and
+// One Marketing Command Center's mark: a vertical 9:16 ad with a play button, and a spark for the AI that makes and
 // tunes it. Drawn in currentColor so it sits on the brand gradient tile.
 export default function LogoMark({ className }: { className?: string }) {
   return (

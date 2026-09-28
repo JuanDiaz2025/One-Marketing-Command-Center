@@ -88,7 +88,7 @@ export function buildPosterPdf({
   // Instructions and link
   ops.push("0.07 0.07 0.1 rg", centered("Scan with your phone camera", 115, 20, true))
   ops.push("0.4 0.4 0.45 rg", centered(url, 88, 11, false))
-  ops.push("0.6 0.6 0.65 rg", centered("Powered by AdPilot", 40, 9, false))
+  ops.push("0.6 0.6 0.65 rg", centered("Powered by One Marketing Command Center", 40, 9, false))
 
   const content = ops.join("\n")
   const objects = [

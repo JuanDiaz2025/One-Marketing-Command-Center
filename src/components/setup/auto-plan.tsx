@@ -46,7 +46,7 @@ export default function AutoPlan({
           </span>
           <div className="flex flex-col gap-1">
             <h3 className="text-lg font-semibold tracking-tight">
-              AdPilot&apos;s plan for {businessName}
+              One Marketing Command Center&apos;s plan for {businessName}
             </h3>
             <p className="text-sm text-pretty text-muted-foreground">
               We used what we know about your business to split your budget and pick where your ads

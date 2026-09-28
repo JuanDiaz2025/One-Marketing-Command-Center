@@ -15,7 +15,7 @@ import { byQrCode, inPeriod, summarize } from "@/lib/conversions/insights"
 import { listConversions, listQrCodes } from "@/lib/conversions/store"
 import { cn } from "@/lib/utils"
 
-export const metadata: Metadata = { title: "Conversion feed · AdPilot" }
+export const metadata: Metadata = { title: "Conversion feed · One Marketing Command Center" }
 
 const periods = [
   { id: "all", label: "All time", days: undefined },

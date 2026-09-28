@@ -8,7 +8,7 @@ import type {
   Platform,
 } from "@/lib/setup"
 
-// Stand-in for AdPilot's campaign recommendation: a starting budget, an automatic split between
+// Stand-in for One Marketing Command Center's campaign recommendation: a starting budget, an automatic split between
 // platforms, the placements to use on each, and the conversion source that fits how the business
 // sells.
 

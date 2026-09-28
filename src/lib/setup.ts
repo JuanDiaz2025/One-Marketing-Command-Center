@@ -68,7 +68,7 @@ export const genderOptions = [
 export const AGE_MIN = 18
 export const AGE_MAX = 65
 
-// What AdPilot derives from the business in step 2. Kept to keywords so it's quick to review.
+// What One Marketing Command Center derives from the business in step 2. Kept to keywords so it's quick to review.
 export const profileSchema = z.object({
   location: z.object({
     address: z.string().trim().min(1, "Enter your street address."),
@@ -160,7 +160,7 @@ export const conversionSourceOptions = [
     value: "website",
     label: "Website",
     tag: "Online",
-    detail: "Add the AdPilot tag to count orders, bookings, and sign-ups on your site.",
+    detail: "Add the One Marketing Command Center tag to count orders, bookings, and sign-ups on your site.",
   },
   {
     value: "pos",
@@ -192,7 +192,7 @@ export const campaignSchema = z.object({
       .int("Use whole dollars.")
       .min(100, "Set at least $100 a month.")
       .max(100_000, "Keep it under $100,000 a month."),
-    // "auto" lets AdPilot split the budget between platforms and keep adjusting it.
+    // "auto" lets One Marketing Command Center split the budget between platforms and keep adjusting it.
     splitMode: z.enum(["auto", "custom"]),
     // Meta's share when both platforms are on; Google gets the rest.
     metaShare: z.number().int().min(0).max(100),
@@ -214,7 +214,7 @@ export function metaShareFor(platforms: Platform[], metaShare: number) {
 // How an ad looks in a placement, for drawing a small preview of it.
 export type ChannelFormat = "vertical" | "feed" | "search" | "map"
 
-// A placement AdPilot picks within a platform, e.g. Instagram Reels.
+// A placement One Marketing Command Center picks within a platform, e.g. Instagram Reels.
 export type Channel = {
   id: PlacementId
   name: string
@@ -239,7 +239,7 @@ export type CampaignSuggestion = {
 export type SetupDraft = {
   business?: BusinessDetails
   profile?: BusinessProfile
-  // The suggestion AdPilot made, kept so the owner can reset their edits.
+  // The suggestion One Marketing Command Center made, kept so the owner can reset their edits.
   suggestion?: ProfileSuggestion
   // The business the suggestion was made for, so it's redone if step 1 changes.
   suggestionFor?: string

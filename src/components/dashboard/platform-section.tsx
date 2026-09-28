@@ -53,7 +53,7 @@ export default function PlatformSection({ platform }: { platform: PlatformPerfor
           <span className="text-sm font-normal text-muted-foreground">{platform.detail}</span>
         </h2>
         <p className="text-sm text-muted-foreground">
-          {platform.placements.length} placements picked by AdPilot
+          {platform.placements.length} placements picked by One Marketing Command Center
         </p>
       </header>
 

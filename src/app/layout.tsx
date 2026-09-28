@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AdPilot: Your ads, on autopilot",
+  title: "One Marketing Command Center: Your ads, on autopilot",
   description: "Run ads on Meta and Google without learning either platform.",
 };
 

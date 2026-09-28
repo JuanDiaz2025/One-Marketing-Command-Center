@@ -9,7 +9,7 @@ export default function Home() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between px-6">
-        <BrandLogo />
+        <BrandLogo compact />
         <nav className="flex items-center gap-2">
           <Link href="/login" className={buttonVariants({ variant: "ghost", size: "lg" })}>
             Log in
@@ -37,7 +37,7 @@ export default function Home() {
             </h1>
             <p className="mx-auto mt-6 max-w-xl text-lg text-muted-foreground lg:mx-0">
               Ads for small businesses that bring people through your door. Tell us about your
-              business and AdPilot does the rest, from running your Meta and Google ads to moving your
+              business and One Marketing Command Center does the rest, from running your Meta and Google ads to moving your
               budget to what works.
             </p>
             <Link

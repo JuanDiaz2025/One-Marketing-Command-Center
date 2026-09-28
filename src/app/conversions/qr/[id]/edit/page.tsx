@@ -9,7 +9,7 @@ import { updateQrCodeAction } from "@/lib/conversions/actions"
 import { getQrCode } from "@/lib/conversions/store"
 import { demoPhotos } from "@/lib/demo"
 
-export const metadata: Metadata = { title: "Edit QR code · AdPilot" }
+export const metadata: Metadata = { title: "Edit QR code · One Marketing Command Center" }
 
 export default async function EditQrCodePage({ params }: PageProps<"/conversions/qr/[id]/edit">) {
   await connection()

@@ -9,7 +9,7 @@ import { getQrUrl } from "@/lib/conversions/qr-url"
 import { getQrCode } from "@/lib/conversions/store"
 import { qrTheme } from "@/lib/conversions/types"
 
-export const metadata: Metadata = { title: "Poster · AdPilot" }
+export const metadata: Metadata = { title: "Poster · One Marketing Command Center" }
 
 export default async function PosterPage({ params }: PageProps<"/conversions/qr/[id]/poster">) {
   await connection()
@@ -47,7 +47,7 @@ export default async function PosterPage({ params }: PageProps<"/conversions/qr/
           </p>
           <p className="mt-1 text-[clamp(0.75rem,1.8vw,1rem)] text-neutral-500">{code.message}</p>
         </div>
-        <p className="text-xs text-neutral-400">Powered by AdPilot</p>
+        <p className="text-xs text-neutral-400">Powered by One Marketing Command Center</p>
       </article>
     </div>
   )

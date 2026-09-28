@@ -7,7 +7,7 @@ import { createQrCodeAction } from "@/lib/conversions/actions"
 import { DEFAULT_OFFER } from "@/lib/conversions/qr-schema"
 import { demoBusiness, demoPhotos } from "@/lib/demo"
 
-export const metadata: Metadata = { title: "Create QR code · AdPilot" }
+export const metadata: Metadata = { title: "Create QR code · One Marketing Command Center" }
 
 export default function NewQrCodePage() {
   return (

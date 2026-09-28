@@ -1,6 +1,6 @@
 import type { ChannelFormat, Platform } from "@/lib/setup"
 
-// Every ad placement AdPilot can use, shared by the campaign plan, the conversion feed, and the
+// Every ad placement One Marketing Command Center can use, shared by the campaign plan, the conversion feed, and the
 // dashboard so they all name and draw placements the same way.
 export const placements = [
   {

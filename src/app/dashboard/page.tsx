@@ -16,7 +16,7 @@ import { listConversions } from "@/lib/conversions/store";
 import { getDashboardData, recommendedActions } from "@/lib/dashboard-data";
 import { demoCampaign } from "@/lib/demo-campaign";
 
-export const metadata: Metadata = { title: "Dashboard · AdPilot" };
+export const metadata: Metadata = { title: "Dashboard · One Marketing Command Center" };
 
 export default async function Dashboard() {
   await connection();
