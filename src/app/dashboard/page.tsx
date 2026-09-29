@@ -13,6 +13,7 @@ import {
 } from "@/components/dashboard/format"
 import TrendChart from "@/components/dashboard/trend-chart"
 import WastedSearches from "@/components/dashboard/wasted-searches"
+import HealthCheck from "@/components/dashboard/health-check"
 import GoogleAdsMark from "@/components/google-ads-mark"
 import { Button } from "@/components/ui/button"
 import { adsConfig } from "@/lib/auth/config"
@@ -28,6 +29,7 @@ import {
   type SearchTerm,
 } from "@/lib/google/ads"
 import { getConnection, updateConnection, type AdsConnection } from "@/lib/google/connections"
+import { getHealthIssues, type Issue } from "@/lib/google/health"
 import { findWastedSearches } from "@/lib/google/wasted-searches"
 import { listLeads } from "@/lib/leads/store"
 import { cn } from "@/lib/utils"
@@ -68,6 +70,7 @@ type Loaded =
       report: AdsReport
       // Search terms load separately, so a problem with them doesn't hide the rest.
       searchTerms: { terms: SearchTerm[] } | { error: string }
+      issues: Issue[]
     }
 
 async function load(user: Session, days: number): Promise<Loaded> {
@@ -99,7 +102,8 @@ async function load(user: Session, days: number): Promise<Loaded> {
         }),
       ),
     ])
-    return { kind: "report", connection, report, searchTerms }
+    const issues = await getHealthIssues(connection, account, report, days)
+    return { kind: "report", connection, report, searchTerms, issues }
   } catch (error) {
     if (error instanceof AdsApiError) return { kind: "error", message: error.message, code: error.code }
     console.error("Google Ads request failed:", error)
@@ -122,7 +126,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   const days = ranges.find((r) => String(r.days) === q.days)?.days ?? 30
   const [loaded, leads] = await Promise.all([load(user, days), listLeads()])
 
-  const assistant = <Assistant enabled={Boolean(process.env.ANTHROPIC_API_KEY?.trim())} />
+  const assistantEnabled = Boolean(process.env.ANTHROPIC_API_KEY?.trim())
+  const assistant = <Assistant enabled={assistantEnabled} />
   const noticeKey =
     q.connected === "1" ? "connected" : typeof q.ads_error === "string" ? q.ads_error : null
   const notice = noticeKey ? (notices[noticeKey] ?? notices.failed) : null
@@ -177,6 +182,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
           <Report
             report={loaded.report}
             searchTerms={loaded.searchTerms}
+            health={<HealthCheck issues={loaded.issues} canAsk={assistantEnabled} />}
             assistant={assistant}
             connection={loaded.connection}
             days={days}
@@ -220,6 +226,7 @@ function AccountActions() {
 function Report({
   report,
   searchTerms,
+  health,
   assistant,
   connection,
   days,
@@ -227,6 +234,7 @@ function Report({
 }: {
   report: AdsReport
   searchTerms: { terms: SearchTerm[] } | { error: string }
+  health: React.ReactNode
   assistant: React.ReactNode
   connection: AdsConnection
   days: number
@@ -312,6 +320,8 @@ function Report({
           </div>
         ))}
       </section>
+
+      {health}
 
       {assistant}
 

@@ -1,16 +1,18 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Check, Copy, Download, LoaderCircle, MessageSquareText, SendHorizontal, Settings } from "lucide-react"
 
+import { ASK_EVENT } from "@/components/dashboard/ask-button"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 type Message = { role: "user" | "assistant"; content: string }
 
 const suggestions = [
+  "What's wrong with our ads right now, and what should we fix first?",
   "Build a report for the last 7 days",
   "Which campaigns cost the most per conversion this month?",
   "What searches wasted the most money in the last 30 days?",
@@ -125,6 +127,17 @@ export default function Assistant({ enabled }: { enabled: boolean }) {
       requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }))
     }
   }
+
+  // "Ask how to fix" buttons elsewhere on the page send their question here.
+  const askRef = useRef(ask)
+  useEffect(() => {
+    askRef.current = ask
+  })
+  useEffect(() => {
+    const onAsk = (e: Event) => askRef.current(String((e as CustomEvent<string>).detail ?? ""))
+    window.addEventListener(ASK_EVENT, onAsk)
+    return () => window.removeEventListener(ASK_EVENT, onAsk)
+  }, [])
 
   return (
     <section id="assistant" className="scroll-mt-20 rounded-2xl border bg-card shadow-xs">
