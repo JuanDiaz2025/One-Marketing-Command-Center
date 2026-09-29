@@ -1,5 +1,6 @@
 import { Mail, MapPin, Phone } from "lucide-react"
 
+import { leadSource } from "@/lib/leads/source"
 import type { Lead, QrCode } from "@/lib/leads/types"
 
 // Server-rendered pages call this once per request, so reading the clock here is fine.
@@ -29,7 +30,7 @@ export default function LeadList({ leads, qrCodes }: { leads: Lead[]; qrCodes: Q
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="font-semibold">{lead.name}</span>
             <span className="text-xs text-muted-foreground">
-              {timeAgo(lead.createdAt)} · {codeNames.get(lead.qrCodeId) ?? "QR code"}
+              {timeAgo(lead.createdAt)} · {leadSource(lead, codeNames)}
             </span>
           </div>
           <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm">

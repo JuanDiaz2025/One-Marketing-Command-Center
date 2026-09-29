@@ -7,6 +7,7 @@ import AssistantLauncher from "@/components/dashboard/assistant-launcher"
 import { assistantProvider } from "@/lib/assistant/shared"
 import LeadList, { countSince } from "@/components/leads/lead-list"
 import StatusBadge from "@/components/leads/status-badge"
+import WebhookSetup from "@/components/leads/webhook-setup"
 import ToggleActiveButton from "@/components/leads/toggle-active-button"
 import { formatDate, formatNumber } from "@/components/dashboard/format"
 import { buttonVariants } from "@/components/ui/button"
@@ -33,8 +34,8 @@ export default async function LeadsPage() {
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
             <p className="mt-1 max-w-2xl text-muted-foreground">
-              Put a QR code on a yard sign, postcard or flyer. Everyone who scans it and fills in
-              the form shows up here.
+              Leads from your website forms and from QR codes on yard signs, postcards and flyers,
+              all in one list.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -66,10 +67,12 @@ export default async function LeadsPage() {
             <LeadList leads={leads.slice(0, 50)} qrCodes={qrCodes} />
           ) : (
             <p className="py-6 text-sm text-muted-foreground">
-              No leads yet. Create a QR code, print it, and put it up.
+              No leads yet. Connect your website form below, or create a QR code.
             </p>
           )}
         </section>
+
+        <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} />
 
         <section className="flex flex-col gap-4">
           <h2 className="text-xl font-semibold tracking-tight">Your QR codes</h2>

@@ -7,6 +7,7 @@ Your Google Ads results and your QR code leads in one place.
 - **Needs attention.** Every time the dashboard opens it checks the account for problems: disapproved or limited ads, campaigns limited by budget or unable to run, active campaigns with no impressions, spend with no conversions (including conversion tracking that looks broken), search campaigns with a low click rate, and keywords with a poor Quality Score. Each problem says how to fix it, and **Ask how to fix** sends it to the chat box for step-by-step help. The checks are in `src/lib/google/health.ts`.
 - **Searches to remove.** Lists search terms that cost money without bringing in a lead (renters, job seekers, home buyers, DIY research, or anything that cost more than a lead usually does), with a **Copy negative keywords** button to paste into Google Ads. Searches first spotted in the last day are tagged **New**, and wasted searches also appear as an alert under **Needs attention**. The rules are in `src/lib/google/wasted-searches.ts`.
 - **Ask about your ads.** The button in the bottom corner of every page opens a chat: ask a question or ask for a report ("build a report for the last 7 days"), and it looks up your Google Ads data and QR code leads to answer, with tables you can copy or download. It needs an OpenAI or Anthropic key (see below), and it only reads data; it can't change anything in Google Ads.
+- **Website leads.** Your WordPress forms send each new lead to the app by webhook, and it appears on the **Leads** page marked **Website**, with the form's name. The Leads page shows the webhook address to paste into WordPress.
 - **QR code leads.** Make a QR code for each yard sign, postcard or flyer. People who scan it fill in a short form (name, phone or email, property address, a note), and the lead shows up under **Leads**, tagged with the sign it came from. You can export leads as a CSV file.
 
 ## Running it
@@ -89,11 +90,26 @@ Restart the app after saving `.env.local`.
 
 **Testing a QR code with a phone:** while running locally, the QR code points at this computer's Wi-Fi address, so a phone on the same Wi-Fi can open it. Once the app is on a website, set `SITE_URL` so QR codes point there instead.
 
+## Website leads from WordPress
+
+1. Open the **Leads** page and expand **Website leads (WordPress)**. Copy the webhook address.
+2. In WordPress, open your form's webhook setting (Elementor: **Actions After Submit → Webhook**; WPForms, Gravity Forms or Contact Form 7: their webhook add-on), paste the address, method **POST**.
+3. Name the fields name (or first name and last name), phone, email, property address and message. Most forms already do. Anything else is kept in the lead's notes.
+4. Submit the form once as a test.
+
+**WordPress has to be able to reach the app.** It's on the internet and the app runs on your computer, so `localhost` addresses don't work from WordPress. Either:
+
+- **Put the app online** (recommended, and leads arrive even when your computer is off): host it somewhere with a disk that keeps files, set `SITE_URL` to its address, set `AUTH_SECRET`, and add `https://your-address/api/auth/google/callback` to the Google sign-in client's redirect URIs.
+- **Or open a tunnel from your computer** for testing: for example `cloudflared tunnel --url http://localhost:4000` prints a public address; set `SITE_URL` to it. Leads only arrive while your computer and the app are running.
+
+Every request must carry the secret key (`?key=…` in the address, or an `X-Webhook-Secret` header). A test request with GET to the same address answers `{"ok": true}` without adding a lead.
+
 ## Where data is kept
 
 Everything is saved in the `.data/` folder next to the app (it's never committed):
 
-- `leads.json`: QR codes and leads.
+- `leads.json`: QR codes and leads (from QR codes and the website).
+- `webhook-secret`: the key WordPress sends with each lead, unless `LEADS_WEBHOOK_SECRET` is set.
 - `google-ads.json`: each person's Google Ads connection. The Google token is encrypted.
 - `auth-secret`: the key used for that encryption and for sign-in cookies. If you delete it, everyone has to sign in and connect Google Ads again.
 

@@ -28,7 +28,10 @@ export type QrCode = {
 
 export type Lead = {
   id: string
-  qrCodeId: string
+  // Set for leads from a QR code form. Website leads have `source` instead.
+  qrCodeId?: string
+  // Where a lead came from when it wasn't a QR code, e.g. "Website · Cash offer form".
+  source?: string
   createdAt: string // ISO datetime
   name: string
   phone?: string

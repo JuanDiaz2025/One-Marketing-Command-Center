@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth/session"
+import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 
 // Quote every cell, and stop spreadsheet apps from running a value that starts like a formula.
@@ -15,7 +16,7 @@ export async function GET() {
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
 
   const rows = [
-    ["Date", "Name", "Phone", "Email", "Property address", "Notes", "QR code"],
+    ["Date", "Name", "Phone", "Email", "Property address", "Notes", "Source"],
     ...leads.map((l) => [
       l.createdAt,
       l.name,
@@ -23,7 +24,7 @@ export async function GET() {
       l.email,
       l.propertyAddress,
       l.notes,
-      placements.get(l.qrCodeId),
+      leadSource(l, placements),
     ]),
   ]
   const csv = rows.map((r) => r.map(cell).join(",")).join("\r\n")

@@ -2,6 +2,7 @@
 // endpoint can't change an account), and leads from this app's own store.
 import { AdsApiError, runQuery } from "@/lib/google/ads"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
+import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 
 // Written once and handed to whichever AI provider is set up (see claude.ts and openai.ts).
@@ -33,8 +34,8 @@ export const toolSpecs: ToolSpec[] = [
   {
     name: "list_leads",
     description:
-      "List the leads collected by this app's QR codes (yard signs, postcards, flyers) in the last N days, newest first. " +
-      "Each lead has a date, name, phone, email, property address, notes and the QR code placement it came from. " +
+      "List the leads collected in the last N days, newest first: from this app's QR codes (yard signs, postcards, flyers) and from the WordPress website's forms. " +
+      "Each lead has a date, name, phone, email, property address, notes and its source (the QR code placement, or the website form). " +
       "These are separate from Google Ads conversions.",
     parameters: {
       type: "object",
@@ -93,7 +94,7 @@ export async function runTool(
               email: l.email,
               propertyAddress: l.propertyAddress,
               notes: l.notes,
-              qrCode: placements.get(l.qrCodeId) ?? "Unknown",
+              source: leadSource(l, placements),
             })),
         ),
       }
