@@ -14,6 +14,7 @@ import PeriodPicker from "@/components/dashboard/period-picker"
 import TrendChart from "@/components/dashboard/trend-chart"
 import WastedSearches from "@/components/dashboard/wasted-searches"
 import HealthCheck from "@/components/dashboard/health-check"
+import Paged from "@/components/ui/paged"
 import GoogleAdsMark from "@/components/google-ads-mark"
 import { Button } from "@/components/ui/button"
 import { assistantProvider } from "@/lib/assistant/shared"
@@ -353,46 +354,49 @@ function Report({
       <section className="rounded-2xl border bg-card shadow-xs">
         <h2 className="px-5 pt-5 text-lg font-semibold sm:px-6">Campaigns</h2>
         {report.campaigns.length ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead className="text-left text-xs text-muted-foreground">
-                <tr className="border-b">
-                  <th className="px-5 py-3 font-medium sm:px-6">Campaign</th>
-                  <th className="px-3 py-3 text-right font-medium">Spend</th>
-                  <th className="px-3 py-3 text-right font-medium">Impr.</th>
-                  <th className="px-3 py-3 text-right font-medium">Clicks</th>
-                  <th className="px-3 py-3 text-right font-medium">Click rate</th>
-                  <th className="px-3 py-3 text-right font-medium">Conv.</th>
-                  <th className="px-5 py-3 text-right font-medium sm:px-6">Cost / conv.</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y tabular-nums">
-                {report.campaigns.map((c) => (
-                  <tr key={c.id}>
-                    <td className="px-5 py-3 sm:px-6">
-                      <p className="font-medium">{c.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {statusLabel[c.status] ?? humanize(c.status)}
-                        {c.channel && ` · ${humanize(c.channel)}`}
-                      </p>
-                    </td>
-                    <td className="px-3 py-3 text-right">{money(c.cost, true)}</td>
-                    <td className="px-3 py-3 text-right">{formatNumber(c.impressions)}</td>
-                    <td className="px-3 py-3 text-right">{formatNumber(c.clicks)}</td>
-                    <td className="px-3 py-3 text-right">
-                      {formatPercent(c.impressions ? c.clicks / c.impressions : 0)}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      {formatNumber(Math.round(c.conversions * 10) / 10)}
-                    </td>
-                    <td className="px-5 py-3 text-right sm:px-6">
-                      {c.conversions ? money(c.cost / c.conversions, true) : "–"}
-                    </td>
+          <Paged
+            noun="campaigns"
+            table={{
+              className: "w-full min-w-[720px] text-sm",
+              bodyClassName: "divide-y tabular-nums",
+              head: (
+                <thead className="text-left text-xs text-muted-foreground">
+                  <tr className="border-b">
+                    <th className="px-5 py-3 font-medium sm:px-6">Campaign</th>
+                    <th className="px-3 py-3 text-right font-medium">Spend</th>
+                    <th className="px-3 py-3 text-right font-medium">Impr.</th>
+                    <th className="px-3 py-3 text-right font-medium">Clicks</th>
+                    <th className="px-3 py-3 text-right font-medium">Click rate</th>
+                    <th className="px-3 py-3 text-right font-medium">Conv.</th>
+                    <th className="px-5 py-3 text-right font-medium sm:px-6">Cost / conv.</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+              ),
+            }}
+            items={report.campaigns.map((c) => (
+              <tr key={c.id}>
+                <td className="px-5 py-3 sm:px-6">
+                  <p className="font-medium">{c.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {statusLabel[c.status] ?? humanize(c.status)}
+                    {c.channel && ` · ${humanize(c.channel)}`}
+                  </p>
+                </td>
+                <td className="px-3 py-3 text-right">{money(c.cost, true)}</td>
+                <td className="px-3 py-3 text-right">{formatNumber(c.impressions)}</td>
+                <td className="px-3 py-3 text-right">{formatNumber(c.clicks)}</td>
+                <td className="px-3 py-3 text-right">
+                  {formatPercent(c.impressions ? c.clicks / c.impressions : 0)}
+                </td>
+                <td className="px-3 py-3 text-right">
+                  {formatNumber(Math.round(c.conversions * 10) / 10)}
+                </td>
+                <td className="px-5 py-3 text-right sm:px-6">
+                  {c.conversions ? money(c.cost / c.conversions, true) : "–"}
+                </td>
+              </tr>
+            ))}
+          />
         ) : (
           <p className="px-5 py-6 text-sm text-muted-foreground sm:px-6">
             No campaign activity in this period.

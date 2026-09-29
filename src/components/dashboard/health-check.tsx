@@ -1,6 +1,7 @@
 import { CircleAlert, CircleCheck, TriangleAlert } from "lucide-react"
 
 import AskButton from "@/components/dashboard/ask-button"
+import Paged from "@/components/ui/paged"
 import type { Issue } from "@/lib/google/health"
 import { cn } from "@/lib/utils"
 
@@ -35,8 +36,11 @@ export default function HealthCheck({ issues }: { issues: Issue[] }) {
           </p>
         </div>
       </div>
-      <ul className="mt-4 divide-y border-t">
-        {issues.map((issue) => (
+      <Paged
+        noun="problems"
+        pageSize={5}
+        listClassName="mt-4 divide-y border-t"
+        items={issues.map((issue) => (
           <li key={issue.id} className="flex flex-col gap-2 px-5 py-4 sm:px-6">
             <div className="flex items-start gap-2">
               <CircleAlert
@@ -60,7 +64,7 @@ export default function HealthCheck({ issues }: { issues: Issue[] }) {
             </div>
           </li>
         ))}
-      </ul>
+      />
     </section>
   )
 }

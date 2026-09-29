@@ -1,6 +1,7 @@
 import { Trash2 } from "lucide-react"
 
 import CopyButton from "@/components/dashboard/copy-button"
+import Paged from "@/components/ui/paged"
 import { formatMoney, formatNumber } from "@/components/dashboard/format"
 import { negativeKeywordList, type WastedSearch } from "@/lib/google/wasted-searches"
 
@@ -16,7 +17,6 @@ type Props = {
 // Search terms that cost money without bringing in a lead, and the negative keywords to block them.
 export default function WastedSearches({ wasted, total, spendLimit, currency, error }: Props) {
   const money = (n: number, cents = false) => formatMoney(n, currency, cents)
-  const shown = wasted.slice(0, 50)
   const fresh = wasted.filter((w) => w.isNew).length
 
   return (
@@ -44,45 +44,50 @@ export default function WastedSearches({ wasted, total, spendLimit, currency, er
 
       {error && <p className="px-5 pt-3 text-sm text-destructive sm:px-6">{error}</p>}
 
-      {shown.length > 0 && (
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="text-left text-xs text-muted-foreground">
-              <tr className="border-y">
-                <th className="px-5 py-3 font-medium sm:px-6">Search term</th>
-                <th className="px-3 py-3 font-medium">Why</th>
-                <th className="px-3 py-3 text-right font-medium">Spend</th>
-                <th className="px-3 py-3 text-right font-medium">Clicks</th>
-                <th className="px-5 py-3 font-medium sm:px-6">Block with</th>
+      {wasted.length > 0 && (
+        <div className="mt-4">
+          <Paged
+            noun="searches"
+            table={{
+              className: "w-full min-w-[720px] text-sm",
+              bodyClassName: "divide-y tabular-nums",
+              head: (
+                <thead className="text-left text-xs text-muted-foreground">
+                  <tr className="border-y">
+                    <th className="px-5 py-3 font-medium sm:px-6">Search term</th>
+                    <th className="px-3 py-3 font-medium">Why</th>
+                    <th className="px-3 py-3 text-right font-medium">Spend</th>
+                    <th className="px-3 py-3 text-right font-medium">Clicks</th>
+                    <th className="px-5 py-3 font-medium sm:px-6">Block with</th>
+                  </tr>
+                </thead>
+              ),
+            }}
+            items={wasted.map((w) => (
+              <tr key={`${w.term}-${w.campaign}-${w.adGroup}`}>
+                <td className="px-5 py-3 sm:px-6">
+                  <p className="font-medium">
+                    {w.term}
+                    {w.isNew && (
+                      <span className="ml-2 rounded-full bg-destructive/10 px-2 py-0.5 align-middle text-xs font-medium text-destructive">
+                        New
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{w.campaign}</p>
+                </td>
+                <td className="px-3 py-3 text-muted-foreground">{w.reason}</td>
+                <td className="px-3 py-3 text-right">{money(w.cost, true)}</td>
+                <td className="px-3 py-3 text-right">{formatNumber(w.clicks)}</td>
+                <td className="px-5 py-3 font-mono text-xs sm:px-6">{w.negative}</td>
               </tr>
-            </thead>
-            <tbody className="divide-y tabular-nums">
-              {shown.map((w) => (
-                <tr key={`${w.term}-${w.campaign}-${w.adGroup}`}>
-                  <td className="px-5 py-3 sm:px-6">
-                    <p className="font-medium">
-                      {w.term}
-                      {w.isNew && (
-                        <span className="ml-2 rounded-full bg-destructive/10 px-2 py-0.5 align-middle text-xs font-medium text-destructive">
-                          New
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{w.campaign}</p>
-                  </td>
-                  <td className="px-3 py-3 text-muted-foreground">{w.reason}</td>
-                  <td className="px-3 py-3 text-right">{money(w.cost, true)}</td>
-                  <td className="px-3 py-3 text-right">{formatNumber(w.clicks)}</td>
-                  <td className="px-5 py-3 font-mono text-xs sm:px-6">{w.negative}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            ))}
+          />
         </div>
       )}
 
       <div className="px-5 py-4 text-xs text-muted-foreground sm:px-6">
-        {wasted.length > shown.length && <p>Showing the 50 most expensive. Copy includes all of them.</p>}
+        {wasted.length > 10 && <p>Most expensive first. Copy includes all of them, not only this page.</p>}
         <p>
           Flagged when a search brought no leads and either matches a word like &ldquo;rent&rdquo; or
           &ldquo;jobs&rdquo;, or cost more than {money(spendLimit)}. Check the list first, then in

@@ -64,7 +64,7 @@ export default async function LeadsPage() {
         <section className="rounded-2xl border bg-card p-5 shadow-xs sm:p-6">
           <h2 className="text-lg font-semibold">Latest leads</h2>
           {leads.length ? (
-            <LeadList leads={leads.slice(0, 50)} qrCodes={qrCodes} />
+            <LeadList leads={leads} qrCodes={qrCodes} />
           ) : (
             <p className="py-6 text-sm text-muted-foreground">
               No leads yet. Connect your website form below, or create a QR code.

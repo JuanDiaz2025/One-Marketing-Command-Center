@@ -1,5 +1,6 @@
 import { Mail, MapPin, Phone } from "lucide-react"
 
+import Paged from "@/components/ui/paged"
 import { leadSource } from "@/lib/leads/source"
 import type { Lead, QrCode } from "@/lib/leads/types"
 
@@ -24,8 +25,11 @@ const telHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`
 export default function LeadList({ leads, qrCodes }: { leads: Lead[]; qrCodes: QrCode[] }) {
   const codeNames = new Map(qrCodes.map((c) => [c.id, c.placement]))
   return (
-    <ul className="flex flex-col divide-y">
-      {leads.map((lead) => (
+    <Paged
+      noun="leads"
+      listClassName="flex flex-col divide-y"
+      controlsClassName="px-0 sm:px-0"
+      items={leads.map((lead) => (
         <li key={lead.id} className="flex flex-col gap-2 py-4">
           <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <span className="font-semibold">{lead.name}</span>
@@ -61,6 +65,6 @@ export default function LeadList({ leads, qrCodes }: { leads: Lead[]; qrCodes: Q
           )}
         </li>
       ))}
-    </ul>
+    />
   )
 }
