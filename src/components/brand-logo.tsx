@@ -40,7 +40,7 @@ export default function BrandLogo({
         className="flex items-center gap-3 font-semibold tracking-tight whitespace-nowrap"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="Twin Home Buyer" className="h-12 w-auto shrink-0" />
+        <img src="/logo.png" alt="Twin Home Buyer" className="h-14 w-auto shrink-0" />
         <span className={compact ? "hidden border-l pl-3 text-sm text-muted-foreground lg:inline" : "border-l pl-3 text-sm text-muted-foreground"}>
           Marketing Command Center
         </span>
