@@ -14,6 +14,7 @@ import PeriodPicker from "@/components/dashboard/period-picker"
 import TrendChart from "@/components/dashboard/trend-chart"
 import WastedSearches from "@/components/dashboard/wasted-searches"
 import HealthCheck from "@/components/dashboard/health-check"
+import Locations from "@/components/dashboard/locations"
 import Paged from "@/components/ui/paged"
 import GoogleAdsMark from "@/components/google-ads-mark"
 import { Button } from "@/components/ui/button"
@@ -34,6 +35,7 @@ import { getConnection, updateConnection, type AdsConnection } from "@/lib/googl
 import { getHealthIssues, wastedSearchIssue, type Issue } from "@/lib/google/health"
 import { describePeriod, periodQuery, resolvePeriod, type Period } from "@/lib/google/period"
 import { firstSeen } from "@/lib/google/seen-searches"
+import { locationIssues, tryGetLocations, type LocationReport } from "@/lib/google/locations"
 import { findWastedSearches, searchKey, type WastedSummary } from "@/lib/google/wasted-searches"
 import { cn } from "@/lib/utils"
 
@@ -71,6 +73,7 @@ type Loaded =
       // Search terms load separately, so a problem with them doesn't hide the rest.
       searchTerms: { terms: SearchTerm[] } | { error: string }
       wasted: WastedSummary
+      locations: LocationReport | { error: string }
       issues: Issue[]
     }
 
@@ -94,7 +97,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
       connection.accounts.find((a) => a.customerId === connection.selectedCustomerId) ??
       connection.accounts[0]
     if (!account) return { kind: "no-accounts", connection }
-    const [report, searchTerms] = await Promise.all([
+    const [report, searchTerms, locations] = await Promise.all([
       getReport(connection, account, period),
       getSearchTerms(connection, account, period).then(
         (terms) => ({ terms }),
@@ -102,6 +105,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
           error: error instanceof AdsApiError ? error.message : "Google Ads didn't return search terms.",
         }),
       ),
+      tryGetLocations(connection, account, period),
     ])
     const { totals } = report
     const costPerConversion = totals.conversions ? totals.cost / totals.conversions : 0
@@ -114,7 +118,12 @@ async function load(user: Session, period: Period): Promise<Loaded> {
     const issues = await getHealthIssues(connection, account, report, period)
     const wastedIssue = wastedSearchIssue(wasted, account.currency, costPerConversion, period)
     if (wastedIssue) issues.splice(wastedIssue.severity === "high" ? 0 : issues.length, 0, wastedIssue)
-    return { kind: "report", connection, report, searchTerms, wasted, issues }
+    if (!("error" in locations)) {
+      const found = locationIssues(locations, report, account.currency, period)
+      issues.unshift(...found.filter((i) => i.severity === "high"))
+      issues.push(...found.filter((i) => i.severity !== "high"))
+    }
+    return { kind: "report", connection, report, searchTerms, wasted, locations, issues }
   } catch (error) {
     if (error instanceof AdsApiError) return { kind: "error", message: error.message, code: error.code }
     console.error("Google Ads request failed:", error)
@@ -213,6 +222,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             report={loaded.report}
             searchTerms={loaded.searchTerms}
             wasted={loaded.wasted}
+            locations={loaded.locations}
             health={<HealthCheck issues={loaded.issues} />}
             connection={loaded.connection}
             period={period}
@@ -258,6 +268,7 @@ function Report({
   report,
   searchTerms,
   wasted,
+  locations,
   health,
   connection,
   period,
@@ -265,6 +276,7 @@ function Report({
   report: AdsReport
   searchTerms: { terms: SearchTerm[] } | { error: string }
   wasted: WastedSummary
+  locations: LocationReport | { error: string }
   health: React.ReactNode
   connection: AdsConnection
   period: Period
@@ -337,6 +349,8 @@ function Report({
         currency={account.currency}
         error={"error" in searchTerms ? searchTerms.error : undefined}
       />
+
+      <Locations locations={locations} currency={account.currency} />
 
       <section className="grid gap-6 rounded-2xl border bg-card p-5 shadow-xs sm:p-6 lg:grid-cols-2">
         <TrendChart

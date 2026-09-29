@@ -19,6 +19,9 @@ export const toolSpecs: ToolSpec[] = [
       "Run a read-only Google Ads Query Language (GAQL) SELECT query against the selected Google Ads account and get the rows back as JSON. " +
       "Use it for any question about spend, clicks, impressions, conversions, campaigns, ad groups, keywords, search terms, locations or devices. " +
       "Useful resources: campaign, ad_group, ad_group_criterion (keywords), keyword_view, search_term_view, geographic_view, customer. " +
+      "For locations: user_location_view with segments.geo_target_city and user_location_view.targeting_location (false = outside the target area), " +
+      "campaign_criterion WHERE campaign_criterion.type = 'LOCATION' for targeting, campaign.geo_target_type_setting.positive_geo_target_type for Presence vs Presence or interest, " +
+      "and geo_target_constant (resource_name IN (...)) to turn geoTargetConstants/123 into place names. " +
       "Money fields end in _micros: divide by 1,000,000 to get the account currency. " +
       "Always filter by date with segments.date BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' (or DURING LAST_7_DAYS / LAST_30_DAYS / THIS_MONTH / LAST_MONTH), " +
       "and add ORDER BY and a LIMIT (at most 200). JSON field names come back in camelCase, e.g. metrics.costMicros.",
