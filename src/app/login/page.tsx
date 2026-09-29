@@ -33,7 +33,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-16">
       <div className="w-full max-w-sm">
         <div className="flex justify-center">
-          <BrandLogo />
+          <BrandLogo large />
         </div>
         <div className="mt-8 rounded-2xl border bg-card p-6 shadow-xl sm:p-8">
           <h1 className="text-2xl font-bold tracking-tight">Sign in</h1>

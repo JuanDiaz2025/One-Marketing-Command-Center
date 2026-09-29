@@ -4,6 +4,8 @@ Your Google Ads results and your QR code leads in one place.
 
 - **Sign in with Google.** Only the Google accounts you allow can get in.
 - **Google Ads dashboard.** Connect your Google Ads account to see spend, clicks, conversions and cost per conversion, by day and by campaign, for the last 7, 30 or 90 days. It reads your real account through the Google Ads API. Nothing is changed in Google Ads.
+- **Searches to remove.** Lists search terms that cost money without bringing in a lead (renters, job seekers, home buyers, DIY research, or anything that cost more than a lead usually does), with a **Copy negative keywords** button to paste into Google Ads. The rules are in `src/lib/google/wasted-searches.ts`.
+- **Ask about your marketing.** A chat box on the dashboard: ask a question or ask for a report ("build a report for the last 7 days"), and it looks up your Google Ads data and QR code leads to answer, with tables you can copy or download. It needs an `ANTHROPIC_API_KEY` (see below), and it only reads data; it can't change anything in Google Ads.
 - **QR code leads.** Make a QR code for each yard sign, postcard or flyer. People who scan it fill in a short form (name, phone or email, property address, a note), and the lead shows up under **Leads**, tagged with the sign it came from. You can export leads as a CSV file.
 
 ## Running it
@@ -56,7 +58,14 @@ Open **Google Auth Platform** (under APIs & Services) and click **Get started**.
 3. Copy the **Developer token** into `.env.local` as `GOOGLE_ADS_DEVELOPER_TOKEN`.
 4. A new token has **Test Account Access** only, which can't read real accounts. Click **Apply for Basic Access** in the API Center. Google usually replies within a few business days. Until then the dashboard explains that the token only has test access.
 
-### 5. Choose who can sign in
+### 5. Turn on the chat box (optional)
+
+1. Go to https://console.anthropic.com, sign in, and add a payment method under **Billing**.
+2. Open **API keys → Create key**, and copy it into `.env.local` as `ANTHROPIC_API_KEY`.
+
+Each question costs a few cents; a long report can cost more. Questions and the data the assistant looks up (ad numbers, and lead names and contact details when you ask about leads) are sent to Anthropic to produce the answer.
+
+### 6. Choose who can sign in
 
 Set `ALLOWED_EMAILS` in `.env.local`, for example:
 

@@ -304,3 +304,47 @@ export async function getReport(
     })),
   }
 }
+
+export type SearchTerm = Metrics & {
+  term: string
+  campaign: string
+  adGroup: string
+  status: string
+}
+
+// Search terms people typed before clicking an ad, excluding ones already blocked with a negative
+// keyword. Performance Max terms aren't included: Google doesn't report them here.
+export async function getSearchTerms(
+  connection: AdsConnection,
+  account: AdsAccount,
+  days: number,
+): Promise<SearchTerm[]> {
+  const { start, end } = dateRange(days)
+  const rows = await search<{
+    searchTermView: { searchTerm: string; status?: string }
+    campaign: { name: string }
+    adGroup: { name: string }
+    metrics?: MetricsJson
+  }>(
+    connection,
+    account.customerId,
+    `SELECT search_term_view.search_term, search_term_view.status, campaign.name, ad_group.name, ${METRIC_FIELDS} FROM search_term_view WHERE segments.date BETWEEN '${start}' AND '${end}' AND metrics.cost_micros > 0 ORDER BY metrics.cost_micros DESC LIMIT 1000`,
+    account.loginCustomerId,
+  )
+  return rows
+    .map((r) => ({
+      term: r.searchTermView.searchTerm,
+      status: r.searchTermView.status ?? "NONE",
+      campaign: r.campaign.name,
+      adGroup: r.adGroup.name,
+      ...toMetrics(r.metrics),
+    }))
+    .filter((t) => t.status !== "EXCLUDED" && t.status !== "ADDED_EXCLUDED")
+}
+
+// Runs a read-only GAQL query for the chat assistant. The search endpoint can't change anything
+// in the account; this also refuses anything that isn't a SELECT.
+export async function runQuery(connection: AdsConnection, account: AdsAccount, query: string) {
+  if (!/^\s*select\s/i.test(query)) throw new AdsApiError("Only SELECT queries are allowed.")
+  return search<Record<string, unknown>>(connection, account.customerId, query, account.loginCustomerId)
+}

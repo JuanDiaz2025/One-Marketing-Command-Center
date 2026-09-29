@@ -1,0 +1,228 @@
+"use client"
+
+import { useRef, useState } from "react"
+import ReactMarkdown, { type Components } from "react-markdown"
+import remarkGfm from "remark-gfm"
+import { Check, Copy, Download, LoaderCircle, MessageSquareText, SendHorizontal, Settings } from "lucide-react"
+
+import { Button } from "@/components/ui/button"
+import { cn } from "@/lib/utils"
+
+type Message = { role: "user" | "assistant"; content: string }
+
+const suggestions = [
+  "Build a report for the last 7 days",
+  "Which campaigns cost the most per conversion this month?",
+  "What searches wasted the most money in the last 30 days?",
+  "How many QR code leads did we get this month, and from which signs?",
+]
+
+// Report styling for Markdown replies: readable tables that scroll on narrow screens.
+const markdown: Components = {
+  h1: (p) => <h3 className="mt-4 mb-2 text-lg font-semibold first:mt-0" {...p} />,
+  h2: (p) => <h3 className="mt-4 mb-2 text-base font-semibold first:mt-0" {...p} />,
+  h3: (p) => <h4 className="mt-3 mb-1.5 font-semibold first:mt-0" {...p} />,
+  p: (p) => <p className="my-2 first:mt-0 last:mb-0" {...p} />,
+  ul: (p) => <ul className="my-2 list-disc space-y-1 pl-5" {...p} />,
+  ol: (p) => <ol className="my-2 list-decimal space-y-1 pl-5" {...p} />,
+  a: (p) => <a className="text-primary underline underline-offset-4" target="_blank" rel="noreferrer" {...p} />,
+  code: (p) => <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]" {...p} />,
+  table: (p) => (
+    <div className="my-3 overflow-x-auto rounded-lg border">
+      <table className="w-full text-sm" {...p} />
+    </div>
+  ),
+  th: (p) => <th className="border-b bg-muted/60 px-3 py-2 text-left font-medium whitespace-nowrap" {...p} />,
+  td: (p) => <td className="border-b px-3 py-2 align-top tabular-nums" {...p} />,
+}
+
+// Saves a reply as a small web page, so it opens nicely in any browser and can be printed.
+function downloadReport(html: string) {
+  const page = `<!doctype html><html><head><meta charset="utf-8"><title>Marketing report</title>
+<style>body{font:15px/1.5 system-ui,sans-serif;max-width:860px;margin:40px auto;padding:0 20px;color:#111}
+table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid #ddd;padding:6px 10px;text-align:left}
+th{background:#f4f4f5}h3,h4{margin:20px 0 8px}</style></head><body>
+<p style="color:#666">Twin Home Buyer · ${new Date().toLocaleDateString("en-US", { dateStyle: "long" })}</p>
+${html}</body></html>`
+  const url = URL.createObjectURL(new Blob([page], { type: "text/html" }))
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `marketing-report-${new Date().toISOString().slice(0, 10)}.html`
+  a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
+
+function Reply({ content }: { content: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [copied, setCopied] = useState(false)
+  return (
+    <div className="flex flex-col gap-2">
+      <div ref={ref} className="text-sm leading-relaxed">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdown}>
+          {content}
+        </ReactMarkdown>
+      </div>
+      <div className="flex gap-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={async () => {
+            await navigator.clipboard.writeText(content)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
+          }}
+        >
+          {copied ? <Check data-icon="inline-start" /> : <Copy data-icon="inline-start" />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => ref.current && downloadReport(ref.current.innerHTML)}>
+          <Download data-icon="inline-start" />
+          Download
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+export default function Assistant({ enabled }: { enabled: boolean }) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState("")
+  const [pending, setPending] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const endRef = useRef<HTMLDivElement>(null)
+
+  async function ask(question: string) {
+    const text = question.trim()
+    if (!text || pending) return
+    const next: Message[] = [...messages, { role: "user", content: text }]
+    setMessages(next)
+    setInput("")
+    setError(null)
+    setPending(true)
+    requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }))
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // The server takes the last 40 messages at most.
+        body: JSON.stringify({ messages: next.slice(-40) }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok || typeof body.reply !== "string") {
+        setError(body.error ?? "Something went wrong. Please try again.")
+        setMessages(messages)
+        setInput(text)
+        return
+      }
+      setMessages([...next, { role: "assistant", content: body.reply }])
+    } catch {
+      setError("Couldn't reach the app. Is it still running?")
+      setMessages(messages)
+      setInput(text)
+    } finally {
+      setPending(false)
+      requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }))
+    }
+  }
+
+  return (
+    <section id="assistant" className="scroll-mt-20 rounded-2xl border bg-card shadow-xs">
+      <div className="flex items-start gap-3 px-5 pt-5 sm:px-6">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <MessageSquareText className="size-5" />
+        </span>
+        <div>
+          <h2 className="text-lg font-semibold">Ask about your marketing</h2>
+          <p className="text-sm text-muted-foreground">
+            Ask a question or ask for a report. It reads your Google Ads and QR code leads.
+          </p>
+        </div>
+      </div>
+
+      {!enabled ? (
+        <p className="m-5 flex gap-2 rounded-xl bg-muted p-4 text-sm sm:mx-6">
+          <Settings className="mt-0.5 size-4 shrink-0" />
+          <span>
+            To turn this on, add <code className="font-mono">ANTHROPIC_API_KEY</code> to{" "}
+            <code className="font-mono">.env.local</code> and restart the app. Get a key at
+            console.anthropic.com → API keys.
+          </span>
+        </p>
+      ) : (
+        <div className="flex flex-col gap-4 p-5 sm:px-6">
+          {messages.length > 0 && (
+            <ol className="flex max-h-[36rem] flex-col gap-4 overflow-y-auto">
+              {messages.map((m, i) => (
+                <li
+                  key={i}
+                  className={cn(
+                    "rounded-2xl px-4 py-3",
+                    m.role === "user" ? "ml-auto max-w-[85%] bg-primary text-primary-foreground" : "bg-muted/50",
+                  )}
+                >
+                  {m.role === "user" ? <p className="text-sm whitespace-pre-wrap">{m.content}</p> : <Reply content={m.content} />}
+                </li>
+              ))}
+              {pending && (
+                <li className="flex items-center gap-2 rounded-2xl bg-muted/50 px-4 py-3 text-sm text-muted-foreground" role="status">
+                  <LoaderCircle className="size-4 animate-spin" />
+                  Looking at your data… reports can take a minute.
+                </li>
+              )}
+              <div ref={endRef} />
+            </ol>
+          )}
+
+          {messages.length === 0 && (
+            <div className="flex flex-wrap gap-2">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => ask(s)}
+                  className="rounded-full border bg-background px-3 py-1.5 text-left text-sm text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {error && (
+            <p role="alert" className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+              {error}
+            </p>
+          )}
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              ask(input)
+            }}
+            className="flex items-end gap-2"
+          >
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault()
+                  ask(input)
+                }
+              }}
+              rows={2}
+              maxLength={4000}
+              placeholder="e.g. Which keywords brought the cheapest leads last month?"
+              aria-label="Your question"
+              className="min-h-12 flex-1 resize-y rounded-xl border bg-background px-4 py-3 text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm"
+            />
+            <Button type="submit" size="lg" disabled={pending || !input.trim()} className="h-12 px-4" aria-label="Send">
+              <SendHorizontal />
+            </Button>
+          </form>
+        </div>
+      )}
+    </section>
+  )
+}

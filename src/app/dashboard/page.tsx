@@ -3,6 +3,7 @@ import Link from "next/link"
 import { CircleAlert, CircleCheck, ExternalLink, RefreshCw } from "lucide-react"
 
 import AppHeader from "@/components/app-header"
+import Assistant from "@/components/dashboard/assistant"
 import { AdsError, ConnectAds, DisconnectButton, SetupNeeded } from "@/components/dashboard/ads-panels"
 import {
   formatDateRange,
@@ -11,6 +12,7 @@ import {
   formatPercent,
 } from "@/components/dashboard/format"
 import TrendChart from "@/components/dashboard/trend-chart"
+import WastedSearches from "@/components/dashboard/wasted-searches"
 import GoogleAdsMark from "@/components/google-ads-mark"
 import { Button } from "@/components/ui/button"
 import { adsConfig } from "@/lib/auth/config"
@@ -20,10 +22,13 @@ import {
   AdsApiError,
   formatCustomerId,
   getReport,
+  getSearchTerms,
   listAccounts,
   type AdsReport,
+  type SearchTerm,
 } from "@/lib/google/ads"
 import { getConnection, updateConnection, type AdsConnection } from "@/lib/google/connections"
+import { findWastedSearches } from "@/lib/google/wasted-searches"
 import { listLeads } from "@/lib/leads/store"
 import { cn } from "@/lib/utils"
 
@@ -57,7 +62,13 @@ type Loaded =
   | { kind: "connect" }
   | { kind: "error"; message: string; code?: string }
   | { kind: "no-accounts"; connection: AdsConnection }
-  | { kind: "report"; connection: AdsConnection; report: AdsReport }
+  | {
+      kind: "report"
+      connection: AdsConnection
+      report: AdsReport
+      // Search terms load separately, so a problem with them doesn't hide the rest.
+      searchTerms: { terms: SearchTerm[] } | { error: string }
+    }
 
 async function load(user: Session, days: number): Promise<Loaded> {
   if (!adsConfig().developerToken) return { kind: "setup", missing: ["GOOGLE_ADS_DEVELOPER_TOKEN"] }
@@ -79,7 +90,16 @@ async function load(user: Session, days: number): Promise<Loaded> {
       connection.accounts.find((a) => a.customerId === connection.selectedCustomerId) ??
       connection.accounts[0]
     if (!account) return { kind: "no-accounts", connection }
-    return { kind: "report", connection, report: await getReport(connection, account, days) }
+    const [report, searchTerms] = await Promise.all([
+      getReport(connection, account, days),
+      getSearchTerms(connection, account, days).then(
+        (terms) => ({ terms }),
+        (error) => ({
+          error: error instanceof AdsApiError ? error.message : "Google Ads didn't return search terms.",
+        }),
+      ),
+    ])
+    return { kind: "report", connection, report, searchTerms }
   } catch (error) {
     if (error instanceof AdsApiError) return { kind: "error", message: error.message, code: error.code }
     console.error("Google Ads request failed:", error)
@@ -102,6 +122,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   const days = ranges.find((r) => String(r.days) === q.days)?.days ?? 30
   const [loaded, leads] = await Promise.all([load(user, days), listLeads()])
 
+  const assistant = <Assistant enabled={Boolean(process.env.ANTHROPIC_API_KEY?.trim())} />
   const noticeKey =
     q.connected === "1" ? "connected" : typeof q.ads_error === "string" ? q.ads_error : null
   const notice = noticeKey ? (notices[noticeKey] ?? notices.failed) : null
@@ -155,6 +176,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
         {loaded.kind === "report" && (
           <Report
             report={loaded.report}
+            searchTerms={loaded.searchTerms}
+            assistant={assistant}
             connection={loaded.connection}
             days={days}
             leadCount={
@@ -165,6 +188,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             }
           />
         )}
+        {loaded.kind !== "report" && assistant}
       </main>
     </div>
   )
@@ -195,17 +219,25 @@ function AccountActions() {
 
 function Report({
   report,
+  searchTerms,
+  assistant,
   connection,
   days,
   leadCount,
 }: {
   report: AdsReport
+  searchTerms: { terms: SearchTerm[] } | { error: string }
+  assistant: React.ReactNode
   connection: AdsConnection
   days: number
   leadCount: number
 }) {
   const { account, totals } = report
   const money = (n: number, cents = false) => formatMoney(n, account.currency, cents)
+  const wasted = findWastedSearches(
+    "terms" in searchTerms ? searchTerms.terms : [],
+    totals.conversions ? totals.cost / totals.conversions : 0,
+  )
   const kpis = [
     { label: "Spend", value: money(totals.cost), note: `${formatNumber(totals.impressions)} impressions` },
     {
@@ -280,6 +312,14 @@ function Report({
           </div>
         ))}
       </section>
+
+      {assistant}
+
+      <WastedSearches
+        {...wasted}
+        currency={account.currency}
+        error={"error" in searchTerms ? searchTerms.error : undefined}
+      />
 
       <section className="grid gap-6 rounded-2xl border bg-card p-5 shadow-xs sm:p-6 lg:grid-cols-2">
         <TrendChart
