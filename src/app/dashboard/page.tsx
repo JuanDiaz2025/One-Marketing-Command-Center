@@ -29,8 +29,9 @@ import {
   type SearchTerm,
 } from "@/lib/google/ads"
 import { getConnection, updateConnection, type AdsConnection } from "@/lib/google/connections"
-import { getHealthIssues, type Issue } from "@/lib/google/health"
-import { findWastedSearches } from "@/lib/google/wasted-searches"
+import { getHealthIssues, wastedSearchIssue, type Issue } from "@/lib/google/health"
+import { firstSeen } from "@/lib/google/seen-searches"
+import { findWastedSearches, searchKey, type WastedSummary } from "@/lib/google/wasted-searches"
 import { listLeads } from "@/lib/leads/store"
 import { cn } from "@/lib/utils"
 
@@ -56,6 +57,9 @@ const notices: Record<string, { tone: "ok" | "error"; text: string }> = {
   failed: { tone: "error", text: "Connecting Google Ads didn't go through. Please try again." },
 }
 
+// A wasted search counts as new for a day after it's first spotted.
+const NEW_FOR_MS = 24 * 60 * 60 * 1000
+
 // Accounts are looked up once and kept for a day; "Refresh account list" looks again.
 const ACCOUNTS_MAX_AGE = 24 * 60 * 60 * 1000
 
@@ -70,6 +74,7 @@ type Loaded =
       report: AdsReport
       // Search terms load separately, so a problem with them doesn't hide the rest.
       searchTerms: { terms: SearchTerm[] } | { error: string }
+      wasted: WastedSummary
       issues: Issue[]
     }
 
@@ -102,8 +107,18 @@ async function load(user: Session, days: number): Promise<Loaded> {
         }),
       ),
     ])
+    const { totals } = report
+    const costPerConversion = totals.conversions ? totals.cost / totals.conversions : 0
+    const wasted = findWastedSearches("terms" in searchTerms ? searchTerms.terms : [], costPerConversion)
+    const seen = await firstSeen(user.sub, account.customerId, wasted.wasted.map(searchKey))
+    for (const w of wasted.wasted) {
+      w.isNew = Date.now() - Date.parse(seen.get(searchKey(w)) ?? "") < NEW_FOR_MS
+    }
+
     const issues = await getHealthIssues(connection, account, report, days)
-    return { kind: "report", connection, report, searchTerms, issues }
+    const wastedIssue = wastedSearchIssue(wasted, account.currency, costPerConversion, days)
+    if (wastedIssue) issues.splice(wastedIssue.severity === "high" ? 0 : issues.length, 0, wastedIssue)
+    return { kind: "report", connection, report, searchTerms, wasted, issues }
   } catch (error) {
     if (error instanceof AdsApiError) return { kind: "error", message: error.message, code: error.code }
     console.error("Google Ads request failed:", error)
@@ -182,6 +197,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
           <Report
             report={loaded.report}
             searchTerms={loaded.searchTerms}
+            wasted={loaded.wasted}
             health={<HealthCheck issues={loaded.issues} canAsk={assistantEnabled} />}
             assistant={assistant}
             connection={loaded.connection}
@@ -226,6 +242,7 @@ function AccountActions() {
 function Report({
   report,
   searchTerms,
+  wasted,
   health,
   assistant,
   connection,
@@ -234,6 +251,7 @@ function Report({
 }: {
   report: AdsReport
   searchTerms: { terms: SearchTerm[] } | { error: string }
+  wasted: WastedSummary
   health: React.ReactNode
   assistant: React.ReactNode
   connection: AdsConnection
@@ -242,10 +260,6 @@ function Report({
 }) {
   const { account, totals } = report
   const money = (n: number, cents = false) => formatMoney(n, account.currency, cents)
-  const wasted = findWastedSearches(
-    "terms" in searchTerms ? searchTerms.terms : [],
-    totals.conversions ? totals.cost / totals.conversions : 0,
-  )
   const kpis = [
     { label: "Spend", value: money(totals.cost), note: `${formatNumber(totals.impressions)} impressions` },
     {

@@ -17,6 +17,7 @@ type Props = {
 export default function WastedSearches({ wasted, total, spendLimit, currency, error }: Props) {
   const money = (n: number, cents = false) => formatMoney(n, currency, cents)
   const shown = wasted.slice(0, 50)
+  const fresh = wasted.filter((w) => w.isNew).length
 
   return (
     <section id="wasted" className="scroll-mt-20 rounded-2xl border bg-card shadow-xs">
@@ -31,7 +32,7 @@ export default function WastedSearches({ wasted, total, spendLimit, currency, er
               {error
                 ? "Search terms couldn't be loaded."
                 : wasted.length
-                  ? `${formatNumber(wasted.length)} searches cost ${money(total)} with no leads.`
+                  ? `${formatNumber(wasted.length)} searches cost ${money(total)} with no leads${fresh ? `, ${formatNumber(fresh)} new since yesterday` : ""}.`
                   : "No wasted searches found in this period."}
             </p>
           </div>
@@ -59,7 +60,14 @@ export default function WastedSearches({ wasted, total, spendLimit, currency, er
               {shown.map((w) => (
                 <tr key={`${w.term}-${w.campaign}-${w.adGroup}`}>
                   <td className="px-5 py-3 sm:px-6">
-                    <p className="font-medium">{w.term}</p>
+                    <p className="font-medium">
+                      {w.term}
+                      {w.isNew && (
+                        <span className="ml-2 rounded-full bg-destructive/10 px-2 py-0.5 align-middle text-xs font-medium text-destructive">
+                          New
+                        </span>
+                      )}
+                    </p>
                     <p className="text-xs text-muted-foreground">{w.campaign}</p>
                   </td>
                   <td className="px-3 py-3 text-muted-foreground">{w.reason}</td>

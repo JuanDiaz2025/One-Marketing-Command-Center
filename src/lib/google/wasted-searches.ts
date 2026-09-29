@@ -22,7 +22,14 @@ export type WastedSearch = SearchTerm & {
   reason: string
   // Ready to paste into Google Ads' negative keyword box: "phrase" or [exact].
   negative: string
+  // First spotted in the last day.
+  isNew?: boolean
 }
+
+export type WastedSummary = ReturnType<typeof findWastedSearches>
+
+// Identifies a search across visits: the same words in the same ad group.
+export const searchKey = (t: SearchTerm) => `${t.campaign}\u0000${t.adGroup}\u0000${t.term.toLowerCase()}`
 
 // A term with no conversions is flagged when it matches a junk word, or when it has already
 // cost as much as a lead usually does (or $25, whichever is higher) without producing one.

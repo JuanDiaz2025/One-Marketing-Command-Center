@@ -3,6 +3,7 @@
 // failing (e.g. a field Google changed) doesn't hide the others.
 import { dateRange, runQuery, type AdsReport } from "@/lib/google/ads"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
+import type { WastedSummary } from "@/lib/google/wasted-searches"
 
 export type Issue = {
   id: string
@@ -22,6 +23,27 @@ const list = (names: string[], max = 3) =>
   names.length <= max
     ? names.map((n) => `"${n}"`).join(", ")
     : `${names.slice(0, max).map((n) => `"${n}"`).join(", ")} and ${names.length - max} more`
+
+// Wasted searches as an alert, so they show with the other problems instead of only in their list.
+export function wastedSearchIssue(
+  { wasted, total }: WastedSummary,
+  currency: string,
+  costPerConversion: number,
+  days: number,
+): Issue | null {
+  if (!wasted.length) return null
+  const money = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency }).format(n)
+  const fresh = wasted.filter((w) => w.isNew).length
+  return {
+    id: "wasted-searches",
+    // A lead's worth of money (or $50) thrown away is worth acting on today.
+    severity: total >= Math.max(50, costPerConversion) ? "high" : "medium",
+    title: `${wasted.length} search${wasted.length === 1 ? "" : "es"} wasted ${money(total)} with no leads${fresh ? ` (${fresh} new)` : ""}`,
+    detail: `Top offenders: ${list(wasted.map((w) => `${w.term} (${money(w.cost)})`))}.`,
+    fix: 'Scroll to "Searches to remove", click Copy negative keywords, then in Google Ads open Keywords → Negative keywords → +, paste, and save.',
+    question: `In the last ${days} days these searches cost money but brought no leads: ${list(wasted.map((w) => `${w.term} (${money(w.cost)}, ${w.reason.toLowerCase()})`), 15)}. Which should we block, as phrase or exact match negatives, and are any worth keeping?`,
+  }
+}
 
 type Row = Record<string, Record<string, unknown> | undefined>
 
