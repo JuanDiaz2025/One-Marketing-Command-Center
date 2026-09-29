@@ -1,9 +1,8 @@
 import type { Metadata } from "next"
-import Link from "next/link"
 import { CircleAlert, CircleCheck, ExternalLink, RefreshCw } from "lucide-react"
 
 import AppHeader from "@/components/app-header"
-import Assistant from "@/components/dashboard/assistant"
+import AssistantLauncher from "@/components/dashboard/assistant-launcher"
 import { AdsError, ConnectAds, DisconnectButton, SetupNeeded } from "@/components/dashboard/ads-panels"
 import {
   formatDateRange,
@@ -11,6 +10,7 @@ import {
   formatNumber,
   formatPercent,
 } from "@/components/dashboard/format"
+import PeriodPicker from "@/components/dashboard/period-picker"
 import TrendChart from "@/components/dashboard/trend-chart"
 import WastedSearches from "@/components/dashboard/wasted-searches"
 import HealthCheck from "@/components/dashboard/health-check"
@@ -30,18 +30,13 @@ import {
 } from "@/lib/google/ads"
 import { getConnection, updateConnection, type AdsConnection } from "@/lib/google/connections"
 import { getHealthIssues, wastedSearchIssue, type Issue } from "@/lib/google/health"
+import { describePeriod, periodQuery, resolvePeriod, type Period } from "@/lib/google/period"
 import { firstSeen } from "@/lib/google/seen-searches"
 import { findWastedSearches, searchKey, type WastedSummary } from "@/lib/google/wasted-searches"
 import { listLeads } from "@/lib/leads/store"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "Google Ads · One Marketing Command Center" }
-
-const ranges = [
-  { days: 7, label: "Last 7 days" },
-  { days: 30, label: "Last 30 days" },
-  { days: 90, label: "Last 90 days" },
-]
 
 const notices: Record<string, { tone: "ok" | "error"; text: string }> = {
   connected: { tone: "ok", text: "Google Ads is connected." },
@@ -78,7 +73,7 @@ type Loaded =
       issues: Issue[]
     }
 
-async function load(user: Session, days: number): Promise<Loaded> {
+async function load(user: Session, period: Period): Promise<Loaded> {
   if (!adsConfig().developerToken) return { kind: "setup", missing: ["GOOGLE_ADS_DEVELOPER_TOKEN"] }
   const connection = await getConnection(user.sub)
   if (!connection) return { kind: "connect" }
@@ -99,8 +94,8 @@ async function load(user: Session, days: number): Promise<Loaded> {
       connection.accounts[0]
     if (!account) return { kind: "no-accounts", connection }
     const [report, searchTerms] = await Promise.all([
-      getReport(connection, account, days),
-      getSearchTerms(connection, account, days).then(
+      getReport(connection, account, period),
+      getSearchTerms(connection, account, period).then(
         (terms) => ({ terms }),
         (error) => ({
           error: error instanceof AdsApiError ? error.message : "Google Ads didn't return search terms.",
@@ -115,8 +110,8 @@ async function load(user: Session, days: number): Promise<Loaded> {
       w.isNew = Date.now() - Date.parse(seen.get(searchKey(w)) ?? "") < NEW_FOR_MS
     }
 
-    const issues = await getHealthIssues(connection, account, report, days)
-    const wastedIssue = wastedSearchIssue(wasted, account.currency, costPerConversion, days)
+    const issues = await getHealthIssues(connection, account, report, period)
+    const wastedIssue = wastedSearchIssue(wasted, account.currency, costPerConversion, period)
     if (wastedIssue) issues.splice(wastedIssue.severity === "high" ? 0 : issues.length, 0, wastedIssue)
     return { kind: "report", connection, report, searchTerms, wasted, issues }
   } catch (error) {
@@ -133,16 +128,35 @@ const humanize = (value: string) =>
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ")
 
+// Long ranges would squeeze hundreds of days into one chart, so group them by week or month.
+function groupForChart(daily: AdsReport["daily"]) {
+  const unit = daily.length > 400 ? "month" : daily.length > 120 ? "week" : "day"
+  if (unit === "day") return { unit, points: daily }
+  const groups = new Map<string, { date: string; cost: number; clicks: number }>()
+  for (const d of daily) {
+    let key = d.date.slice(0, 7) + "-01"
+    if (unit === "week") {
+      const day = new Date(`${d.date}T00:00:00Z`)
+      day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7)) // back to Monday
+      key = day.toISOString().slice(0, 10)
+    }
+    const g = groups.get(key) ?? { date: key, cost: 0, clicks: 0 }
+    g.cost += d.cost
+    g.clicks += d.clicks
+    groups.set(key, g)
+  }
+  return { unit, points: [...groups.values()] }
+}
+
 const statusLabel: Record<string, string> = { ENABLED: "Active", PAUSED: "Paused" }
 
 export default async function Dashboard({ searchParams }: PageProps<"/dashboard">) {
   const user = await requireSession("/dashboard")
   const q = await searchParams
-  const days = ranges.find((r) => String(r.days) === q.days)?.days ?? 30
-  const [loaded, leads] = await Promise.all([load(user, days), listLeads()])
+  const period = resolvePeriod(q)
+  const [loaded, leads] = await Promise.all([load(user, period), listLeads()])
 
   const assistantEnabled = Boolean(process.env.ANTHROPIC_API_KEY?.trim())
-  const assistant = <Assistant enabled={assistantEnabled} />
   const noticeKey =
     q.connected === "1" ? "connected" : typeof q.ads_error === "string" ? q.ads_error : null
   const notice = noticeKey ? (notices[noticeKey] ?? notices.failed) : null
@@ -150,7 +164,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   return (
     <div className="flex flex-1 flex-col">
       <AppHeader current="/dashboard" user={user} />
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 lg:py-10">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 pt-8 pb-28 sm:px-6 lg:pt-10">
         <div>
           <h1 className="flex items-center gap-3 text-3xl font-bold tracking-tight">
             <GoogleAdsMark className="size-9" />
@@ -198,10 +212,9 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             report={loaded.report}
             searchTerms={loaded.searchTerms}
             wasted={loaded.wasted}
-            health={<HealthCheck issues={loaded.issues} canAsk={assistantEnabled} />}
-            assistant={assistant}
+            health={<HealthCheck issues={loaded.issues} />}
             connection={loaded.connection}
-            days={days}
+            period={period}
             leadCount={
               leads.filter((l) => {
                 const day = l.createdAt.slice(0, 10)
@@ -210,8 +223,15 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             }
           />
         )}
-        {loaded.kind !== "report" && assistant}
       </main>
+      <AssistantLauncher
+        enabled={assistantEnabled}
+        context={
+          loaded.kind === "report"
+            ? `The dashboard is showing ${loaded.report.start} to ${loaded.report.end} (${describePeriod(period)}).`
+            : undefined
+        }
+      />
     </div>
   )
 }
@@ -244,22 +264,21 @@ function Report({
   searchTerms,
   wasted,
   health,
-  assistant,
   connection,
-  days,
+  period,
   leadCount,
 }: {
   report: AdsReport
   searchTerms: { terms: SearchTerm[] } | { error: string }
   wasted: WastedSummary
   health: React.ReactNode
-  assistant: React.ReactNode
   connection: AdsConnection
-  days: number
+  period: Period
   leadCount: number
 }) {
   const { account, totals } = report
   const money = (n: number, cents = false) => formatMoney(n, account.currency, cents)
+  const chart = groupForChart(report.daily)
   const kpis = [
     { label: "Spend", value: money(totals.cost), note: `${formatNumber(totals.impressions)} impressions` },
     {
@@ -295,29 +314,13 @@ function Report({
                 </option>
               ))}
             </select>
-            <input type="hidden" name="days" value={days} />
+            <input type="hidden" name="period" value={periodQuery(period)} />
             <Button type="submit" variant="outline" size="lg">
               Show
             </Button>
           </form>
         )}
-        <nav aria-label="Date range" className="flex flex-wrap gap-1.5 text-sm">
-          {ranges.map((r) => (
-            <Link
-              key={r.days}
-              href={`/dashboard?days=${r.days}`}
-              aria-current={r.days === days ? "page" : undefined}
-              className={cn(
-                "rounded-full border px-3 py-1",
-                r.days === days
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-card text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {r.label}
-            </Link>
-          ))}
-        </nav>
+        <PeriodPicker period={period} />
         {account.test && (
           <p className="rounded-xl bg-muted p-3 text-sm">
             This is a Google Ads test account, so these numbers aren&apos;t real ad spend.
@@ -337,8 +340,6 @@ function Report({
 
       {health}
 
-      {assistant}
-
       <WastedSearches
         {...wasted}
         currency={account.currency}
@@ -347,14 +348,14 @@ function Report({
 
       <section className="grid gap-6 rounded-2xl border bg-card p-5 shadow-xs sm:p-6 lg:grid-cols-2">
         <TrendChart
-          label={`Spend per day (${account.currency})`}
+          label={`Spend per ${chart.unit} (${account.currency})`}
           color="var(--primary)"
-          data={report.daily.map((d) => ({ date: d.date, value: Math.round(d.cost * 100) / 100 }))}
+          data={chart.points.map((d) => ({ date: d.date, value: Math.round(d.cost * 100) / 100 }))}
         />
         <TrendChart
-          label="Clicks per day"
+          label={`Clicks per ${chart.unit}`}
           color="var(--chart-2, #0ea5e9)"
-          data={report.daily.map((d) => ({ date: d.date, value: d.clicks }))}
+          data={chart.points.map((d) => ({ date: d.date, value: d.clicks }))}
         />
       </section>
 

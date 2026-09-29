@@ -5,7 +5,7 @@ import type { Issue } from "@/lib/google/health"
 import { cn } from "@/lib/utils"
 
 // Problems in the ad account worth fixing, most serious first.
-export default function HealthCheck({ issues, canAsk }: { issues: Issue[]; canAsk: boolean }) {
+export default function HealthCheck({ issues }: { issues: Issue[] }) {
   if (!issues.length) {
     return (
       <section id="health" className="flex items-center gap-3 rounded-2xl border border-emerald-600/20 bg-emerald-500/5 p-5 sm:px-6">
@@ -55,11 +55,9 @@ export default function HealthCheck({ issues, canAsk }: { issues: Issue[]; canAs
                 </p>
               </div>
             </div>
-            {canAsk && (
-              <div className="pl-6">
-                <AskButton question={issue.question} />
-              </div>
-            )}
+            <div className="pl-6">
+              <AskButton question={issue.question} />
+            </div>
           </li>
         ))}
       </ul>

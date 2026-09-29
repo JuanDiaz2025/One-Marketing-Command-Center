@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 
 export const ASK_EVENT = "assistant:ask"
 
-// Sends a question to the assistant on the same page and scrolls to it.
+// Opens the assistant panel with this question.
 export default function AskButton({ question }: { question: string }) {
   return (
     <Button
@@ -15,7 +15,6 @@ export default function AskButton({ question }: { question: string }) {
       size="sm"
       onClick={() => {
         window.dispatchEvent(new CustomEvent(ASK_EVENT, { detail: question }))
-        document.getElementById("assistant")?.scrollIntoView({ behavior: "smooth", block: "start" })
       }}
     >
       <MessageSquareText data-icon="inline-start" />

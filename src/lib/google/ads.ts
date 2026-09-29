@@ -3,6 +3,7 @@
 import { adsConfig } from "@/lib/auth/config"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
 import { OAuthError, refreshAccessToken } from "@/lib/google/oauth"
+import type { Period } from "@/lib/google/period"
 
 export class AdsApiError extends Error {
   constructor(
@@ -236,15 +237,6 @@ export function addMetrics(a: Metrics, b: Metrics): Metrics {
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10)
 
-// The last `days` full days, ending yesterday (today's numbers are still coming in).
-export function dateRange(days: number, now = new Date()) {
-  const end = new Date(now)
-  end.setUTCDate(end.getUTCDate() - 1)
-  const start = new Date(end)
-  start.setUTCDate(start.getUTCDate() - (days - 1))
-  return { start: isoDay(start), end: isoDay(end) }
-}
-
 function everyDay(start: string, end: string) {
   const days: string[] = []
   for (let d = new Date(`${start}T00:00:00Z`); isoDay(d) <= end; d.setUTCDate(d.getUTCDate() + 1)) {
@@ -259,10 +251,10 @@ const METRIC_FIELDS =
 export async function getReport(
   connection: AdsConnection,
   account: AdsAccount,
-  days: number,
+  period: Period,
 ): Promise<AdsReport> {
-  const { start, end } = dateRange(days)
-  const during = `segments.date BETWEEN '${start}' AND '${end}'`
+  const { end } = period
+  const during = `segments.date BETWEEN '${period.start}' AND '${end}'`
   const { customerId, loginCustomerId } = account
 
   const [campaignRows, dailyRows] = await Promise.all([
@@ -284,6 +276,11 @@ export async function getReport(
   ])
 
   const byDate = new Map(dailyRows.map((r) => [r.segments.date, toMetrics(r.metrics)]))
+  // "All time" starts on the first day the account had any activity.
+  const start =
+    period.preset === "all"
+      ? (dailyRows.map((r) => r.segments.date).sort()[0] ?? end)
+      : period.start
   const daily = everyDay(start, end).map((date) => ({
     date,
     ...(byDate.get(date) ?? emptyMetrics()),
@@ -317,9 +314,8 @@ export type SearchTerm = Metrics & {
 export async function getSearchTerms(
   connection: AdsConnection,
   account: AdsAccount,
-  days: number,
+  { start, end }: Period,
 ): Promise<SearchTerm[]> {
-  const { start, end } = dateRange(days)
   const rows = await search<{
     searchTermView: { searchTerm: string; status?: string }
     campaign: { name: string }

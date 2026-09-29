@@ -3,6 +3,7 @@ import Link from "next/link"
 import { Download, Plus, QrCode } from "lucide-react"
 
 import AppHeader from "@/components/app-header"
+import AssistantLauncher from "@/components/dashboard/assistant-launcher"
 import LeadList, { countSince } from "@/components/leads/lead-list"
 import StatusBadge from "@/components/leads/status-badge"
 import ToggleActiveButton from "@/components/leads/toggle-active-button"
@@ -26,7 +27,7 @@ export default async function LeadsPage() {
   return (
     <div className="flex flex-1 flex-col">
       <AppHeader current="/leads" user={user} />
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-8 sm:px-6 lg:py-10">
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 pt-8 pb-28 sm:px-6 lg:pt-10">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="text-3xl font-bold tracking-tight">Leads</h1>
@@ -121,6 +122,7 @@ export default async function LeadsPage() {
           )}
         </section>
       </main>
+      <AssistantLauncher enabled={Boolean(process.env.ANTHROPIC_API_KEY?.trim())} />
     </div>
   )
 }

@@ -1,8 +1,9 @@
 // The ad health check: problems in the Google Ads account worth fixing, found with read-only
 // queries plus the numbers already loaded for the dashboard. Each check runs on its own, so one
 // failing (e.g. a field Google changed) doesn't hide the others.
-import { dateRange, runQuery, type AdsReport } from "@/lib/google/ads"
+import { runQuery, type AdsReport } from "@/lib/google/ads"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
+import { describePeriod, type Period } from "@/lib/google/period"
 import type { WastedSummary } from "@/lib/google/wasted-searches"
 
 export type Issue = {
@@ -19,6 +20,8 @@ export type Issue = {
 const humanize = (value: string) =>
   value.charAt(0) + value.slice(1).toLowerCase().replace(/_/g, " ")
 
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
 const list = (names: string[], max = 3) =>
   names.length <= max
     ? names.map((n) => `"${n}"`).join(", ")
@@ -29,7 +32,7 @@ export function wastedSearchIssue(
   { wasted, total }: WastedSummary,
   currency: string,
   costPerConversion: number,
-  days: number,
+  period: Period,
 ): Issue | null {
   if (!wasted.length) return null
   const money = (n: number) => new Intl.NumberFormat("en-US", { style: "currency", currency }).format(n)
@@ -41,7 +44,7 @@ export function wastedSearchIssue(
     title: `${wasted.length} search${wasted.length === 1 ? "" : "es"} wasted ${money(total)} with no leads${fresh ? ` (${fresh} new)` : ""}`,
     detail: `Top offenders: ${list(wasted.map((w) => `${w.term} (${money(w.cost)})`))}.`,
     fix: 'Scroll to "Searches to remove", click Copy negative keywords, then in Google Ads open Keywords → Negative keywords → +, paste, and save.',
-    question: `In the last ${days} days these searches cost money but brought no leads: ${list(wasted.map((w) => `${w.term} (${money(w.cost)}, ${w.reason.toLowerCase()})`), 15)}. Which should we block, as phrase or exact match negatives, and are any worth keeping?`,
+    question: `${cap(describePeriod(period))} these searches cost money but brought no leads: ${list(wasted.map((w) => `${w.term} (${money(w.cost)}, ${w.reason.toLowerCase()})`), 15)}. Which should we block, as phrase or exact match negatives, and are any worth keeping?`,
   }
 }
 
@@ -60,9 +63,10 @@ export async function getHealthIssues(
   connection: AdsConnection,
   account: AdsAccount,
   report: AdsReport,
-  days: number,
+  period: Period,
 ): Promise<Issue[]> {
-  const { start, end } = dateRange(days)
+  const { start, end } = period
+  const when = describePeriod(period)
   const money = (n: number) =>
     new Intl.NumberFormat("en-US", { style: "currency", currency: account.currency }).format(n)
   const issues: Issue[] = []
@@ -160,7 +164,7 @@ export async function getHealthIssues(
         title: `${silent.length} active campaign${silent.length === 1 ? " got" : "s got"} no impressions`,
         detail: `${list(silent)} ${silent.length === 1 ? "is turned on but wasn't" : "are turned on but weren't"} shown to anyone in this period.`,
         fix: "Check that each has enabled ads and keywords, a budget, bids high enough to compete, and a location that isn't too small.",
-        question: `These campaigns are enabled but got zero impressions in the last ${days} days: ${list(silent, 10)}. Why might that be and what should we check?`,
+        question: `These campaigns are enabled but got zero impressions ${when}: ${list(silent, 10)}. Why might that be and what should we check?`,
       })
     }
   }
@@ -174,7 +178,7 @@ export async function getHealthIssues(
       title: "Clicks but no conversions: tracking may be broken",
       detail: `${totals.clicks} clicks and ${money(totals.cost)} spent with zero conversions recorded. Either conversion tracking isn't working or the ads send people to a page that doesn't convert.`,
       fix: "In Google Ads open Goals → Conversions → Summary and check each action's Status. Submit your own website form once and see if it's counted within a few hours.",
-      question: `We had ${totals.clicks} clicks and ${money(totals.cost)} in spend in the last ${days} days but zero conversions. Is conversion tracking broken? Walk me through checking it step by step.`,
+      question: `We had ${totals.clicks} clicks and ${money(totals.cost)} in spend ${when} but zero conversions. Is conversion tracking broken? Walk me through checking it step by step.`,
     })
   } else {
     const cpa = totals.conversions ? totals.cost / totals.conversions : 0
@@ -188,7 +192,7 @@ export async function getHealthIssues(
         title: `${wasting.length} campaign${wasting.length === 1 ? "" : "s"} spent ${money(spent)} with no conversions`,
         detail: `${list(wasting.map((c) => c.name))}${cpa ? `, while a conversion usually costs ${money(cpa)}` : ""}.`,
         fix: "Look at its search terms and keywords, pause what's irrelevant, and check the landing page works. If nothing improves in a week or two, pause the campaign.",
-        question: `${list(wasting.map((c) => c.name), 10)} spent ${money(spent)} in the last ${days} days with no conversions. What's going wrong and should we pause or fix ${wasting.length === 1 ? "it" : "them"}?`,
+        question: `${list(wasting.map((c) => c.name), 10)} spent ${money(spent)} ${when} with no conversions. What's going wrong and should we pause or fix ${wasting.length === 1 ? "it" : "them"}?`,
       })
     }
   }

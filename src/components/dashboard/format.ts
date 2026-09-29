@@ -21,5 +21,8 @@ export function formatDate(iso: string) {
 
 export function formatDateRange(start: string, end: string) {
   const year = end.slice(0, 4)
+  if (start === end) return `${formatDate(end)}, ${year}`
+  // Ranges that span years show both, e.g. "Mar 3, 2024 – Sep 28, 2026".
+  if (start.slice(0, 4) !== year) return `${formatDate(start)}, ${start.slice(0, 4)} – ${formatDate(end)}, ${year}`
   return `${formatDate(start)} – ${formatDate(end)}, ${year}`
 }

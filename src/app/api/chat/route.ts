@@ -29,6 +29,8 @@ const requestSchema = z.object({
     .min(1)
     .max(40)
     .refine((m) => m.at(-1)?.role === "user", "The last message must be a question."),
+  // What the page is showing, e.g. the dashboard's dates.
+  context: z.string().max(300).optional(),
 })
 
 const fail = (error: string, status: number) => Response.json({ error }, { status })
@@ -57,6 +59,7 @@ export async function POST(request: Request) {
     ? `Today is ${today}. The selected Google Ads account is "${account.name}" (${formatCustomerId(account.customerId)}), currency ${account.currency}${account.test ? ", a test account with no real spend" : ""}. The person asking is ${session.name} (${session.email}).`
     : `Today is ${today}. Google Ads isn't connected yet, so only QR code leads are available. The person asking is ${session.name} (${session.email}).`
 
+  const pageContext = parsed.data.context ? ` ${parsed.data.context} Use that period unless the question names another.` : ""
   const messages: Anthropic.Beta.BetaMessageParam[] = parsed.data.messages.map((m) => ({
     role: m.role,
     content: m.content,
@@ -73,7 +76,7 @@ export async function POST(request: Request) {
         output_config: { effort: "medium" },
         system: [
           { type: "text", text: INSTRUCTIONS, cache_control: { type: "ephemeral" } },
-          { type: "text", text: situation },
+          { type: "text", text: situation + pageContext },
         ],
         tools,
         messages,

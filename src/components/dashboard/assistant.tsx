@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Check, Copy, Download, LoaderCircle, MessageSquareText, SendHorizontal, Settings } from "lucide-react"
+import { Check, Copy, Download, LoaderCircle, MessageSquareText, SendHorizontal, Settings, X } from "lucide-react"
 
 import { ASK_EVENT } from "@/components/dashboard/ask-button"
 import { Button } from "@/components/ui/button"
@@ -87,7 +87,14 @@ function Reply({ content }: { content: string }) {
   )
 }
 
-export default function Assistant({ enabled }: { enabled: boolean }) {
+type AssistantProps = {
+  enabled: boolean
+  // What the page is showing (e.g. the dashboard's dates), passed to the assistant with each question.
+  context?: string
+  onClose?: () => void
+}
+
+export default function Assistant({ enabled, context, onClose }: AssistantProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [pending, setPending] = useState(false)
@@ -96,7 +103,7 @@ export default function Assistant({ enabled }: { enabled: boolean }) {
 
   async function ask(question: string) {
     const text = question.trim()
-    if (!text || pending) return
+    if (!text || pending || !enabled) return
     const next: Message[] = [...messages, { role: "user", content: text }]
     setMessages(next)
     setInput("")
@@ -108,7 +115,7 @@ export default function Assistant({ enabled }: { enabled: boolean }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // The server takes the last 40 messages at most.
-        body: JSON.stringify({ messages: next.slice(-40) }),
+        body: JSON.stringify({ messages: next.slice(-40), context }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok || typeof body.reply !== "string") {
@@ -140,32 +147,44 @@ export default function Assistant({ enabled }: { enabled: boolean }) {
   }, [])
 
   return (
-    <section id="assistant" className="scroll-mt-20 rounded-2xl border bg-card shadow-xs">
-      <div className="flex items-start gap-3 px-5 pt-5 sm:px-6">
+    <section id="assistant" aria-label="Ask about your ads" className="flex max-h-full min-h-0 flex-col rounded-2xl border bg-card shadow-2xl">
+      <div className="flex items-start gap-3 px-5 pt-5">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
           <MessageSquareText className="size-5" />
         </span>
         <div>
-          <h2 className="text-lg font-semibold">Ask about your marketing</h2>
+          <h2 className="text-lg font-semibold">Ask about your ads</h2>
           <p className="text-sm text-muted-foreground">
-            Ask a question or ask for a report. It reads your Google Ads and QR code leads.
+            Ask what&apos;s wrong, ask a question, or ask for a report. It reads your Google Ads and
+            QR code leads.
           </p>
         </div>
+        {onClose && (
+          <Button type="button" variant="ghost" size="icon" onClick={onClose} aria-label="Close" className="ml-auto shrink-0">
+            <X />
+          </Button>
+        )}
       </div>
 
       {!enabled ? (
-        <p className="m-5 flex gap-2 rounded-xl bg-muted p-4 text-sm sm:mx-6">
+        <div className="m-5 flex gap-2 rounded-xl bg-muted p-4 text-sm">
           <Settings className="mt-0.5 size-4 shrink-0" />
-          <span>
-            To turn this on, add <code className="font-mono">ANTHROPIC_API_KEY</code> to{" "}
-            <code className="font-mono">.env.local</code> and restart the app. Get a key at
-            console.anthropic.com → API keys.
-          </span>
-        </p>
+          <div className="flex flex-col gap-2">
+            <p className="font-medium">The chat is off until it has an Anthropic key.</p>
+            <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">
+              <li>At console.anthropic.com, open Settings → Workspaces and create a workspace.</li>
+              <li>Open API keys → Create key, and pick that workspace.</li>
+              <li>
+                Paste the key after <code className="font-mono">ANTHROPIC_API_KEY=</code> in{" "}
+                <code className="font-mono">.env.local</code>, then restart the app.
+              </li>
+            </ol>
+          </div>
+        </div>
       ) : (
-        <div className="flex flex-col gap-4 p-5 sm:px-6">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 p-5">
           {messages.length > 0 && (
-            <ol className="flex max-h-[36rem] flex-col gap-4 overflow-y-auto">
+            <ol className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
               {messages.map((m, i) => (
                 <li
                   key={i}
