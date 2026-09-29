@@ -34,7 +34,6 @@ import { getHealthIssues, wastedSearchIssue, type Issue } from "@/lib/google/hea
 import { describePeriod, periodQuery, resolvePeriod, type Period } from "@/lib/google/period"
 import { firstSeen } from "@/lib/google/seen-searches"
 import { findWastedSearches, searchKey, type WastedSummary } from "@/lib/google/wasted-searches"
-import { listLeads } from "@/lib/leads/store"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "Google Ads · One Marketing Command Center" }
@@ -155,7 +154,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   const user = await requireSession("/dashboard")
   const q = await searchParams
   const period = resolvePeriod(q)
-  const [loaded, leads] = await Promise.all([load(user, period), listLeads()])
+  const loaded = await load(user, period)
 
   const assistantEnabled = assistantProvider() !== null
   const noticeKey =
@@ -216,12 +215,6 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             health={<HealthCheck issues={loaded.issues} />}
             connection={loaded.connection}
             period={period}
-            leadCount={
-              leads.filter((l) => {
-                const day = l.createdAt.slice(0, 10)
-                return day >= loaded.report.start && day <= loaded.report.end
-              }).length
-            }
           />
         )}
       </main>
@@ -267,7 +260,6 @@ function Report({
   health,
   connection,
   period,
-  leadCount,
 }: {
   report: AdsReport
   searchTerms: { terms: SearchTerm[] } | { error: string }
@@ -275,7 +267,6 @@ function Report({
   health: React.ReactNode
   connection: AdsConnection
   period: Period
-  leadCount: number
 }) {
   const { account, totals } = report
   const money = (n: number, cents = false) => formatMoney(n, account.currency, cents)
@@ -292,7 +283,6 @@ function Report({
       value: formatNumber(Math.round(totals.conversions * 10) / 10),
       note: totals.conversions ? `${money(totals.cost / totals.conversions, true)} each` : "none yet",
     },
-    { label: "QR code leads", value: formatNumber(leadCount), note: "from your signs and mailers" },
   ]
 
   return (
@@ -329,7 +319,7 @@ function Report({
         )}
       </div>
 
-      <section aria-label="Summary" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <section aria-label="Summary" className="grid gap-4 sm:grid-cols-3">
         {kpis.map((kpi) => (
           <div key={kpi.label} className="rounded-2xl border bg-card p-5 shadow-xs">
             <p className="text-sm text-muted-foreground">{kpi.label}</p>
