@@ -6,7 +6,7 @@ Your Google Ads results and your QR code leads in one place.
 - **Google Ads dashboard.** Connect your Google Ads account to see spend, clicks, conversions and cost per conversion, by day and by campaign, for the last 7, 30 or 90 days, all time, or exact dates picked on the calendar. It reads your real account through the Google Ads API. Nothing is changed in Google Ads.
 - **Needs attention.** Every time the dashboard opens it checks the account for problems: disapproved or limited ads, campaigns limited by budget or unable to run, active campaigns with no impressions, spend with no conversions (including conversion tracking that looks broken), search campaigns with a low click rate, and keywords with a poor Quality Score. Each problem says how to fix it, and **Ask how to fix** sends it to the chat box for step-by-step help. The checks are in `src/lib/google/health.ts`.
 - **Searches to remove.** Lists search terms that cost money without bringing in a lead (renters, job seekers, home buyers, DIY research, or anything that cost more than a lead usually does), with a **Copy negative keywords** button to paste into Google Ads. Searches first spotted in the last day are tagged **New**, and wasted searches also appear as an alert under **Needs attention**. The rules are in `src/lib/google/wasted-searches.ts`.
-- **Ask about your ads.** The button in the bottom corner of every page opens a chat: ask a question or ask for a report ("build a report for the last 7 days"), and it looks up your Google Ads data and QR code leads to answer, with tables you can copy or download. It needs an `ANTHROPIC_API_KEY` (see below), and it only reads data; it can't change anything in Google Ads.
+- **Ask about your ads.** The button in the bottom corner of every page opens a chat: ask a question or ask for a report ("build a report for the last 7 days"), and it looks up your Google Ads data and QR code leads to answer, with tables you can copy or download. It needs an OpenAI or Anthropic key (see below), and it only reads data; it can't change anything in Google Ads.
 - **QR code leads.** Make a QR code for each yard sign, postcard or flyer. People who scan it fill in a short form (name, phone or email, property address, a note), and the lead shows up under **Leads**, tagged with the sign it came from. You can export leads as a CSV file.
 
 ## Running it
@@ -59,12 +59,14 @@ Open **Google Auth Platform** (under APIs & Services) and click **Get started**.
 3. Copy the **Developer token** into `.env.local` as `GOOGLE_ADS_DEVELOPER_TOKEN`.
 4. A new token has **Test Account Access** only, which can't read real accounts. Click **Apply for Basic Access** in the API Center. Google usually replies within a few business days. Until then the dashboard explains that the token only has test access.
 
-### 5. Turn on the chat box (optional)
+### 5. Turn on the chat (optional)
 
-1. Go to https://console.anthropic.com, sign in, and add a payment method under **Billing**.
-2. Open **API keys → Create key**, and copy it into `.env.local` as `ANTHROPIC_API_KEY`.
+The chat can use OpenAI (GPT-5.5 by default) or Anthropic's Claude. Fill in one key:
 
-Each question costs a few cents; a long report can cost more. Questions and the data the assistant looks up (ad numbers, and lead names and contact details when you ask about leads) are sent to Anthropic to produce the answer.
+- **OpenAI:** at https://platform.openai.com add credit under **Settings → Billing**, then open **API keys → Create new secret key** and copy it into `.env.local` as `OPENAI_API_KEY`. Set a monthly cap under **Settings → Limits**.
+- **Claude:** at https://console.anthropic.com create a workspace under **Settings → Workspaces**, then **API keys → Create key** in that workspace, and copy it into `.env.local` as `ANTHROPIC_API_KEY`.
+
+With both filled in, OpenAI answers unless `ASSISTANT_PROVIDER=anthropic`. Each question costs a few cents; a long report can cost more. Questions and the data the assistant looks up (ad numbers, and lead names and contact details when you ask about leads) are sent to the provider you chose to produce the answer.
 
 ### 6. Choose who can sign in
 

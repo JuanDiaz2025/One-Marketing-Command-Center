@@ -1,12 +1,17 @@
 // The assistant's tools. Both only read data: Google Ads through GAQL SELECT queries (the search
 // endpoint can't change an account), and leads from this app's own store.
-import type Anthropic from "@anthropic-ai/sdk"
-
 import { AdsApiError, runQuery } from "@/lib/google/ads"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 
-export const tools: Anthropic.Beta.BetaTool[] = [
+// Written once and handed to whichever AI provider is set up (see claude.ts and openai.ts).
+export type ToolSpec = {
+  name: string
+  description: string
+  parameters: { type: "object"; properties: Record<string, unknown>; required: string[]; additionalProperties: false }
+}
+
+export const toolSpecs: ToolSpec[] = [
   {
     name: "google_ads_query",
     description:
@@ -16,7 +21,7 @@ export const tools: Anthropic.Beta.BetaTool[] = [
       "Money fields end in _micros: divide by 1,000,000 to get the account currency. " +
       "Always filter by date with segments.date BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' (or DURING LAST_7_DAYS / LAST_30_DAYS / THIS_MONTH / LAST_MONTH), " +
       "and add ORDER BY and a LIMIT (at most 200). JSON field names come back in camelCase, e.g. metrics.costMicros.",
-    input_schema: {
+    parameters: {
       type: "object",
       properties: {
         query: { type: "string", description: "A complete GAQL SELECT statement." },
@@ -24,7 +29,6 @@ export const tools: Anthropic.Beta.BetaTool[] = [
       required: ["query"],
       additionalProperties: false,
     },
-    strict: true,
   },
   {
     name: "list_leads",
@@ -32,7 +36,7 @@ export const tools: Anthropic.Beta.BetaTool[] = [
       "List the leads collected by this app's QR codes (yard signs, postcards, flyers) in the last N days, newest first. " +
       "Each lead has a date, name, phone, email, property address, notes and the QR code placement it came from. " +
       "These are separate from Google Ads conversions.",
-    input_schema: {
+    parameters: {
       type: "object",
       properties: {
         days: { type: "integer", description: "How many days back to look, from 1 to 365." },
@@ -40,7 +44,6 @@ export const tools: Anthropic.Beta.BetaTool[] = [
       required: ["days"],
       additionalProperties: false,
     },
-    strict: true,
   },
 ]
 

@@ -170,12 +170,12 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
         <div className="m-5 flex gap-2 rounded-xl bg-muted p-4 text-sm">
           <Settings className="mt-0.5 size-4 shrink-0" />
           <div className="flex flex-col gap-2">
-            <p className="font-medium">The chat is off until it has an Anthropic key.</p>
+            <p className="font-medium">The chat is off until it has an AI key.</p>
             <ol className="list-decimal space-y-1 pl-4 text-muted-foreground">
-              <li>At console.anthropic.com, open Settings → Workspaces and create a workspace.</li>
-              <li>Open API keys → Create key, and pick that workspace.</li>
+              <li>At platform.openai.com, add credit under Settings → Billing.</li>
+              <li>Open API keys → Create new secret key, and copy it.</li>
               <li>
-                Paste the key after <code className="font-mono">ANTHROPIC_API_KEY=</code> in{" "}
+                Paste it after <code className="font-mono">OPENAI_API_KEY=</code> in{" "}
                 <code className="font-mono">.env.local</code>, then restart the app.
               </li>
             </ol>

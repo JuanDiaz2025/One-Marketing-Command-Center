@@ -4,6 +4,7 @@ import { Download, Plus, QrCode } from "lucide-react"
 
 import AppHeader from "@/components/app-header"
 import AssistantLauncher from "@/components/dashboard/assistant-launcher"
+import { assistantProvider } from "@/lib/assistant/shared"
 import LeadList, { countSince } from "@/components/leads/lead-list"
 import StatusBadge from "@/components/leads/status-badge"
 import ToggleActiveButton from "@/components/leads/toggle-active-button"
@@ -122,7 +123,7 @@ export default async function LeadsPage() {
           )}
         </section>
       </main>
-      <AssistantLauncher enabled={Boolean(process.env.ANTHROPIC_API_KEY?.trim())} />
+      <AssistantLauncher enabled={assistantProvider() !== null} />
     </div>
   )
 }

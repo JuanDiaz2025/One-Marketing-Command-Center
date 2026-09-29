@@ -16,6 +16,7 @@ import WastedSearches from "@/components/dashboard/wasted-searches"
 import HealthCheck from "@/components/dashboard/health-check"
 import GoogleAdsMark from "@/components/google-ads-mark"
 import { Button } from "@/components/ui/button"
+import { assistantProvider } from "@/lib/assistant/shared"
 import { adsConfig } from "@/lib/auth/config"
 import { requireSession, type Session } from "@/lib/auth/session"
 import { refreshAccountsAction, selectAccountAction } from "@/lib/google/actions"
@@ -156,7 +157,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
   const period = resolvePeriod(q)
   const [loaded, leads] = await Promise.all([load(user, period), listLeads()])
 
-  const assistantEnabled = Boolean(process.env.ANTHROPIC_API_KEY?.trim())
+  const assistantEnabled = assistantProvider() !== null
   const noticeKey =
     q.connected === "1" ? "connected" : typeof q.ads_error === "string" ? q.ads_error : null
   const notice = noticeKey ? (notices[noticeKey] ?? notices.failed) : null
