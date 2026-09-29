@@ -17,7 +17,7 @@ type Current = (typeof links)[number]["href"]
 
 export default function AppHeader({ current, user }: { current: Current; user: Session }) {
   return (
-    <header className="sticky top-0 z-20 border-b border-border/70 bg-background/80 backdrop-blur-md print:hidden">
+    <header className="sticky top-0 z-20 border-b border-border/70 bg-background print:hidden">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-6">
           <BrandLogo href="/dashboard" compact />
