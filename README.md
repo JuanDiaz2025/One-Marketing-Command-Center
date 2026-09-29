@@ -5,6 +5,7 @@ Your Google Ads results and your QR code leads in one place.
 - **Sign in with Google.** Only the Google accounts you allow can get in.
 - **Google Ads dashboard.** Connect your Google Ads account to see spend, clicks, conversions and cost per conversion, by day and by campaign, for the last 7, 30 or 90 days, all time, or exact dates picked on the calendar. It reads your real account through the Google Ads API. Nothing is changed in Google Ads.
 - **Needs attention.** Every time the dashboard opens it checks the account for problems: disapproved or limited ads, campaigns limited by budget or unable to run, active campaigns with no impressions, spend with no conversions (including conversion tracking that looks broken), search campaigns with a low click rate, and keywords with a poor Quality Score. Each problem says how to fix it, and **Ask how to fix** sends it to the chat box for step-by-step help. The checks are in `src/lib/google/health.ts`.
+- **Locations.** Where each campaign is set to show (included and excluded places, and whether it reaches only people in the area), and which cities the clicks and spend came from, with places outside your target area marked. Needs attention flags campaigns with no location, the "Presence or interest" setting, spend from outside the area, and places that spend without bringing leads.
 - **Searches to remove.** Lists search terms that cost money without bringing in a lead (renters, job seekers, home buyers, DIY research, or anything that cost more than a lead usually does), with a **Copy negative keywords** button to paste into Google Ads. Searches first spotted in the last day are tagged **New**, and wasted searches also appear as an alert under **Needs attention**. The rules are in `src/lib/google/wasted-searches.ts`.
 - **Ask about your ads.** The button in the bottom corner of every page opens a chat: ask a question or ask for a report ("build a report for the last 7 days"), and it looks up your Google Ads data and QR code leads to answer, with tables you can copy or download. It needs an OpenAI or Anthropic key (see below), and it only reads data; it can't change anything in Google Ads.
 - **Website leads.** Your WordPress forms send each new lead to the app by webhook, and it appears on the **Leads** page marked **Website**, with the form's name. The Leads page shows the webhook address to paste into WordPress.
@@ -103,6 +104,12 @@ Restart the app after saving `.env.local`.
 - **Or open a tunnel from your computer** for testing: for example `cloudflared tunnel --url http://localhost:4000` prints a public address; set `SITE_URL` to it. Leads only arrive while your computer and the app are running.
 
 Every request must carry the secret key (`?key=…` in the address, or an `X-Webhook-Secret` header). A test request with GET to the same address answers `{"ok": true}` without adding a lead.
+
+## Daily Google Ads check
+
+`npm run daily-check -- <folder>` pulls the dashboard's numbers and problems (including locations) for the last 7, 30 and 90 days and all time, and writes them to that folder as JSON, plus `summary.md`: what's wrong in the last 30 days, most serious first, with how to fix each one. A scheduled Claude session runs it every morning, loads the results into the live Command Center page, and sends the summary.
+
+It needs `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_ADS_DEVELOPER_TOKEN` (and optionally `GOOGLE_ADS_CUSTOMER_ID`), from the environment or `.env.local`. The refresh token has to come from the same Google client as `GOOGLE_CLIENT_ID`: in https://developers.google.com/oauthplayground, click the gear, tick **Use your own OAuth credentials**, enter the client ID and secret, authorize `https://www.googleapis.com/auth/adwords`, and exchange the code for tokens. (Add `https://developers.google.com/oauthplayground` to the client's redirect URIs first.)
 
 ## Where data is kept
 

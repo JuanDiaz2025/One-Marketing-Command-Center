@@ -6,7 +6,8 @@
     "dev": "next dev --port 4000",
     "build": "next build",
     "start": "next start --port 4000",
-    "lint": "eslint"
+    "lint": "eslint",
+    "daily-check": "node scripts/run-ts.mjs scripts/daily-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.129.0",
@@ -33,6 +34,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
+    "jiti": "^2.7.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
