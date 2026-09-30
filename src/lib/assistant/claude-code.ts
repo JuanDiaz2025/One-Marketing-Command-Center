@@ -4,8 +4,9 @@
 // tools turned off and the chat's own tools (Google Ads queries, leads) served over MCP by
 // scripts/assistant-mcp.ts.
 import { spawn } from "node:child_process"
+import { existsSync } from "node:fs"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
-import { tmpdir } from "node:os"
+import { homedir, tmpdir } from "node:os"
 import path from "node:path"
 
 import { AssistantError, INSTRUCTIONS, type AskInput } from "@/lib/assistant/shared"
@@ -13,18 +14,42 @@ import { AssistantError, INSTRUCTIONS, type AskInput } from "@/lib/assistant/sha
 const TIMEOUT_MS = 4 * 60_000
 const TOOLS = ["mcp__omcc__google_ads_query", "mcp__omcc__list_leads"]
 
-const NOT_INSTALLED =
-  "Claude Code isn't installed on this computer. Install it from https://claude.com/claude-code (or run: npm install -g @anthropic-ai/claude-code), then open a Command Prompt, type claude, sign in with your Claude account, and ask again."
-const NOT_SIGNED_IN =
-  "Claude Code isn't signed in. Open a Command Prompt, type claude, and sign in with your Claude account (Pro, Max, Team or Enterprise). Then ask again."
+const NOT_INSTALLED = "The chat needs Claude on this computer. Click Sign in with Claude below: it sets it up and signs you in with your Claude account."
+const NOT_SIGNED_IN = "Claude isn't signed in on this computer yet. Click Sign in with Claude below and sign in with your Claude account."
+export const SETUP = "claude_setup"
+
+// Where Claude Code is: CLAUDE_CODE_PATH, the usual install folders (a freshly installed copy may
+// not be on the app's PATH yet), or plain "claude".
+export function claudeCommand() {
+  const configured = process.env.CLAUDE_CODE_PATH?.trim()
+  if (configured) return configured
+  const home = homedir()
+  const candidates =
+    process.platform === "win32"
+      ? [
+          path.join(home, ".local", "bin", "claude.exe"),
+          process.env.APPDATA && path.join(process.env.APPDATA, "npm", "claude.cmd"),
+        ]
+      : [path.join(home, ".local", "bin", "claude"), path.join(home, ".claude", "local", "claude"), "/usr/local/bin/claude", "/opt/homebrew/bin/claude"]
+  return candidates.find((c): c is string => Boolean(c) && existsSync(c!)) ?? "claude"
+}
+
+// Claude Code signs in with the Claude account, never an API key the app happens to have.
+function claudeEnv() {
+  const env = { ...process.env }
+  delete env.ANTHROPIC_API_KEY
+  delete env.ANTHROPIC_AUTH_TOKEN
+  return env
+}
 
 // On Windows, `claude` is usually a .cmd file, which only runs through the shell; quote anything
 // with spaces for it.
 const quote = (arg: string) => (arg === "" ? '""' : /[\s"&|<>^]/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg)
 
 function run(args: string[], stdin: string, cwd: string, env: NodeJS.ProcessEnv) {
-  const command = process.env.CLAUDE_CODE_PATH?.trim() || "claude"
-  const windows = process.platform === "win32"
+  const command = claudeCommand()
+  // A .exe runs directly; "claude" or a .cmd needs the Windows shell.
+  const windows = process.platform === "win32" && !/\.exe$/i.test(command)
   return new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
     const child = spawn(windows ? quote(command) : command, windows ? args.map(quote) : args, {
       cwd,
@@ -86,10 +111,7 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
       `Question: ${turns.at(-1)?.content ?? ""}`,
     ].join("")
 
-    // Claude Code must sign in with the Claude account, not an API key the app happens to have.
-    const env = { ...process.env }
-    delete env.ANTHROPIC_API_KEY
-    delete env.ANTHROPIC_AUTH_TOKEN
+    const env = claudeEnv()
 
     const args = [
       "-p",
@@ -112,7 +134,7 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
     try {
       result = await run(args, prompt, dir, env)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new AssistantError(NOT_INSTALLED, 503)
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new AssistantError(NOT_INSTALLED, 503, SETUP)
       throw error
     }
 
@@ -125,10 +147,10 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
     const text = parsed?.result?.trim() ?? ""
     const problem = `${text}\n${result.stderr}`
     if (/not recognized as an internal or external command|command not found/i.test(result.stderr)) {
-      throw new AssistantError(NOT_INSTALLED, 503)
+      throw new AssistantError(NOT_INSTALLED, 503, SETUP)
     }
     if (/\/login|not logged in|invalid api key|authentication|oauth token/i.test(problem) && (parsed?.is_error || !text)) {
-      throw new AssistantError(NOT_SIGNED_IN, 503)
+      throw new AssistantError(NOT_SIGNED_IN, 503, SETUP)
     }
     if (/usage limit|rate limit|limit reached/i.test(problem) && (parsed?.is_error || !text)) {
       throw new AssistantError("Your Claude plan's usage limit is reached for now. Try again later.", 429)
@@ -144,4 +166,40 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
+}
+
+// Whether Claude Code is installed and signed in, for the chat's "Sign in with Claude" button.
+export async function claudeStatus(): Promise<{ installed: boolean; loggedIn: boolean }> {
+  try {
+    const { stdout, stderr } = await run(["auth", "status", "--json"], "", tmpdir(), claudeEnv())
+    if (/not recognized as an internal or external command|command not found/i.test(stderr)) {
+      return { installed: false, loggedIn: false }
+    }
+    const status = JSON.parse(stdout.trim() || "{}") as { loggedIn?: boolean }
+    return { installed: true, loggedIn: status.loggedIn === true }
+  } catch (error) {
+    return { installed: (error as NodeJS.ErrnoException).code !== "ENOENT", loggedIn: false }
+  }
+}
+
+// Opens the sign-in: on Windows, setup-claude.bat in its own window (it installs Claude Code
+// first if needed); elsewhere, Claude Code's own sign-in, which opens the browser.
+export function startClaudeLogin() {
+  const root = process.cwd()
+  if (process.platform === "win32") {
+    const bat = path.join(root, "setup-claude.bat")
+    spawn("cmd.exe", ["/c", "start", '"Sign in to Claude"', `"${bat}"`], {
+      cwd: root,
+      env: claudeEnv(),
+      detached: true,
+      stdio: "ignore",
+      windowsVerbatimArguments: true,
+    })
+      .on("error", (error) => console.error("Couldn't open the Claude sign-in:", error.message))
+      .unref()
+    return
+  }
+  spawn(claudeCommand(), ["auth", "login", "--claudeai"], { env: claudeEnv(), detached: true, stdio: "ignore" })
+    .on("error", (error) => console.error("Couldn't open the Claude sign-in:", error.message))
+    .unref()
 }

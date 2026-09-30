@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Check, Copy, Download, LoaderCircle, MessageSquareText, SendHorizontal, Settings, X } from "lucide-react"
+import { Check, CircleCheck, Copy, Download, LoaderCircle, LogIn, MessageSquareText, SendHorizontal, Settings, X } from "lucide-react"
 
 import { ASK_EVENT } from "@/components/dashboard/ask-button"
 import { Button } from "@/components/ui/button"
@@ -94,11 +94,74 @@ type AssistantProps = {
   onClose?: () => void
 }
 
+// Shown when the chat runs on Claude Code and it isn't installed or signed in on this computer:
+// one button opens the Claude sign-in, then this waits until it's done and asks again.
+function ClaudeSignIn({ onReady }: { onReady: () => void }) {
+  const [state, setState] = useState<"idle" | "waiting" | "done" | "failed">("idle")
+  const [message, setMessage] = useState<string | null>(null)
+  const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => () => {
+    if (timer.current) clearInterval(timer.current)
+  }, [])
+
+  async function start() {
+    setMessage(null)
+    const res = await fetch("/api/assistant/claude", { method: "POST" }).catch(() => null)
+    const body = res ? await res.json().catch(() => ({})) : {}
+    if (!res?.ok) {
+      setState("failed")
+      setMessage(body.error ?? "Couldn't start the sign-in. Double-click setup-claude.bat in the app folder instead.")
+      return
+    }
+    setState("waiting")
+    const started = Date.now()
+    if (timer.current) clearInterval(timer.current)
+    timer.current = setInterval(async () => {
+      const status = await fetch("/api/assistant/claude").then((r) => r.json()).catch(() => null)
+      if (status?.loggedIn) {
+        clearInterval(timer.current!)
+        setState("done")
+        onReady()
+      } else if (Date.now() - started > 10 * 60_000) {
+        clearInterval(timer.current!)
+        setState("failed")
+        setMessage("Still not signed in. Finish the steps in the window that opened, or double-click setup-claude.bat in the app folder.")
+      }
+    }, 3000)
+  }
+
+  if (state === "done") {
+    return (
+      <p className="flex items-center gap-2 rounded-xl bg-emerald-500/10 p-3 text-sm text-emerald-800">
+        <CircleCheck className="size-4 shrink-0" /> Signed in to Claude. Asking your question now…
+      </p>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border-2 border-primary/30 bg-primary/5 p-3 text-sm">
+      <Button type="button" size="lg" className="h-11 text-base font-semibold" onClick={start} disabled={state === "waiting"}>
+        {state === "waiting" ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <LogIn data-icon="inline-start" />}
+        {state === "waiting" ? "Waiting for you to sign in…" : "Sign in with Claude"}
+      </Button>
+      {state === "waiting" ? (
+        <p className="text-muted-foreground">
+          A black window opened. If Claude isn&apos;t installed yet it installs it first (a minute or two), then your browser opens:
+          sign in with your Claude account and click <strong>Authorize</strong>. This updates by itself when you&apos;re done.
+        </p>
+      ) : (
+        <p className="text-muted-foreground">Uses your Claude plan (Pro, Max, Team or Enterprise). No API key needed.</p>
+      )}
+      {message && <p className="text-destructive">{message}</p>}
+    </div>
+  )
+}
+
 export default function Assistant({ enabled, context, onClose }: AssistantProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState("")
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [errorCode, setErrorCode] = useState<string | null>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
   async function ask(question: string) {
@@ -108,6 +171,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
     setMessages(next)
     setInput("")
     setError(null)
+    setErrorCode(null)
     setPending(true)
     requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }))
     try {
@@ -120,6 +184,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
       const body = await res.json().catch(() => ({}))
       if (!res.ok || typeof body.reply !== "string") {
         setError(body.error ?? "Something went wrong. Please try again.")
+        setErrorCode(typeof body.code === "string" ? body.code : null)
         setMessages(messages)
         setInput(text)
         return
@@ -222,10 +287,17 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
           )}
 
           {error && (
-            <p role="alert" className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+            <p
+              role="alert"
+              className={cn(
+                "rounded-xl p-3 text-sm",
+                errorCode === "claude_setup" ? "bg-muted text-foreground" : "bg-destructive/10 text-destructive",
+              )}
+            >
               {error}
             </p>
           )}
+          {errorCode === "claude_setup" && <ClaudeSignIn onReady={() => ask(input)} />}
 
           <form
             onSubmit={(e) => {

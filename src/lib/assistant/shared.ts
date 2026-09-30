@@ -31,6 +31,8 @@ export class AssistantError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    // "claude_setup" tells the chat to offer the "Sign in with Claude" button.
+    readonly code?: string,
   ) {
     super(message)
   }

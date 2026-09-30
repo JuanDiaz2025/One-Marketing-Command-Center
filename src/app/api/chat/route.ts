@@ -68,7 +68,9 @@ export async function POST(request: Request) {
           : await askClaude(input)
     return Response.json({ reply })
   } catch (error) {
-    if (error instanceof AssistantError) return fail(error.message, error.status)
+    if (error instanceof AssistantError) {
+      return Response.json({ error: error.message, code: error.code }, { status: error.status })
+    }
     console.error("Assistant failed:", error)
     return fail("The assistant couldn't be reached. Check your internet connection.", 502)
   }
