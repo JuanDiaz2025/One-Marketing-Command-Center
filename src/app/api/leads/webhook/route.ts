@@ -37,13 +37,15 @@ async function readBody(request: Request): Promise<unknown> {
 const fieldNames = (body: unknown) =>
   body && typeof body === "object" && !Array.isArray(body) ? Object.keys(body).slice(0, 30).map((k) => k.slice(0, 60)) : []
 
-export async function POST(request: Request) {
-  if (!(await authorized(request))) {
-    await logAttempt({ ok: false, result: "wrong-key" })
-    return Response.json({ ok: false, error: "Wrong or missing key." }, { status: 401 })
-  }
+// Some WordPress webhook plugins put the form fields in the address (?your-name=...) instead of,
+// or as well as, the body; keep those too, minus the key.
+function queryFields(request: Request) {
+  const params = new URL(request.url).searchParams
+  params.delete("key")
+  return Object.fromEntries(params)
+}
 
-  const body = await readBody(request)
+async function receive(body: unknown) {
   const lead = parseWebsiteLead(body)
   if (!lead) {
     await logAttempt({ ok: false, result: "no-contact", fields: fieldNames(body) })
@@ -59,12 +61,27 @@ export async function POST(request: Request) {
   return Response.json({ ok: true, id: saved.id })
 }
 
-// Lets a webhook plugin's "test connection" check the address and key without adding a lead.
+export async function POST(request: Request) {
+  if (!(await authorized(request))) {
+    await logAttempt({ ok: false, result: "wrong-key" })
+    return Response.json({ ok: false, error: "Wrong or missing key." }, { status: 401 })
+  }
+  const query = queryFields(request)
+  const body = await readBody(request)
+  const merged =
+    body && typeof body === "object" && !Array.isArray(body) ? { ...query, ...body } : Object.keys(query).length ? query : body
+  return receive(merged)
+}
+
+// With form fields in the address, a lead sent by GET; otherwise a plugin's "test connection",
+// which checks the address and key without adding a lead.
 export async function GET(request: Request) {
   if (!(await authorized(request))) {
     await logAttempt({ ok: false, result: "wrong-key" })
     return Response.json({ ok: false, error: "Wrong or missing key." }, { status: 401 })
   }
+  const query = queryFields(request)
+  if (Object.keys(query).length) return receive(query)
   await logAttempt({ ok: true, result: "test" })
   return Response.json({ ok: true, message: "Connected. New leads posted here appear on the Leads page." })
 }
