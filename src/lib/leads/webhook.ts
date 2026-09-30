@@ -6,7 +6,8 @@ import { randomBytes, timingSafeEqual } from "node:crypto"
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import path from "node:path"
 
-import type { Lead } from "@/lib/leads/types"
+import { completeTracking, trackingAliases } from "@/lib/leads/tracking"
+import type { Lead, LeadTracking } from "@/lib/leads/types"
 
 export type WebsiteLead = Omit<Lead, "id" | "createdAt" | "qrCodeId">
 
@@ -121,6 +122,11 @@ export function parseWebsiteLead(payload: unknown): WebsiteLead | null {
     .join(", ")
   const message = take(aliases.notes)
   const form = take(aliases.form)
+  const tracking: LeadTracking = {}
+  for (const [key, names] of Object.entries(trackingAliases) as [keyof LeadTracking, string[]][]) {
+    const value = take(names)
+    if (value) tracking[key] = value.slice(0, 300)
+  }
 
   if (!email && !phone && !full && !first && !last) return null
 
@@ -136,5 +142,6 @@ export function parseWebsiteLead(payload: unknown): WebsiteLead | null {
     propertyAddress: [street, cityStateZip].filter(Boolean).join(", ") || undefined,
     notes: [message, ...extras].filter(Boolean).join("\n").slice(0, 2000) || undefined,
     source: form && !/^\d+$/.test(form) ? `Website · ${form.slice(0, 60)}` : "Website",
+    tracking: completeTracking(tracking),
   }
 }

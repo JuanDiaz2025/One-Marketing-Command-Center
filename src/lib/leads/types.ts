@@ -26,6 +26,22 @@ export type QrCode = {
   createdAt: string // ISO datetime
 }
 
+// Where a website lead came from, as the form sent it (from the WordPress tracking snippet).
+export type LeadTracking = {
+  utmSource?: string
+  utmMedium?: string
+  utmCampaign?: string
+  utmTerm?: string
+  utmContent?: string
+  // Google Ads click id (gclid, or gbraid/wbraid on iPhones).
+  gclid?: string
+  fbclid?: string
+  msclkid?: string
+  // The page the visitor first landed on, and the site that sent them there.
+  landingPage?: string
+  referrer?: string
+}
+
 export type Lead = {
   id: string
   // Set for leads from a QR code form. Website leads have `source` instead.
@@ -38,4 +54,5 @@ export type Lead = {
   email?: string
   propertyAddress?: string
   notes?: string
+  tracking?: LeadTracking
 }

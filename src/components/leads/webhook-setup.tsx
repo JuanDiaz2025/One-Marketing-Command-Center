@@ -5,7 +5,11 @@ import CopyButton from "@/components/dashboard/copy-button"
 import { timeAgo } from "@/components/leads/lead-list"
 import { tunnelUrl, webhookSecret } from "@/lib/leads/webhook"
 import { recentAttempts, type WebhookAttempt } from "@/lib/leads/webhook-log"
+import { CF7_HIDDEN_FIELDS, TRACKING_SNIPPET } from "@/lib/leads/wordpress-snippets"
 import { cn } from "@/lib/utils"
+
+// Google Ads fills in {campaignid}, {keyword} and {creative} for each click.
+const FINAL_URL_SUFFIX = "utm_source=google&utm_medium=cpc&utm_campaign={campaignid}&utm_term={keyword}&utm_content={creative}"
 
 const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/
 
@@ -136,6 +140,44 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
               lead&apos;s notes.
             </li>
             <li>Submit the form once as a test. The lead shows up in the list above, marked Website.</li>
+          </ol>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <p className="font-medium">Track where each lead came from (UTM source, campaign, keyword, Google click)</p>
+          <ol className="list-decimal space-y-3 pl-5 text-muted-foreground">
+            <li>
+              <span>
+                In Contact Form 7, edit your form and paste these hidden fields anywhere in the <strong>Form</strong> tab,
+                then save. Visitors don&apos;t see them.
+              </span>
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs text-foreground">{CF7_HIDDEN_FIELDS}</pre>
+              <div className="mt-2">
+                <CopyButton text={CF7_HIDDEN_FIELDS} label="Copy hidden fields" />
+              </div>
+            </li>
+            <li>
+              <span>
+                Add this snippet to every page of the site: install the free <strong>WPCode</strong> plugin, open{" "}
+                <strong>Code Snippets → Header &amp; Footer</strong>, paste it into <strong>Footer</strong>, and save. It
+                remembers the UTM tags and Google click ID from the ad a visitor came in on, even if they browse other
+                pages first, and fills in the hidden fields.
+              </span>
+              <pre className="mt-2 max-h-40 overflow-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs text-foreground">{TRACKING_SNIPPET}</pre>
+              <div className="mt-2">
+                <CopyButton text={TRACKING_SNIPPET} label="Copy tracking snippet" />
+              </div>
+            </li>
+            <li>
+              In Google Ads, make sure <strong>Admin → Account settings → Auto-tagging</strong> is on (it adds the Google
+              click ID). To also fill UTM columns for ad clicks, set{" "}
+              <strong>Admin → Account settings → Tracking → Final URL suffix</strong> to:
+              <pre className="mt-2 overflow-x-auto rounded-lg bg-muted px-3 py-2 font-mono text-xs text-foreground">{FINAL_URL_SUFFIX}</pre>
+              <div className="mt-2">
+                <CopyButton text={FINAL_URL_SUFFIX} label="Copy URL suffix" />
+              </div>
+            </li>
+            <li>For other links (Facebook, email, postcards with a web address), add your own ?utm_source=…&amp;utm_medium=… tags.</li>
           </ol>
         </div>
 
