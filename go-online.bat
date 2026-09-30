@@ -41,7 +41,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "New-Item -ItemType Directory -Force -Path '.data' | Out-Null; Set-Content -Path '.data\public-url' -Value $url -NoNewline;" ^
   "$key = $env:LEADS_WEBHOOK_SECRET; if (-not $key -and (Test-Path '.env.local')) { $l = Select-String -Path '.env.local' -Pattern '^LEADS_WEBHOOK_SECRET=(.+)$' | Select-Object -First 1; if ($l) { $key = $l.Matches[0].Groups[1].Value.Trim() } };" ^
   "if (-not $key -and (Test-Path '.data\webhook-secret')) { $key = (Get-Content '.data\webhook-secret' -Raw).Trim() };" ^
-  "$hook = $null; if ($key) { $hook = $url + '/api/leads/webhook?key=' + $key };" ^
+  "$hook = $null; if ($key) { $hook = $url + '/api/leads/webhook?key=' + [uri]::EscapeDataString($key) };" ^
   "Write-Host ''; Write-Host 'The app is online for WordPress.' -ForegroundColor Green;" ^
   "if ($hook) { Set-Clipboard -Value $hook; Write-Host ''; Write-Host 'Your webhook address (already copied, paste it into WordPress):'; Write-Host ''; Write-Host $hook -ForegroundColor Yellow } else { Write-Host 'Open the Leads page in the app once, then run this file again to get the webhook address.' };" ^
   "Write-Host ''; Write-Host 'Keep this window open: leads only arrive while it and the app are running.'; Write-Host 'The address changes each time you run this, so paste the new one into WordPress each time.'"

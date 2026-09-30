@@ -28,20 +28,20 @@ export async function getQrCode(id: string) {
 }
 
 export async function createQrCode(input: Omit<QrCode, "id" | "createdAt" | "active">) {
-  const db = await file.read()
-  const code: QrCode = { ...input, id: newId(), active: true, createdAt: new Date().toISOString() }
-  db.qrCodes.push(code)
-  await file.write(db)
-  return code
+  return file.update((db) => {
+    const code: QrCode = { ...input, id: newId(), active: true, createdAt: new Date().toISOString() }
+    db.qrCodes.push(code)
+    return code
+  })
 }
 
 export async function updateQrCode(id: string, patch: Partial<Omit<QrCode, "id" | "createdAt">>) {
-  const db = await file.read()
-  const code = db.qrCodes.find((c) => c.id === id)
-  if (!code) return null
-  Object.assign(code, patch)
-  await file.write(db)
-  return code
+  return file.update((db) => {
+    const code = db.qrCodes.find((c) => c.id === id)
+    if (!code) return null
+    Object.assign(code, patch)
+    return code
+  })
 }
 
 // Newest first.
@@ -51,9 +51,9 @@ export async function listLeads() {
 }
 
 export async function addLead(input: Omit<Lead, "id" | "createdAt">) {
-  const db = await file.read()
-  const lead: Lead = { ...input, id: newId(), createdAt: new Date().toISOString() }
-  db.leads.push(lead)
-  await file.write(db)
-  return lead
+  return file.update((db) => {
+    const lead: Lead = { ...input, id: newId(), createdAt: new Date().toISOString() }
+    db.leads.push(lead)
+    return lead
+  })
 }

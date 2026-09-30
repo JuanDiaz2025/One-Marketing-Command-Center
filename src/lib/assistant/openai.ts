@@ -59,20 +59,24 @@ export async function askOpenAI({ turns, situation, tools: context }: AskInput):
 
       // Send the whole turn back (reasoning included), then each tool's result.
       input.push(...(response.output as OpenAI.Responses.ResponseInputItem[]))
-      for (const call of calls) {
-        let args: unknown
-        try {
-          args = JSON.parse(call.arguments)
-        } catch {
-          args = {}
-        }
-        const result = await runTool(call.name, args, context)
-        input.push({
-          type: "function_call_output",
-          call_id: call.call_id,
-          output: result.isError ? `Error: ${result.content}` : result.content,
-        })
-      }
+      // The tools only read data, so they can run at once, like in claude.ts.
+      const outputs = await Promise.all(
+        calls.map(async (call): Promise<OpenAI.Responses.ResponseInputItem> => {
+          let args: unknown
+          try {
+            args = JSON.parse(call.arguments)
+          } catch {
+            args = {}
+          }
+          const result = await runTool(call.name, args, context)
+          return {
+            type: "function_call_output",
+            call_id: call.call_id,
+            output: result.isError ? `Error: ${result.content}` : result.content,
+          }
+        }),
+      )
+      input.push(...outputs)
     }
     return TOO_MANY_STEPS
   } catch (error) {

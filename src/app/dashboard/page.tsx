@@ -44,12 +44,12 @@ import {
   type SearchTerm,
 } from "@/lib/google/ads"
 import { getConnection, updateConnection, type AdsConnection } from "@/lib/google/connections"
-import { getHealthIssues, wastedSearchIssue, type Issue } from "@/lib/google/health"
+import { collectIssues, type Issue } from "@/lib/google/health"
 import { describePeriod, periodQuery, resolvePeriod, type Period } from "@/lib/google/period"
 import { firstSeen } from "@/lib/google/seen-searches"
-import { missedCallIssue, tryGetCalls } from "@/lib/google/calls"
+import { tryGetCalls } from "@/lib/google/calls"
 import { getInsights, type Insights } from "@/lib/google/insights"
-import { locationIssues, tryGetLocations, type LocationReport } from "@/lib/google/locations"
+import { tryGetLocations, type LocationReport } from "@/lib/google/locations"
 import { findWastedSearches, searchKey, type WastedSummary } from "@/lib/google/wasted-searches"
 import { cn } from "@/lib/utils"
 
@@ -142,16 +142,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
       w.isNew = Date.now() - Date.parse(seen.get(searchKey(w)) ?? "") < NEW_FOR_MS
     }
 
-    const issues = await getHealthIssues(connection, account, report, period)
-    const wastedIssue = wastedSearchIssue(wasted, account.currency, costPerConversion, period)
-    if (wastedIssue) issues.splice(wastedIssue.severity === "high" ? 0 : issues.length, 0, wastedIssue)
-    if (!("error" in locations)) {
-      const found = locationIssues(locations, report, account.currency, period)
-      issues.unshift(...found.filter((i) => i.severity === "high"))
-      issues.push(...found.filter((i) => i.severity !== "high"))
-    }
-    const callIssue = "calls" in calls ? missedCallIssue(calls.calls, callDays) : null
-    if (callIssue) issues.splice(callIssue.severity === "high" ? 0 : issues.length, 0, callIssue)
+    const issues = await collectIssues(connection, account, report, period, { wasted, costPerConversion, locations, calls, callDays })
     const callSummary = "calls" in calls ? { total: calls.calls.length, missed: calls.calls.filter((c) => c.missed).length } : null
     return {
       kind: "report",

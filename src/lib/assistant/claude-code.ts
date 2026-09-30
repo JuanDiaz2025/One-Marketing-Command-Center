@@ -50,7 +50,7 @@ function run(args: string[], stdin: string, cwd: string, env: NodeJS.ProcessEnv)
   const command = claudeCommand()
   // A .exe runs directly; "claude" or a .cmd needs the Windows shell.
   const windows = process.platform === "win32" && !/\.exe$/i.test(command)
-  return new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+  return new Promise<{ code: number | null; stdout: string; stderr: string; timedOut: boolean }>((resolve, reject) => {
     const child = spawn(windows ? quote(command) : command, windows ? args.map(quote) : args, {
       cwd,
       env,
@@ -59,7 +59,13 @@ function run(args: string[], stdin: string, cwd: string, env: NodeJS.ProcessEnv)
     })
     let stdout = ""
     let stderr = ""
-    const timer = setTimeout(() => child.kill(), TIMEOUT_MS)
+    let timedOut = false
+    const timer = setTimeout(() => {
+      timedOut = true
+      // Through the Windows shell, child is cmd.exe: end Claude Code under it too, not only the shell.
+      if (windows && child.pid) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }).on("error", () => child.kill())
+      else child.kill()
+    }, TIMEOUT_MS)
     child.stdout.on("data", (d) => (stdout += d))
     child.stderr.on("data", (d) => (stderr += d))
     child.on("error", (error) => {
@@ -68,7 +74,7 @@ function run(args: string[], stdin: string, cwd: string, env: NodeJS.ProcessEnv)
     })
     child.on("close", (code) => {
       clearTimeout(timer)
-      resolve({ code, stdout, stderr })
+      resolve({ code, stdout, stderr, timedOut })
     })
     child.stdin.end(stdin)
   })
@@ -136,6 +142,10 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new AssistantError(NOT_INSTALLED, 503, SETUP)
       throw error
+    }
+
+    if (result.timedOut) {
+      throw new AssistantError("That question took Claude Code too long. Try asking something narrower.", 504)
     }
 
     let parsed: { result?: string; is_error?: boolean; subtype?: string } | null = null

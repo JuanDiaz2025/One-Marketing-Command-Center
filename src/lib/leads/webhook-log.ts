@@ -16,8 +16,10 @@ const file = jsonFileStore<WebhookAttempt[]>("webhook-log.json", () => [])
 const KEEP = 10
 
 export async function logAttempt(attempt: Omit<WebhookAttempt, "at">) {
-  const log = await file.read()
-  await file.write([{ at: new Date().toISOString(), ...attempt }, ...log].slice(0, KEEP))
+  await file.update((log) => {
+    log.unshift({ at: new Date().toISOString(), ...attempt })
+    log.splice(KEEP)
+  })
 }
 
 export const recentAttempts = () => file.read()

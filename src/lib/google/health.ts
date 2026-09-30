@@ -2,7 +2,9 @@
 // queries plus the numbers already loaded for the dashboard. Each check runs on its own, so one
 // failing (e.g. a field Google changed) doesn't hide the others.
 import { runQuery, type AdsReport } from "@/lib/google/ads"
+import { missedCallIssue, type Call } from "@/lib/google/calls"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
+import { locationIssues, type LocationReport } from "@/lib/google/locations"
 import { describePeriod, type Period } from "@/lib/google/period"
 import type { WastedSummary } from "@/lib/google/wasted-searches"
 
@@ -238,4 +240,33 @@ export async function getHealthIssues(
   }
 
   return issues.sort((a, b) => (a.severity === b.severity ? 0 : a.severity === "high" ? -1 : 1))
+}
+
+// Serious ones go before the problems already listed, the rest after them.
+const addIssues = (issues: Issue[], more: (Issue | null)[]) => {
+  const found = more.filter((i): i is Issue => i !== null)
+  return [...found.filter((i) => i.severity === "high"), ...issues, ...found.filter((i) => i.severity !== "high")]
+}
+
+// Every problem the dashboard and the daily check show: the account checks above plus wasted
+// searches, locations and missed calls, most serious first.
+export async function collectIssues(
+  connection: AdsConnection,
+  account: AdsAccount,
+  report: AdsReport,
+  period: Period,
+  found: {
+    wasted: WastedSummary
+    costPerConversion: number
+    locations: LocationReport | { error: string }
+    calls: { calls: Call[] } | { error: string }
+    callDays: number
+  },
+): Promise<Issue[]> {
+  let issues = await getHealthIssues(connection, account, report, period)
+  issues = addIssues(issues, [wastedSearchIssue(found.wasted, account.currency, found.costPerConversion, period)])
+  if (!("error" in found.locations)) {
+    issues = addIssues(issues, locationIssues(found.locations, report, account.currency, period))
+  }
+  return addIssues(issues, ["calls" in found.calls ? missedCallIssue(found.calls.calls, found.callDays) : null])
 }

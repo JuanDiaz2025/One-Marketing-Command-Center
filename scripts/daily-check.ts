@@ -14,9 +14,9 @@ import path from "node:path"
 
 import { AdsApiError, getReport, getSearchTerms, listAccounts, type AdsReport } from "@/lib/google/ads"
 import type { AdsConnection } from "@/lib/google/connections"
-import { getHealthIssues, wastedSearchIssue, type Issue } from "@/lib/google/health"
-import { missedCallIssue, tryGetCalls } from "@/lib/google/calls"
-import { locationIssues, tryGetLocations } from "@/lib/google/locations"
+import { collectIssues, type Issue } from "@/lib/google/health"
+import { tryGetCalls } from "@/lib/google/calls"
+import { tryGetLocations } from "@/lib/google/locations"
 import { resolvePeriod } from "@/lib/google/period"
 import { findWastedSearches } from "@/lib/google/wasted-searches"
 
@@ -113,17 +113,7 @@ async function main() {
     const wasted = findWastedSearches(terms, costPerConversion)
     for (const w of wasted.wasted) w.isNew = seenBefore.size > 0 && !seenBefore.has(w.term.toLowerCase())
 
-    const issues = await getHealthIssues(connection, account, report, period)
-    const wastedIssue = wastedSearchIssue(wasted, account.currency, costPerConversion, period)
-    if (wastedIssue) issues.splice(wastedIssue.severity === "high" ? 0 : issues.length, 0, wastedIssue)
-    if (!("error" in locations)) {
-      const found = locationIssues(locations, report, account.currency, period)
-      issues.unshift(...found.filter((i) => i.severity === "high"))
-      issues.push(...found.filter((i) => i.severity !== "high"))
-    }
-
-    const callIssue = "calls" in calls ? missedCallIssue(calls.calls, callDays) : null
-    if (callIssue) issues.splice(callIssue.severity === "high" ? 0 : issues.length, 0, callIssue)
+    const issues = await collectIssues(connection, account, report, period, { wasted, costPerConversion, locations, calls, callDays })
 
     const label = `${short(report.start, true)} – ${short(report.end, true)}`
     writeFileSync(

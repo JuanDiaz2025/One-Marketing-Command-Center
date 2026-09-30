@@ -27,7 +27,7 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
   const tunnel = configured ? null : await tunnelUrl()
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:4000"
   const origin = configured || tunnel || `${h.get("x-forwarded-proto") ?? "http"}://${host}`
-  const url = `${origin}/api/leads/webhook?key=${await webhookSecret()}`
+  const url = `${origin}/api/leads/webhook?key=${encodeURIComponent(await webhookSecret())}`
   const localOnly = !configured && !tunnel && LOCAL.test(host)
   const attempts = await recentAttempts()
 

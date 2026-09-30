@@ -9,27 +9,23 @@ const file = jsonFileStore<Db>("seen-searches.json", () => ({}))
 // Forget searches not seen for half a year, so the file doesn't grow forever.
 const KEEP_MS = 180 * 86_400_000
 
-// Records the keys and returns when each was first seen.
+// Records the keys and returns when each was first seen. On the first look at an account nothing
+// is new yet (every search would be), so those come back without a date.
 export async function firstSeen(sub: string, customerId: string, keys: string[], now = Date.now()) {
-  const db = await file.read()
-  const id = `${sub}:${customerId}`
-  const seen = db[id] ?? {}
-  let changed = false
-  for (const key of keys) {
-    if (!seen[key]) {
-      seen[key] = new Date(now).toISOString()
-      changed = true
+  return file.update((db) => {
+    const id = `${sub}:${customerId}`
+    const firstLook = !db[id]
+    const seen = db[id] ?? {}
+    // Searches found on the first look at an account were already there, not new: date them two
+    // days back so they aren't tagged New on the next visit either.
+    const stamp = new Date(firstLook ? now - 2 * 86_400_000 : now).toISOString()
+    for (const key of keys) {
+      if (!seen[key]) seen[key] = stamp
     }
-  }
-  for (const [key, at] of Object.entries(seen)) {
-    if (now - Date.parse(at) > KEEP_MS && !keys.includes(key)) {
-      delete seen[key]
-      changed = true
+    for (const [key, at] of Object.entries(seen)) {
+      if (now - Date.parse(at) > KEEP_MS && !keys.includes(key)) delete seen[key]
     }
-  }
-  if (changed) {
     db[id] = seen
-    await file.write(db)
-  }
-  return new Map(keys.map((key) => [key, seen[key]]))
+    return new Map(keys.map((key) => [key, firstLook ? undefined : seen[key]]))
+  })
 }

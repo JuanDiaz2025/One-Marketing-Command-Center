@@ -23,22 +23,40 @@ export function webhookSecret() {
       return (await readFile(secretFile, "utf8")).trim()
     } catch {
       const created = randomBytes(18).toString("base64url")
-      await mkdir(path.dirname(secretFile), { recursive: true })
-      await writeFile(secretFile, created, { mode: 0o600 })
+      try {
+        await mkdir(path.dirname(secretFile), { recursive: true })
+        await writeFile(secretFile, created, { mode: 0o600 })
+      } catch (error) {
+        // A read-only disk: keep this key until the app restarts (set LEADS_WEBHOOK_SECRET to keep one for good).
+        console.error("Couldn't save the webhook key in .data:", error)
+      }
       return created
     }
   })()
   return secret
 }
 
-// The public address go-online.bat saved (a Cloudflare tunnel), if it's running.
+// The public address go-online.bat saved (a Cloudflare tunnel), if it's running. The file stays
+// behind when its window is closed, so check the address still answers (at most every 30 seconds).
+const TUNNEL_CHECK_MS = 30_000
+let tunnelCheck: { url: string; at: number; alive: boolean } | null = null
+
 export async function tunnelUrl() {
+  let url: string
   try {
-    const url = (await readFile(path.join(process.cwd(), ".data", "public-url"), "utf8")).trim()
-    return /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(url) ? url : null
+    url = (await readFile(path.join(process.cwd(), ".data", "public-url"), "utf8")).trim()
   } catch {
     return null
   }
+  if (!/^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(url)) return null
+  if (!tunnelCheck || tunnelCheck.url !== url || Date.now() - tunnelCheck.at > TUNNEL_CHECK_MS) {
+    // Any answer from the app counts; a closed tunnel gets Cloudflare's 5xx error page or no answer.
+    const alive = await fetch(`${url}/icon.svg`, { method: "HEAD", redirect: "manual", signal: AbortSignal.timeout(3000) })
+      .then((res) => res.status < 500)
+      .catch(() => false)
+    tunnelCheck = { url, at: Date.now(), alive }
+  }
+  return tunnelCheck.alive ? url : null
 }
 
 export async function isValidSecret(given: string | null | undefined) {
@@ -97,8 +115,27 @@ function flatten(value: unknown, key = "", out: [string, string][] = []): [strin
   return out
 }
 
+// Form posts name nested fields with brackets (Elementor's advanced data sends
+// fields[name][value]=...); rebuild them as objects so flatten can read each field's label.
+function unbracket(payload: unknown): unknown {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(payload)) {
+    const m = key.match(/^([^[\]]+)((?:\[[^[\]]*\])+)$/)
+    const parts = m ? [m[1], ...[...m[2].matchAll(/\[([^[\]]*)\]/g)].map((p) => p[1])] : [key]
+    if (parts.some((p) => p === "__proto__" || p === "constructor" || p === "prototype")) continue
+    let node = out
+    for (const part of parts.slice(0, -1)) {
+      const next = node[part]
+      node = (next && typeof next === "object" && !Array.isArray(next) ? next : (node[part] = {})) as Record<string, unknown>
+    }
+    node[parts[parts.length - 1]] = value
+  }
+  return out
+}
+
 export function parseWebsiteLead(payload: unknown): WebsiteLead | null {
-  const pairs = flatten(payload)
+  const pairs = flatten(unbracket(payload))
   const used = new Set<number>()
   const take = (names: readonly string[]) => {
     for (const alias of names) {

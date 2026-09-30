@@ -54,7 +54,8 @@ const host = (url?: string) => {
   }
 }
 
-// The one-glance answer to "where did this lead come from?".
+// The one-glance answer to "where did this lead come from?". Short names (fb, ig, meta) only count
+// as whole words, so "craigslist" or "metasearch" aren't taken for Facebook.
 export function leadChannel(lead: Lead): string {
   const t = lead.tracking
   if (lead.qrCodeId) return "QR code"
@@ -64,7 +65,7 @@ export function leadChannel(lead: Lead): string {
   const paid = /cpc|ppc|paid|ads?$|display|search/.test(medium)
   if (t.gclid || (/google|adwords/.test(source) && paid)) return "Google Ads"
   if (t.msclkid || (/bing|microsoft/.test(source) && paid)) return "Microsoft Ads"
-  if (t.fbclid || /facebook|fb|instagram|ig|meta/.test(source)) return paid || t.fbclid ? "Facebook / Instagram Ads" : "Facebook / Instagram"
+  if (t.fbclid || /facebook|instagram|(^|[^a-z])(fb|ig|meta)([^a-z]|$)/.test(source)) return paid || t.fbclid ? "Facebook / Instagram Ads" : "Facebook / Instagram"
   if (/lsa|localservices/.test(source)) return "Local Services Ads"
   if (/gbp|gmb|googlebusiness|maps/.test(source + medium)) return "Google Business Profile"
   if (/email|newsletter/.test(source + medium)) return "Email"

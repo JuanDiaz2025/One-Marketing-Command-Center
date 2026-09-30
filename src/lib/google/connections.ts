@@ -36,29 +36,29 @@ export async function getConnection(sub: string): Promise<AdsConnection | null> 
 }
 
 export async function saveConnection(sub: string, email: string, refreshToken: string) {
-  const db = await file.read()
-  db[sub] = {
-    email,
-    refreshToken: await seal(refreshToken),
-    connectedAt: new Date().toISOString(),
-    accounts: [],
-    selectedCustomerId: db[sub]?.selectedCustomerId,
-  }
-  await file.write(db)
+  const sealed = await seal(refreshToken)
+  await file.update((db) => {
+    db[sub] = {
+      email,
+      refreshToken: sealed,
+      connectedAt: new Date().toISOString(),
+      accounts: [],
+      selectedCustomerId: db[sub]?.selectedCustomerId,
+    }
+  })
 }
 
 export async function updateConnection(
   sub: string,
   patch: Partial<Pick<StoredConnection, "accounts" | "accountsFetchedAt" | "selectedCustomerId">>,
 ) {
-  const db = await file.read()
-  if (!db[sub]) return
-  Object.assign(db[sub], patch)
-  await file.write(db)
+  await file.update((db) => {
+    if (db[sub]) Object.assign(db[sub], patch)
+  })
 }
 
 export async function deleteConnection(sub: string) {
-  const db = await file.read()
-  delete db[sub]
-  await file.write(db)
+  await file.update((db) => {
+    delete db[sub]
+  })
 }
