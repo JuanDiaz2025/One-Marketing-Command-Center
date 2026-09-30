@@ -43,7 +43,7 @@ export function wastedSearchIssue(
     severity: total >= Math.max(50, costPerConversion) ? "high" : "medium",
     title: `${wasted.length} search${wasted.length === 1 ? "" : "es"} wasted ${money(total)} with no leads${fresh ? ` (${fresh} new)` : ""}`,
     detail: `Top offenders: ${list(wasted.map((w) => `${w.term} (${money(w.cost)})`))}.`,
-    fix: 'Scroll to "Searches to remove", click Copy negative keywords, then in Google Ads open Keywords → Negative keywords → +, paste, and save.',
+    fix: 'Open the "Searches to remove" tab, click Copy negative keywords, then in Google Ads open Keywords → Negative keywords → +, paste, and save.',
     question: `${cap(describePeriod(period))} these searches cost money but brought no leads: ${list(wasted.map((w) => `${w.term} (${money(w.cost)}, ${w.reason.toLowerCase()})`), 15)}. Which should we block, as phrase or exact match negatives, and are any worth keeping?`,
   }
 }

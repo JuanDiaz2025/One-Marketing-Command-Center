@@ -13,7 +13,9 @@ import {
 import PeriodPicker from "@/components/dashboard/period-picker"
 import TrendChart from "@/components/dashboard/trend-chart"
 import WastedSearches from "@/components/dashboard/wasted-searches"
+import DashboardTabs from "@/components/dashboard/dashboard-tabs"
 import HealthCheck from "@/components/dashboard/health-check"
+import ProblemBanner from "@/components/dashboard/problem-banner"
 import Locations from "@/components/dashboard/locations"
 import Paged from "@/components/ui/paged"
 import GoogleAdsMark from "@/components/google-ads-mark"
@@ -158,6 +160,12 @@ function groupForChart(daily: AdsReport["daily"]) {
   return { unit, points: [...groups.values()] }
 }
 
+const LOCATION_ISSUES = new Set(["no-location-targets", "presence-or-interest", "outside-target-area", "cities-without-leads"])
+
+// A tab's highlight: red when it holds a serious problem, amber for one worth a look.
+const toneOf = (issues: Issue[]) =>
+  issues.some((i) => i.severity === "high") ? ("bad" as const) : issues.length ? ("warn" as const) : undefined
+
 const statusLabel: Record<string, string> = { ENABLED: "Active", PAUSED: "Paused" }
 
 export default async function Dashboard({ searchParams }: PageProps<"/dashboard">) {
@@ -223,7 +231,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             searchTerms={loaded.searchTerms}
             wasted={loaded.wasted}
             locations={loaded.locations}
-            health={<HealthCheck issues={loaded.issues} />}
+            issues={loaded.issues}
             connection={loaded.connection}
             period={period}
           />
@@ -269,7 +277,7 @@ function Report({
   searchTerms,
   wasted,
   locations,
-  health,
+  issues,
   connection,
   period,
 }: {
@@ -277,13 +285,15 @@ function Report({
   searchTerms: { terms: SearchTerm[] } | { error: string }
   wasted: WastedSummary
   locations: LocationReport | { error: string }
-  health: React.ReactNode
+  issues: Issue[]
   connection: AdsConnection
   period: Period
 }) {
   const { account, totals } = report
   const money = (n: number, cents = false) => formatMoney(n, account.currency, cents)
   const chart = groupForChart(report.daily)
+  const locationProblems = issues.filter((i) => LOCATION_ISSUES.has(i.id))
+  const campaignsWithoutLeads = report.campaigns.filter((c) => c.cost > 0 && c.conversions < 0.5).length
   const kpis = [
     { label: "Spend", value: money(totals.cost), note: `${formatNumber(totals.impressions)} impressions` },
     {
@@ -300,6 +310,8 @@ function Report({
 
   return (
     <>
+      <ProblemBanner issues={issues} />
+
       <div className="flex flex-col gap-4">
         {connection.accounts.length > 1 && (
           <form action={selectAccountAction} className="flex flex-wrap items-center gap-2">
@@ -342,81 +354,122 @@ function Report({
         ))}
       </section>
 
-      {health}
-
-      <WastedSearches
-        {...wasted}
-        currency={account.currency}
-        error={"error" in searchTerms ? searchTerms.error : undefined}
-      />
-
-      <Locations locations={locations} currency={account.currency} />
-
-      <section className="grid gap-6 rounded-2xl border bg-card p-5 shadow-xs sm:p-6 lg:grid-cols-2">
-        <TrendChart
-          label={`Spend per ${chart.unit} (${account.currency})`}
-          color="var(--primary)"
-          data={chart.points.map((d) => ({ date: d.date, value: Math.round(d.cost * 100) / 100 }))}
-        />
-        <TrendChart
-          label={`Clicks per ${chart.unit}`}
-          color="var(--chart-2, #0ea5e9)"
-          data={chart.points.map((d) => ({ date: d.date, value: d.clicks }))}
-        />
-      </section>
-
-      <section className="rounded-2xl border bg-card shadow-xs">
-        <h2 className="px-5 pt-5 text-lg font-semibold sm:px-6">Campaigns</h2>
-        {report.campaigns.length ? (
-          <Paged
-            noun="campaigns"
-            table={{
-              className: "w-full min-w-[720px] text-sm",
-              bodyClassName: "divide-y tabular-nums",
-              head: (
-                <thead className="text-left text-xs text-muted-foreground">
-                  <tr className="border-b">
-                    <th className="px-5 py-3 font-medium sm:px-6">Campaign</th>
-                    <th className="px-3 py-3 text-right font-medium">Spend</th>
-                    <th className="px-3 py-3 text-right font-medium">Impr.</th>
-                    <th className="px-3 py-3 text-right font-medium">Clicks</th>
-                    <th className="px-3 py-3 text-right font-medium">Click rate</th>
-                    <th className="px-3 py-3 text-right font-medium">Conv.</th>
-                    <th className="px-5 py-3 text-right font-medium sm:px-6">Cost / conv.</th>
-                  </tr>
-                </thead>
-              ),
-            }}
-            items={report.campaigns.map((c) => (
-              <tr key={c.id}>
-                <td className="px-5 py-3 sm:px-6">
-                  <p className="font-medium">{c.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {statusLabel[c.status] ?? humanize(c.status)}
-                    {c.channel && ` · ${humanize(c.channel)}`}
+      <DashboardTabs
+        tabs={[
+          {
+            id: "health",
+            label: "Problems",
+            count: issues.length,
+            tone: toneOf(issues),
+            content: <HealthCheck issues={issues} />,
+          },
+          {
+            id: "wasted",
+            label: "Searches to remove",
+            count: wasted.wasted.length,
+            tone: toneOf(issues.filter((i) => i.id === "wasted-searches")),
+            content: (
+              <WastedSearches
+                {...wasted}
+                currency={account.currency}
+                error={"error" in searchTerms ? searchTerms.error : undefined}
+              />
+            ),
+          },
+          {
+            id: "locations",
+            label: "Locations",
+            count: locationProblems.length,
+            tone: toneOf(locationProblems),
+            content: <Locations locations={locations} currency={account.currency} />,
+          },
+          {
+            id: "campaigns",
+            label: "Campaigns",
+            count: campaignsWithoutLeads,
+            tone: campaignsWithoutLeads ? "warn" : undefined,
+            content: (
+              <section className="rounded-2xl border bg-card shadow-xs">
+                <h2 className="px-5 pt-5 text-lg font-semibold sm:px-6">Campaigns</h2>
+                {report.campaigns.length ? (
+                  <Paged
+                    noun="campaigns"
+                    table={{
+                      className: "w-full min-w-[720px] text-sm",
+                      bodyClassName: "divide-y tabular-nums",
+                      head: (
+                        <thead className="text-left text-xs text-muted-foreground">
+                          <tr className="border-b">
+                            <th className="px-5 py-3 font-medium sm:px-6">Campaign</th>
+                            <th className="px-3 py-3 text-right font-medium">Spend</th>
+                            <th className="px-3 py-3 text-right font-medium">Impr.</th>
+                            <th className="px-3 py-3 text-right font-medium">Clicks</th>
+                            <th className="px-3 py-3 text-right font-medium">Click rate</th>
+                            <th className="px-3 py-3 text-right font-medium">Conv.</th>
+                            <th className="px-5 py-3 text-right font-medium sm:px-6">Cost / conv.</th>
+                          </tr>
+                        </thead>
+                      ),
+                    }}
+                    items={report.campaigns.map((c) => (
+                      <tr key={c.id} className={c.cost > 0 && c.conversions < 0.5 ? "bg-destructive/5" : undefined}>
+                        <td className="px-5 py-3 sm:px-6">
+                          <p className="font-medium">
+                            {c.name}
+                            {c.cost > 0 && c.conversions < 0.5 && (
+                              <span className="ml-2 rounded-full bg-destructive/10 px-2 py-0.5 align-middle text-xs font-medium text-destructive">
+                                No leads
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {statusLabel[c.status] ?? humanize(c.status)}
+                            {c.channel && ` · ${humanize(c.channel)}`}
+                          </p>
+                        </td>
+                        <td className="px-3 py-3 text-right">{money(c.cost, true)}</td>
+                        <td className="px-3 py-3 text-right">{formatNumber(c.impressions)}</td>
+                        <td className="px-3 py-3 text-right">{formatNumber(c.clicks)}</td>
+                        <td className="px-3 py-3 text-right">
+                          {formatPercent(c.impressions ? c.clicks / c.impressions : 0)}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          {formatNumber(Math.round(c.conversions * 10) / 10)}
+                        </td>
+                        <td className="px-5 py-3 text-right sm:px-6">
+                          {c.conversions ? money(c.cost / c.conversions, true) : "–"}
+                        </td>
+                      </tr>
+                    ))}
+                  />
+                ) : (
+                  <p className="px-5 py-6 text-sm text-muted-foreground sm:px-6">
+                    No campaign activity in this period.
                   </p>
-                </td>
-                <td className="px-3 py-3 text-right">{money(c.cost, true)}</td>
-                <td className="px-3 py-3 text-right">{formatNumber(c.impressions)}</td>
-                <td className="px-3 py-3 text-right">{formatNumber(c.clicks)}</td>
-                <td className="px-3 py-3 text-right">
-                  {formatPercent(c.impressions ? c.clicks / c.impressions : 0)}
-                </td>
-                <td className="px-3 py-3 text-right">
-                  {formatNumber(Math.round(c.conversions * 10) / 10)}
-                </td>
-                <td className="px-5 py-3 text-right sm:px-6">
-                  {c.conversions ? money(c.cost / c.conversions, true) : "–"}
-                </td>
-              </tr>
-            ))}
-          />
-        ) : (
-          <p className="px-5 py-6 text-sm text-muted-foreground sm:px-6">
-            No campaign activity in this period.
-          </p>
-        )}
-      </section>
+                )}
+              </section>
+            ),
+          },
+          {
+            id: "trends",
+            label: "Trends",
+            content: (
+              <section className="grid gap-6 rounded-2xl border bg-card p-5 shadow-xs sm:p-6 lg:grid-cols-2">
+                <TrendChart
+                  label={`Spend per ${chart.unit} (${account.currency})`}
+                  color="var(--primary)"
+                  data={chart.points.map((d) => ({ date: d.date, value: Math.round(d.cost * 100) / 100 }))}
+                />
+                <TrendChart
+                  label={`Clicks per ${chart.unit}`}
+                  color="var(--chart-2, #0ea5e9)"
+                  data={chart.points.map((d) => ({ date: d.date, value: d.clicks }))}
+                />
+              </section>
+            ),
+          },
+        ]}
+      />
 
       <p className="text-xs text-muted-foreground">
         Connected as {connection.email}. Account {formatCustomerId(account.customerId)}
