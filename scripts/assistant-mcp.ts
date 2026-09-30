@@ -4,26 +4,25 @@
 //
 // Environment: OMCC_ROOT (the app folder), OMCC_USER (whose Google Ads connection to use) and
 // OMCC_CUSTOMER_ID (which account). Other settings come from the environment or .env.local.
-import { existsSync, readFileSync } from "node:fs"
-import path from "node:path"
+import { existsSync, readFileSync, rmSync } from "node:fs"
 import { createInterface } from "node:readline"
 
-const root = process.env.OMCC_ROOT ?? process.cwd()
-process.chdir(root)
+import { runTool, toolSpecs } from "@/lib/assistant/tools"
+import { getConnection } from "@/lib/google/connections"
+
+// scripts/run-ts.mjs has already moved to OMCC_ROOT, so .data and .env.local are found here.
 if (existsSync(".env.local")) {
   for (const line of readFileSync(".env.local", "utf8").split(/\r?\n/)) {
     const m = line.match(/^([A-Z0-9_]+)=(.*)$/)
     if (m && !process.env[m[1]]?.trim() && m[2].trim()) process.env[m[1]] = m[2].trim()
   }
 }
-
-// Loaded after the chdir: the stores find .data relative to the working folder.
-const { runTool, toolSpecs } = await import(path.join(root, "src/lib/assistant/tools"))
-const { getConnection } = await import(path.join(root, "src/lib/google/connections"))
+// Started fine: clear any earlier start-up error the chat would otherwise show.
+rmSync(".data/assistant-tools-error.log", { force: true })
 
 const connection = process.env.OMCC_USER ? await getConnection(process.env.OMCC_USER) : null
 const account =
-  connection?.accounts.find((a: { customerId: string }) => a.customerId === process.env.OMCC_CUSTOMER_ID) ??
+  connection?.accounts.find((a) => a.customerId === process.env.OMCC_CUSTOMER_ID) ??
   connection?.accounts[0] ??
   null
 
@@ -48,7 +47,7 @@ async function handle(msg: Message) {
       return send({
         id: msg.id,
         result: {
-          tools: toolSpecs.map((t: { name: string; description: string; parameters: object }) => ({
+          tools: toolSpecs.map((t) => ({
             name: t.name,
             description: t.description,
             inputSchema: t.parameters,

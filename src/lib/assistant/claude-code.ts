@@ -4,7 +4,7 @@
 // tools turned off and the chat's own tools (Google Ads queries, leads) served over MCP by
 // scripts/assistant-mcp.ts.
 import { spawn } from "node:child_process"
-import { existsSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import path from "node:path"
@@ -17,6 +17,21 @@ const TOOLS = ["mcp__omcc__google_ads_query", "mcp__omcc__list_leads"]
 const NOT_INSTALLED = "The chat needs Claude on this computer. Click Sign in with Claude below: it sets it up and signs you in with your Claude account."
 const NOT_SIGNED_IN = "Claude isn't signed in on this computer yet. Click Sign in with Claude below and sign in with your Claude account."
 export const SETUP = "claude_setup"
+// What Claude replies when the app's tools didn't reach it, so the chat can say why.
+const NO_TOOLS = "OMCC_TOOLS_UNAVAILABLE"
+
+// The tool server's start-up error, if it left one (scripts/run-ts.mjs writes it).
+function toolsError() {
+  try {
+    const log = readFileSync(path.join(process.cwd(), ".data", "assistant-tools-error.log"), "utf8")
+    return log.split("\n").slice(1, 4).join(" ").trim().slice(0, 300)
+  } catch {
+    return ""
+  }
+}
+
+// A short, readable reason from Claude Code's own output, for the chat's error message.
+const detail = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 250)
 
 // Where Claude Code is: CLAUDE_CODE_PATH, the usual install folders (a freshly installed copy may
 // not be on the app's PATH yet), or plain "claude".
@@ -105,7 +120,7 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
     const system = path.join(dir, "system.txt")
     await writeFile(
       system,
-      `${INSTRUCTIONS}\n\n${situation}\n\nUse the google_ads_query and list_leads tools for real numbers. Answer in Markdown.`,
+      `${INSTRUCTIONS}\n\n${situation}\n\nUse the google_ads_query and list_leads tools for real numbers. Answer in Markdown.\n\nIf the google_ads_query and list_leads tools are not available to you, reply with exactly ${NO_TOOLS} and nothing else.`,
     )
 
     // Earlier turns go in as text; the last one is the question.
@@ -117,7 +132,9 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
       `Question: ${turns.at(-1)?.content ?? ""}`,
     ].join("")
 
-    const env = claudeEnv()
+    // The tool server compiles the app's code when it starts, which can take a while on a slow
+    // computer; give it a minute instead of Claude Code's default.
+    const env = { ...claudeEnv(), MCP_TIMEOUT: process.env.MCP_TIMEOUT || "60000" }
 
     const args = [
       "-p",
@@ -165,10 +182,21 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
     if (/usage limit|rate limit|limit reached/i.test(problem) && (parsed?.is_error || !text)) {
       throw new AssistantError("Your Claude plan's usage limit is reached for now. Try again later.", 429)
     }
-    if (!parsed || parsed.is_error || !text) {
-      console.error("Claude Code chat failed:", result.code, result.stderr.slice(0, 500), text.slice(0, 500))
+    // Without the tools Claude sometimes writes its tool calls out as text (<invoke name=...>)
+    // instead of saying so; treat that the same way.
+    if (text.includes(NO_TOOLS) || /<\/?(function_calls|invoke)\b|<parameter name=/.test(text)) {
+      const why = toolsError()
+      console.error("Claude Code couldn't use the chat's tools:", why || "(no error saved)")
       throw new AssistantError(
-        text && parsed?.is_error ? `Claude Code couldn't answer: ${text.slice(0, 300)}` : "Claude Code didn't answer. Try again.",
+        `Claude answered, but couldn't open your Google Ads and leads data${why ? `: ${why}` : ". Close the app's black window, run start.bat again, and ask again."}`,
+        502,
+      )
+    }
+    if (!parsed || parsed.is_error || !text) {
+      console.error("Claude Code chat failed:", result.code, result.stderr.slice(0, 500), text.slice(0, 500), result.stdout.slice(0, 500))
+      const why = detail(text || result.stderr || result.stdout)
+      throw new AssistantError(
+        why ? `Claude Code couldn't answer. What it said: ${why}` : "Claude Code didn't answer anything. Try again.",
         502,
       )
     }
