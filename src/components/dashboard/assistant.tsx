@@ -16,7 +16,7 @@ const suggestions = [
   "Build a report for the last 7 days",
   "Which campaigns cost the most per conversion this month?",
   "What searches wasted the most money in the last 30 days?",
-  "How many QR code leads did we get this month, and from which signs?",
+  "How many website leads and calls did we get this month?",
 ]
 
 // Report styling for Markdown replies: readable tables that scroll on narrow screens.
@@ -155,8 +155,8 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
         <div>
           <h2 className="text-lg font-semibold">Ask about your ads</h2>
           <p className="text-sm text-muted-foreground">
-            Ask what&apos;s wrong, ask a question, or ask for a report. It reads your Google Ads and
-            QR code leads.
+            Ask what&apos;s wrong, ask a question, or ask for a report. It reads your Google Ads, website
+            leads and calls.
           </p>
         </div>
         {onClose && (

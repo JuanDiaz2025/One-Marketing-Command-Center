@@ -1,6 +1,6 @@
 # One Marketing Command Center
 
-Your Google Ads results and your QR code leads in one place.
+Your Google Ads results, website leads and phone calls in one place.
 
 - **Sign in with Google.** Only the Google accounts you allow can get in.
 - **Google Ads dashboard.** Connect your Google Ads account to see spend, clicks, conversions and cost per conversion, by day and by campaign, for the last 7, 30 or 90 days, all time, or exact dates picked on the calendar. It reads your real account through the Google Ads API. Nothing is changed in Google Ads.
@@ -8,8 +8,8 @@ Your Google Ads results and your QR code leads in one place.
 - **Locations.** Where each campaign is set to show (included and excluded places, and whether it reaches only people in the area), and which cities the clicks and spend came from, with places outside your target area marked. Needs attention flags campaigns with no location, the "Presence or interest" setting, spend from outside the area, and places that spend without bringing leads.
 - **Searches to remove.** Lists search terms that cost money without bringing in a lead (renters, job seekers, home buyers, DIY research, or anything that cost more than a lead usually does), with a **Copy negative keywords** button to paste into Google Ads. Searches first spotted in the last day are tagged **New**, and wasted searches also appear as an alert under **Needs attention**. The rules are in `src/lib/google/wasted-searches.ts`.
 - **Ask about your ads.** The button in the bottom corner of every page opens a chat: ask a question or ask for a report ("build a report for the last 7 days"), and it looks up your Google Ads data and QR code leads to answer, with tables you can copy or download. It needs an OpenAI or Anthropic key (see below), and it only reads data; it can't change anything in Google Ads.
-- **Website leads.** Your WordPress forms send each new lead to the app by webhook, and it appears on the **Leads** page marked **Website**, with the form's name. The Leads page shows the webhook address to paste into WordPress.
-- **QR code leads.** Make a QR code for each yard sign, postcard or flyer. People who scan it fill in a short form (name, phone or email, property address, a note), and the lead shows up under **Leads**, tagged with the sign it came from. You can export leads as a CSV file.
+- **Website leads.** Your WordPress forms send each new lead to the app by webhook, and it appears on the **Leads** page marked **Website**, with the form's name, without reloading the page. The Leads page shows the webhook address to paste into WordPress, and the last few times WordPress sent something (and why anything was turned away).
+- **Phone calls.** Calls from your Google Ads (call assets, call ads, and your website's number with Google's call tracking) show on the **Leads** page: when, answered or missed, how long, the caller's area code, and the campaign. Missed calls are highlighted, and also show under **Needs attention**.
 
 ## Running it
 
@@ -87,21 +87,20 @@ Restart the app after saving `.env.local`.
 1. Open http://localhost:4000 and click **Continue with Google**.
 2. On the **Google Ads** page, click **Connect Google Ads** and sign in with the Google account you use at ads.google.com. It can be a different account from the one you signed in with. Tick the box that lets the app see your Google Ads.
 3. If you can open more than one Google Ads account, pick one from the **Account** list. Accounts under a manager account are included.
-4. Under **Leads**, click **Create QR code**, then print the poster or download the PNG/PDF.
-
-**Testing a QR code with a phone:** while running locally, the QR code points at this computer's Wi-Fi address, so a phone on the same Wi-Fi can open it. Once the app is on a website, set `SITE_URL` so QR codes point there instead.
 
 ## Website leads from WordPress
 
 1. Open the **Leads** page and expand **Website leads (WordPress)**. Copy the webhook address.
-2. In WordPress, open your form's webhook setting (Elementor: **Actions After Submit → Webhook**; WPForms, Gravity Forms or Contact Form 7: their webhook add-on), paste the address, method **POST**.
+2. In WordPress, open your form's webhook setting and paste the address, method **POST**:
+   - **Contact Form 7:** install the free **CF7 to Webhook** plugin, edit the form, open its **Webhook** tab, tick the box, and paste the address.
+   - **Elementor:** Actions After Submit → Webhook. **WPForms, Gravity Forms:** their webhook add-on.
 3. Name the fields name (or first name and last name), phone, email, property address and message. Most forms already do. Anything else is kept in the lead's notes.
 4. Submit the form once as a test.
 
 **WordPress has to be able to reach the app.** It's on the internet and the app runs on your computer, so `localhost` addresses don't work from WordPress. Either:
 
 - **Put the app online** (recommended, and leads arrive even when your computer is off): host it somewhere with a disk that keeps files, set `SITE_URL` to its address, set `AUTH_SECRET`, and add `https://your-address/api/auth/google/callback` to the Google sign-in client's redirect URIs.
-- **Or open a tunnel from your computer** for testing: for example `cloudflared tunnel --url http://localhost:4000` prints a public address; set `SITE_URL` to it. Leads only arrive while your computer and the app are running.
+- **Or open a tunnel from your computer:** with the app running, double-click **go-online.bat**. It downloads Cloudflare's free tunnel tool once, gives the app a public `https://…trycloudflare.com` address, and shows and copies the full webhook address to paste into WordPress. Leads only arrive while that window and the app are running, and the address changes each time, so paste the new one into WordPress each time.
 
 Every request must carry the secret key (`?key=…` in the address, or an `X-Webhook-Secret` header). A test request with GET to the same address answers `{"ok": true}` without adding a lead.
 
@@ -115,7 +114,9 @@ It needs `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` 
 
 Everything is saved in the `.data/` folder next to the app (it's never committed):
 
-- `leads.json`: QR codes and leads (from QR codes and the website).
+- `leads.json`: leads from the website (and any older QR code leads).
+- `webhook-log.json`: the last few times something called the website-leads webhook.
+- `public-url`: the tunnel address from go-online.bat.
 - `webhook-secret`: the key WordPress sends with each lead, unless `LEADS_WEBHOOK_SECRET` is set.
 - `google-ads.json`: each person's Google Ads connection. The Google token is encrypted.
 - `auth-secret`: the key used for that encryption and for sign-in cookies. If you delete it, everyone has to sign in and connect Google Ads again.

@@ -30,6 +30,16 @@ export function webhookSecret() {
   return secret
 }
 
+// The public address go-online.bat saved (a Cloudflare tunnel), if it's running.
+export async function tunnelUrl() {
+  try {
+    const url = (await readFile(path.join(process.cwd(), ".data", "public-url"), "utf8")).trim()
+    return /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/.test(url) ? url : null
+  } catch {
+    return null
+  }
+}
+
 export async function isValidSecret(given: string | null | undefined) {
   if (!given) return false
   const a = Buffer.from(given)

@@ -15,6 +15,7 @@ import path from "node:path"
 import { AdsApiError, getReport, getSearchTerms, listAccounts, type AdsReport } from "@/lib/google/ads"
 import type { AdsConnection } from "@/lib/google/connections"
 import { getHealthIssues, wastedSearchIssue, type Issue } from "@/lib/google/health"
+import { missedCallIssue, tryGetCalls } from "@/lib/google/calls"
 import { locationIssues, tryGetLocations } from "@/lib/google/locations"
 import { resolvePeriod } from "@/lib/google/period"
 import { findWastedSearches } from "@/lib/google/wasted-searches"
@@ -100,10 +101,12 @@ async function main() {
 
   for (const [id, range, grp] of periods) {
     const period = resolvePeriod({ range })
-    const [report, terms, locations] = await Promise.all([
+    const callDays = range === "all" ? 365 : Number(range)
+    const [report, terms, locations, calls] = await Promise.all([
       getReport(connection, account, period),
       getSearchTerms(connection, account, period).catch(() => []),
       tryGetLocations(connection, account, period),
+      tryGetCalls(connection, account, callDays),
     ])
     const { totals } = report
     const costPerConversion = totals.conversions ? totals.cost / totals.conversions : 0
@@ -118,6 +121,9 @@ async function main() {
       issues.unshift(...found.filter((i) => i.severity === "high"))
       issues.push(...found.filter((i) => i.severity !== "high"))
     }
+
+    const callIssue = "calls" in calls ? missedCallIssue(calls.calls, callDays) : null
+    if (callIssue) issues.splice(callIssue.severity === "high" ? 0 : issues.length, 0, callIssue)
 
     const label = `${short(report.start, true)} – ${short(report.end, true)}`
     writeFileSync(
@@ -146,6 +152,7 @@ async function main() {
           isNew: Boolean(w.isNew),
         })),
         wastedTotal: r2(wasted.total),
+        calls: "calls" in calls ? { total: calls.calls.length, missed: calls.calls.filter((c) => c.missed).length } : null,
         locations:
           "error" in locations
             ? { error: locations.error }

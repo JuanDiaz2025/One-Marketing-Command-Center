@@ -37,6 +37,7 @@ import { getConnection, updateConnection, type AdsConnection } from "@/lib/googl
 import { getHealthIssues, wastedSearchIssue, type Issue } from "@/lib/google/health"
 import { describePeriod, periodQuery, resolvePeriod, type Period } from "@/lib/google/period"
 import { firstSeen } from "@/lib/google/seen-searches"
+import { missedCallIssue, tryGetCalls } from "@/lib/google/calls"
 import { locationIssues, tryGetLocations, type LocationReport } from "@/lib/google/locations"
 import { findWastedSearches, searchKey, type WastedSummary } from "@/lib/google/wasted-searches"
 import { cn } from "@/lib/utils"
@@ -99,7 +100,9 @@ async function load(user: Session, period: Period): Promise<Loaded> {
       connection.accounts.find((a) => a.customerId === connection.selectedCustomerId) ??
       connection.accounts[0]
     if (!account) return { kind: "no-accounts", connection }
-    const [report, searchTerms, locations] = await Promise.all([
+    // Calls cover the same stretch as the period (all time: the last year).
+    const callDays = Math.min(365, Math.round((Date.parse(period.end) - Date.parse(period.start)) / 86_400_000) + 1)
+    const [report, searchTerms, locations, calls] = await Promise.all([
       getReport(connection, account, period),
       getSearchTerms(connection, account, period).then(
         (terms) => ({ terms }),
@@ -108,6 +111,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
         }),
       ),
       tryGetLocations(connection, account, period),
+      tryGetCalls(connection, account, callDays),
     ])
     const { totals } = report
     const costPerConversion = totals.conversions ? totals.cost / totals.conversions : 0
@@ -125,6 +129,8 @@ async function load(user: Session, period: Period): Promise<Loaded> {
       issues.unshift(...found.filter((i) => i.severity === "high"))
       issues.push(...found.filter((i) => i.severity !== "high"))
     }
+    const callIssue = "calls" in calls ? missedCallIssue(calls.calls, callDays) : null
+    if (callIssue) issues.splice(callIssue.severity === "high" ? 0 : issues.length, 0, callIssue)
     return { kind: "report", connection, report, searchTerms, wasted, locations, issues }
   } catch (error) {
     if (error instanceof AdsApiError) return { kind: "error", message: error.message, code: error.code }

@@ -22,6 +22,7 @@ export const toolSpecs: ToolSpec[] = [
       "For locations: user_location_view with segments.geo_target_city and user_location_view.targeting_location (false = outside the target area), " +
       "campaign_criterion WHERE campaign_criterion.type = 'LOCATION' for targeting, campaign.geo_target_type_setting.positive_geo_target_type for Presence vs Presence or interest, " +
       "and geo_target_constant (resource_name IN (...)) to turn geoTargetConstants/123 into place names. " +
+      "For phone calls: call_view (start_call_date_time, call_duration_seconds, call_status MISSED or RECEIVED, caller_area_code, campaign.name); filter with call_view.start_call_date_time >= 'YYYY-MM-DD 00:00:00' instead of segments.date. " +
       "Money fields end in _micros: divide by 1,000,000 to get the account currency. " +
       "Always filter by date with segments.date BETWEEN 'YYYY-MM-DD' AND 'YYYY-MM-DD' (or DURING LAST_7_DAYS / LAST_30_DAYS / THIS_MONTH / LAST_MONTH), " +
       "and add ORDER BY and a LIMIT (at most 200). JSON field names come back in camelCase, e.g. metrics.costMicros.",
@@ -37,8 +38,8 @@ export const toolSpecs: ToolSpec[] = [
   {
     name: "list_leads",
     description:
-      "List the leads collected in the last N days, newest first: from this app's QR codes (yard signs, postcards, flyers) and from the WordPress website's forms. " +
-      "Each lead has a date, name, phone, email, property address, notes and its source (the QR code placement, or the website form). " +
+      "List the leads collected in the last N days, newest first, from the WordPress website's forms (older ones may come from QR codes). " +
+      "Each lead has a date, name, phone, email, property address, notes and its source (the website form, or a QR code placement). " +
       "These are separate from Google Ads conversions.",
     parameters: {
       type: "object",

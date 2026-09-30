@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "One Marketing Command Center",
-  description: "Google Ads results and QR code leads in one place.",
+  description: "Google Ads results, website leads and phone calls in one place.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
