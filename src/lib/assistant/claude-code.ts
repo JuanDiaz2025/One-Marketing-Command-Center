@@ -10,6 +10,7 @@ import { homedir, tmpdir } from "node:os"
 import path from "node:path"
 
 import { AssistantError, INSTRUCTIONS, type AskInput } from "@/lib/assistant/shared"
+import { buildSnapshot } from "@/lib/assistant/snapshot"
 
 const TIMEOUT_MS = 4 * 60_000
 const TOOLS = ["mcp__omcc__google_ads_query", "mcp__omcc__list_leads"]
@@ -95,33 +96,83 @@ function run(args: string[], stdin: string, cwd: string, env: NodeJS.ProcessEnv)
   })
 }
 
+// Settings the tool server needs to start on Windows even if Claude Code passes it only the
+// environment written in its config (Node needs SystemRoot, TEMP and friends). No secrets: the
+// tool server reads those from .env.local itself.
+const PASS_THROUGH = ["PATH", "Path", "SystemRoot", "SYSTEMROOT", "windir", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOME", "HOMEDRIVE", "HOMEPATH", "ComSpec", "PATHEXT"]
+
+function toolServer(root: string, userId: string | undefined, customerId: string | undefined) {
+  const env: Record<string, string> = {}
+  for (const name of PASS_THROUGH) if (process.env[name]) env[name] = process.env[name]!
+  Object.assign(env, { OMCC_ROOT: root, OMCC_USER: userId ?? "", OMCC_CUSTOMER_ID: customerId ?? "" })
+  return {
+    command: process.execPath,
+    args: [path.join(root, "scripts", "run-ts.mjs"), path.join(root, "scripts", "assistant-mcp.ts")],
+    env,
+  }
+}
+
+// Starts the tool server the way Claude Code will and checks it answers with its tools, so a
+// broken one is noticed before asking Claude (and the reason can be shown). A working check is
+// remembered for ten minutes.
+let toolsOkUntil = 0
+function checkToolServer(server: ReturnType<typeof toolServer>, cwd: string): Promise<string | null> {
+  if (Date.now() < toolsOkUntil) return Promise.resolve(null)
+  return new Promise((resolve) => {
+    let out = ""
+    let err = ""
+    let done = false
+    const child = spawn(server.command, server.args, { cwd, env: { ...process.env, ...server.env }, windowsHide: true })
+    const finish = (problem: string | null) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      child.kill()
+      if (!problem) toolsOkUntil = Date.now() + 10 * 60_000
+      resolve(problem)
+    }
+    const timer = setTimeout(() => finish(`the tool server didn't answer within 45 seconds. ${detail(err)}`), 45_000)
+    child.on("error", (e) => finish(`the tool server couldn't start: ${e.message}`))
+    child.on("exit", (code) => finish(`the tool server stopped (exit code ${code}): ${detail(err || out) || toolsError()}`))
+    child.stderr.on("data", (d) => (err += d))
+    child.stdout.on("data", (d) => {
+      out += d
+      if (/"name":"list_leads"/.test(out)) finish(null)
+    })
+    child.stdin.on("error", () => {})
+    child.stdin.write(
+      `${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "check", version: "1" } } })}\n` +
+        `${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n` +
+        `${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" })}\n`,
+    )
+  })
+}
+
+// Keeps the last problem with the chat's tools in .data/chat-problem.log, for troubleshooting.
+async function noteProblem(root: string, lines: string[]) {
+  await writeFile(path.join(root, ".data", "chat-problem.log"), `${new Date().toISOString()}\n${lines.join("\n")}\n`).catch(() => {})
+}
+
+// The MCP lines of Claude Code's debug log: why it couldn't connect to the tool server.
+function mcpLog(file: string) {
+  try {
+    return readFileSync(file, "utf8")
+      .split("\n")
+      .filter((l) => /MCP server "omcc"|\[MCP\]/.test(l))
+      .slice(-12)
+  } catch {
+    return []
+  }
+}
+
 export async function askClaudeCode({ turns, situation, tools, userId }: AskInput): Promise<string> {
   // An empty folder to run in, so Claude Code sees no project files, plus its settings files.
   const dir = await mkdtemp(path.join(tmpdir(), "omcc-chat-"))
   try {
     const root = process.cwd()
+    const server = toolServer(root, userId, tools.account?.customerId)
     const mcp = path.join(dir, "mcp.json")
-    await writeFile(
-      mcp,
-      JSON.stringify({
-        mcpServers: {
-          omcc: {
-            command: process.execPath,
-            args: [path.join(root, "scripts", "run-ts.mjs"), path.join(root, "scripts", "assistant-mcp.ts")],
-            env: {
-              OMCC_ROOT: root,
-              OMCC_USER: userId ?? "",
-              OMCC_CUSTOMER_ID: tools.account?.customerId ?? "",
-            },
-          },
-        },
-      }),
-    )
-    const system = path.join(dir, "system.txt")
-    await writeFile(
-      system,
-      `${INSTRUCTIONS}\n\n${situation}\n\nUse the google_ads_query and list_leads tools for real numbers. Answer in Markdown.\n\nIf the google_ads_query and list_leads tools are not available to you, reply with exactly ${NO_TOOLS} and nothing else.`,
-    )
+    await writeFile(mcp, JSON.stringify({ mcpServers: { omcc: server } }))
 
     // Earlier turns go in as text; the last one is the question.
     const earlier = turns.slice(0, -1)
@@ -133,77 +184,114 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
     ].join("")
 
     // The tool server compiles the app's code when it starts, which can take a while on a slow
-    // computer; give it a minute instead of Claude Code's default.
-    const env = { ...claudeEnv(), MCP_TIMEOUT: process.env.MCP_TIMEOUT || "60000" }
-
-    const args = [
+    // computer; give it a minute instead of Claude Code's default, and wait for it before answering.
+    const env = {
+      ...claudeEnv(),
+      MCP_TIMEOUT: process.env.MCP_TIMEOUT || "60000",
+      MCP_CONNECT_TIMEOUT_MS: process.env.MCP_CONNECT_TIMEOUT_MS || "60000",
+      MCP_CONNECTION_NONBLOCKING: "0",
+    }
+    const common = [
       "-p",
       "--output-format",
       "json",
       "--tools",
       "",
-      "--mcp-config",
-      mcp,
-      "--strict-mcp-config",
-      "--allowedTools",
-      TOOLS.join(","),
-      "--system-prompt-file",
-      system,
       "--no-session-persistence",
       ...(process.env.CLAUDE_CODE_MODEL?.trim() ? ["--model", process.env.CLAUDE_CODE_MODEL.trim()] : []),
     ]
 
-    let result: Awaited<ReturnType<typeof run>>
+    // Plan A: Claude looks things up itself with the tool server. Plan B, when the tool server
+    // doesn't work here: the app looks up the key numbers and hands them over with the question.
+    const problem = await checkToolServer(server, dir)
+    let answer: string | null = null
+    if (!problem) {
+      const system = path.join(dir, "system.txt")
+      await writeFile(
+        system,
+        `${INSTRUCTIONS}\n\n${situation}\n\nUse the google_ads_query and list_leads tools for real numbers. Answer in Markdown.\n\nIf the google_ads_query and list_leads tools are not available to you, reply with exactly ${NO_TOOLS} and nothing else.`,
+      )
+      const debug = path.join(dir, "claude-debug.log")
+      const text = await runClaude(
+        [...common, "--mcp-config", mcp, "--strict-mcp-config", "--allowedTools", TOOLS.join(","), "--system-prompt-file", system, "--debug-file", debug],
+        prompt,
+        dir,
+        env,
+      )
+      // Without the tools Claude sometimes writes its tool calls out as text (<invoke name=...>)
+      // instead of saying so; treat that the same way.
+      if (text.includes(NO_TOOLS) || /<\/?(function_calls|invoke)\b|<parameter name=/.test(text)) {
+        console.error("Claude Code didn't get the chat's tools; answering from a snapshot instead.")
+        await noteProblem(root, ["Claude Code answered without the chat's tools.", ...mcpLog(debug)])
+      } else {
+        answer = text
+      }
+    } else {
+      console.error("The chat's tool server doesn't work here; answering from a snapshot instead:", problem)
+      await noteProblem(root, [`Tool server check failed: ${problem}`])
+    }
+    if (answer) return answer
+
+    let snapshot: string
     try {
-      result = await run(args, prompt, dir, env)
+      snapshot = await buildSnapshot(tools)
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new AssistantError(NOT_INSTALLED, 503, SETUP)
-      throw error
-    }
-
-    if (result.timedOut) {
-      throw new AssistantError("That question took Claude Code too long. Try asking something narrower.", 504)
-    }
-
-    let parsed: { result?: string; is_error?: boolean; subtype?: string } | null = null
-    try {
-      parsed = JSON.parse(result.stdout.trim().split("\n").at(-1) ?? "")
-    } catch {
-      parsed = null
-    }
-    const text = parsed?.result?.trim() ?? ""
-    const problem = `${text}\n${result.stderr}`
-    if (/not recognized as an internal or external command|command not found/i.test(result.stderr)) {
-      throw new AssistantError(NOT_INSTALLED, 503, SETUP)
-    }
-    if (/\/login|not logged in|invalid api key|authentication|oauth token/i.test(problem) && (parsed?.is_error || !text)) {
-      throw new AssistantError(NOT_SIGNED_IN, 503, SETUP)
-    }
-    if (/usage limit|rate limit|limit reached/i.test(problem) && (parsed?.is_error || !text)) {
-      throw new AssistantError("Your Claude plan's usage limit is reached for now. Try again later.", 429)
-    }
-    // Without the tools Claude sometimes writes its tool calls out as text (<invoke name=...>)
-    // instead of saying so; treat that the same way.
-    if (text.includes(NO_TOOLS) || /<\/?(function_calls|invoke)\b|<parameter name=/.test(text)) {
-      const why = toolsError()
-      console.error("Claude Code couldn't use the chat's tools:", why || "(no error saved)")
       throw new AssistantError(
-        `Claude answered, but couldn't open your Google Ads and leads data${why ? `: ${why}` : ". Close the app's black window, run start.bat again, and ask again."}`,
+        `Couldn't look up your Google Ads data for Claude: ${error instanceof Error ? detail(error.message) : "unknown error"}`,
         502,
       )
     }
-    if (!parsed || parsed.is_error || !text) {
-      console.error("Claude Code chat failed:", result.code, result.stderr.slice(0, 500), text.slice(0, 500), result.stdout.slice(0, 500))
-      const why = detail(text || result.stderr || result.stdout)
-      throw new AssistantError(
-        why ? `Claude Code couldn't answer. What it said: ${why}` : "Claude Code didn't answer anything. Try again.",
-        502,
-      )
-    }
-    return text
+    const system = path.join(dir, "system-snapshot.txt")
+    await writeFile(
+      system,
+      `${INSTRUCTIONS}\n\n${situation}\n\nYou have no tools this time. Instead, here is the account's data, looked up just now (JSON; money in the account currency; the last 30 days unless it says otherwise). Answer only from it, and if the question needs something that isn't in it, say what's missing. Answer in Markdown.\n\n${snapshot}`,
+    )
+    return await runClaude([...common, "--system-prompt-file", system], prompt, dir, env)
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
+}
+
+// Runs one `claude -p` question and returns the answer text, or throws a message for the chat.
+async function runClaude(args: string[], prompt: string, dir: string, env: NodeJS.ProcessEnv): Promise<string> {
+  let result: Awaited<ReturnType<typeof run>>
+  try {
+    result = await run(args, prompt, dir, env)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new AssistantError(NOT_INSTALLED, 503, SETUP)
+    throw error
+  }
+
+  if (result.timedOut) {
+    throw new AssistantError("That question took Claude Code too long. Try asking something narrower.", 504)
+  }
+
+  let parsed: { result?: string; is_error?: boolean; subtype?: string } | null = null
+  try {
+    parsed = JSON.parse(result.stdout.trim().split("\n").at(-1) ?? "")
+  } catch {
+    parsed = null
+  }
+  const text = parsed?.result?.trim() ?? ""
+  const problem = `${text}\n${result.stderr}`
+  if (/not recognized as an internal or external command|command not found/i.test(result.stderr)) {
+    throw new AssistantError(NOT_INSTALLED, 503, SETUP)
+  }
+  if (/\/login|not logged in|invalid api key|authentication|oauth token/i.test(problem) && (parsed?.is_error || !text)) {
+    throw new AssistantError(NOT_SIGNED_IN, 503, SETUP)
+  }
+  if (/usage limit|rate limit|limit reached/i.test(problem) && (parsed?.is_error || !text)) {
+    throw new AssistantError("Your Claude plan's usage limit is reached for now. Try again later.", 429)
+  }
+  if (!parsed || parsed.is_error || !text) {
+    console.error("Claude Code chat failed:", result.code, result.stderr.slice(0, 500), text.slice(0, 500), result.stdout.slice(0, 500))
+    const why = detail(text || result.stderr || result.stdout)
+    throw new AssistantError(
+      why ? `Claude Code couldn't answer. What it said: ${why}` : "Claude Code didn't answer anything. Try again.",
+      502,
+    )
+  }
+  return text
 }
 
 // Whether Claude Code is installed and signed in, for the chat's "Sign in with Claude" button.

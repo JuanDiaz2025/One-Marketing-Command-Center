@@ -16,14 +16,24 @@ if errorlevel 1 (
   exit /b 1
 )
 
-if not exist node_modules (
-  echo Installing One Marketing Command Center. This takes a minute or two the first time...
+REM Install the first time, and again whenever an update changed the app's packages
+REM (package-lock.json differs from the copy saved after the last install).
+set "NEED_INSTALL="
+if not exist node_modules set "NEED_INSTALL=1"
+if not exist node_modules\.omcc-installed-lock.json set "NEED_INSTALL=1"
+if not defined NEED_INSTALL (
+  fc /b package-lock.json node_modules\.omcc-installed-lock.json >nul 2>nul
+  if errorlevel 1 set "NEED_INSTALL=1"
+)
+if defined NEED_INSTALL (
+  echo Installing One Marketing Command Center. This takes a minute or two...
   call npm install
   if errorlevel 1 (
     echo Install failed. Take a screenshot of this window and send it over.
     pause
     exit /b 1
   )
+  copy /y package-lock.json node_modules\.omcc-installed-lock.json >nul
 )
 
 if not exist .env.local (

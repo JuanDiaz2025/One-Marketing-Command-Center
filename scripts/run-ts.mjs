@@ -3,8 +3,6 @@ import { mkdirSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
-import { createJiti } from "jiti"
-
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const [script, ...args] = process.argv.slice(2)
 process.argv = [process.argv[0], script, ...args]
@@ -13,8 +11,10 @@ const target = path.resolve(script)
 // found relative to the working folder, so move to the app folder before anything loads.
 if (process.env.OMCC_ROOT) process.chdir(process.env.OMCC_ROOT)
 
-const jiti = createJiti(import.meta.url, { alias: { "@": path.join(root, "src") } })
 try {
+  // Loaded here rather than at the top, so a missing package is reported below too.
+  const { createJiti } = await import("jiti")
+  const jiti = createJiti(import.meta.url, { alias: { "@": path.join(root, "src") } })
   await jiti.import(target)
 } catch (error) {
   const message = error instanceof Error ? error.stack || error.message : String(error)
