@@ -351,15 +351,6 @@ function Report({
 
   return (
     <>
-      <AtAGlance
-        report={report}
-        previous={previous}
-        issues={issues}
-        wastedTotal={wasted.total}
-        calls={calls}
-        periodLabel={describePeriod(period)}
-      />
-
       <div className="flex flex-col gap-4">
         {connection.accounts.length > 1 && (
           <form action={selectAccountAction} className="flex flex-wrap items-center gap-2">
@@ -395,7 +386,23 @@ function Report({
       <DashboardTabs
         tabs={[
           {
+            id: "overview",
+            label: "Overview",
+            icon: "overview",
+            content: (
+            <AtAGlance
+              report={report}
+              previous={previous}
+              issues={issues}
+              wastedTotal={wasted.total}
+              calls={calls}
+              periodLabel={describePeriod(period)}
+            />
+            ),
+          },
+          {
             id: "health",
+            icon: "problems",
             label: "Problems",
             count: issues.length,
             tone: toneOf(issues),
@@ -403,6 +410,7 @@ function Report({
           },
           {
             id: "wasted",
+            icon: "wasted",
             label: "Searches to remove",
             count: wasted.wasted.length,
             tone: toneOf(issues.filter((i) => i.id === "wasted-searches")),
@@ -416,6 +424,7 @@ function Report({
           },
           {
             id: "locations",
+            icon: "locations",
             label: "Locations",
             count: locationProblems.length,
             tone: toneOf(locationProblems),
@@ -423,6 +432,7 @@ function Report({
           },
           {
             id: "campaigns",
+            icon: "campaigns",
             label: "Campaigns",
             count: campaignsWithoutLeads,
             tone: campaignsWithoutLeads ? "warn" : undefined,
@@ -505,6 +515,7 @@ function Report({
           },
           {
             id: "keywords",
+            icon: "keywords",
             label: "Keywords",
             count: kwProblems,
             tone: kwProblems ? "warn" : undefined,
@@ -512,15 +523,17 @@ function Report({
           },
           {
             id: "ads",
+            icon: "ads",
             label: "Ads",
             count: adIssues,
             tone: adIssues ? "bad" : undefined,
             content: <AdsPanel part={insights.ads} money={money} />,
           },
-          { id: "devices", label: "Devices", content: <DevicesPanel part={insights.devices} money={money} /> },
-          { id: "times", label: "Best times", content: <TimingPanel part={insights.times} money={money} /> },
+          { id: "devices", icon: "devices", label: "Devices", content: <DevicesPanel part={insights.devices} money={money} /> },
+          { id: "times", icon: "times", label: "Best times", content: <TimingPanel part={insights.times} money={money} /> },
           {
             id: "conversions",
+            icon: "conversions",
             label: "Conversion tracking",
             count: convIssues,
             tone: convIssues ? "bad" : undefined,
@@ -528,6 +541,7 @@ function Report({
           },
           {
             id: "trends",
+            icon: "trends",
             label: "Trends",
             content: (
               <section className="grid gap-6 rounded-2xl border bg-card p-5 shadow-xs sm:p-6 lg:grid-cols-2">
