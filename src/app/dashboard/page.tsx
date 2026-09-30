@@ -15,7 +15,7 @@ import TrendChart from "@/components/dashboard/trend-chart"
 import WastedSearches from "@/components/dashboard/wasted-searches"
 import DashboardTabs from "@/components/dashboard/dashboard-tabs"
 import HealthCheck from "@/components/dashboard/health-check"
-import ProblemBanner from "@/components/dashboard/problem-banner"
+import AtAGlance from "@/components/dashboard/at-a-glance"
 import {
   AdsPanel,
   ConversionsPanel,
@@ -89,6 +89,8 @@ type Loaded =
       wasted: WastedSummary
       locations: LocationReport | { error: string }
       insights: Insights
+      previous: AdsReport | null
+      calls: { total: number; missed: number } | null
       issues: Issue[]
     }
 
@@ -114,7 +116,12 @@ async function load(user: Session, period: Period): Promise<Loaded> {
     if (!account) return { kind: "no-accounts", connection }
     // Calls cover the same stretch as the period (all time: the last year).
     const callDays = Math.min(365, Math.round((Date.parse(period.end) - Date.parse(period.start)) / 86_400_000) + 1)
-    const [report, searchTerms, locations, calls, insights] = await Promise.all([
+    // The same number of days just before, for "better or worse than before" (not for all time).
+    const days = Math.round((Date.parse(period.end) - Date.parse(period.start)) / 86_400_000) + 1
+    const shift = (iso: string, n: number) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10)
+    const before: Period | null =
+      period.preset === "all" ? null : { preset: "custom", start: shift(period.start, -days), end: shift(period.start, -1), today: period.today }
+    const [report, searchTerms, locations, calls, insights, previous] = await Promise.all([
       getReport(connection, account, period),
       getSearchTerms(connection, account, period).then(
         (terms) => ({ terms }),
@@ -125,6 +132,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
       tryGetLocations(connection, account, period),
       tryGetCalls(connection, account, callDays),
       getInsights(connection, account, period),
+      before ? getReport(connection, account, before).catch(() => null) : Promise.resolve(null),
     ])
     const { totals } = report
     const costPerConversion = totals.conversions ? totals.cost / totals.conversions : 0
@@ -144,7 +152,19 @@ async function load(user: Session, period: Period): Promise<Loaded> {
     }
     const callIssue = "calls" in calls ? missedCallIssue(calls.calls, callDays) : null
     if (callIssue) issues.splice(callIssue.severity === "high" ? 0 : issues.length, 0, callIssue)
-    return { kind: "report", connection, report, searchTerms, wasted, locations, insights, issues }
+    const callSummary = "calls" in calls ? { total: calls.calls.length, missed: calls.calls.filter((c) => c.missed).length } : null
+    return {
+      kind: "report",
+      connection,
+      report,
+      searchTerms,
+      wasted,
+      locations,
+      insights,
+      previous,
+      calls: callSummary,
+      issues,
+    }
   } catch (error) {
     if (error instanceof AdsApiError) return { kind: "error", message: error.message, code: error.code }
     console.error("Google Ads request failed:", error)
@@ -251,6 +271,8 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             wasted={loaded.wasted}
             locations={loaded.locations}
             insights={loaded.insights}
+            previous={loaded.previous}
+            calls={loaded.calls}
             issues={loaded.issues}
             connection={loaded.connection}
             period={period}
@@ -298,6 +320,8 @@ function Report({
   wasted,
   locations,
   insights,
+  previous,
+  calls,
   issues,
   connection,
   period,
@@ -307,6 +331,8 @@ function Report({
   wasted: WastedSummary
   locations: LocationReport | { error: string }
   insights: Insights
+  previous: AdsReport | null
+  calls: { total: number; missed: number } | null
   issues: Issue[]
   connection: AdsConnection
   period: Period
@@ -322,23 +348,17 @@ function Report({
   const adIssues = "rows" in insights.ads ? adProblems(insights.ads.rows) : 0
   const convIssues = "rows" in insights.conversions ? conversionProblems(insights.conversions.rows) : 0
   const campaignsWithoutLeads = report.campaigns.filter((c) => c.cost > 0 && c.conversions < 0.5).length
-  const kpis = [
-    { label: "Spend", value: money(totals.cost), note: `${formatNumber(totals.impressions)} impressions` },
-    {
-      label: "Clicks",
-      value: formatNumber(totals.clicks),
-      note: `${formatPercent(totals.impressions ? totals.clicks / totals.impressions : 0)} click rate`,
-    },
-    {
-      label: "Conversions",
-      value: formatNumber(Math.round(totals.conversions * 10) / 10),
-      note: totals.conversions ? `${money(totals.cost / totals.conversions, true)} each` : "none yet",
-    },
-  ]
 
   return (
     <>
-      <ProblemBanner issues={issues} />
+      <AtAGlance
+        report={report}
+        previous={previous}
+        issues={issues}
+        wastedTotal={wasted.total}
+        calls={calls}
+        periodLabel={describePeriod(period)}
+      />
 
       <div className="flex flex-col gap-4">
         {connection.accounts.length > 1 && (
@@ -371,16 +391,6 @@ function Report({
           </p>
         )}
       </div>
-
-      <section aria-label="Summary" className="grid gap-4 sm:grid-cols-3">
-        {kpis.map((kpi) => (
-          <div key={kpi.label} className="rounded-2xl border bg-card p-5 shadow-xs">
-            <p className="text-sm text-muted-foreground">{kpi.label}</p>
-            <p className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">{kpi.value}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{kpi.note}</p>
-          </div>
-        ))}
-      </section>
 
       <DashboardTabs
         tabs={[
