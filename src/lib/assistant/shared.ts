@@ -2,12 +2,14 @@
 // chat route turns into a message for the person asking.
 import type { ToolContext } from "@/lib/assistant/tools"
 
-// Which provider answers: ASSISTANT_PROVIDER picks one when both keys are set; otherwise whichever
-// key is filled in, OpenAI first.
-export function assistantProvider(): "openai" | "anthropic" | null {
+// Which provider answers: ASSISTANT_PROVIDER=claude-code uses the Claude Code app on this computer
+// (no key needed); otherwise it picks one when both keys are set, or whichever key is filled in,
+// OpenAI first.
+export function assistantProvider(): "openai" | "anthropic" | "claude-code" | null {
   const openai = Boolean(process.env.OPENAI_API_KEY?.trim())
   const anthropic = Boolean(process.env.ANTHROPIC_API_KEY?.trim())
   const choice = process.env.ASSISTANT_PROVIDER?.trim().toLowerCase()
+  if (choice === "claude-code") return "claude-code"
   if (choice === "anthropic" && anthropic) return "anthropic"
   if (choice === "openai" && openai) return "openai"
   return openai ? "openai" : anthropic ? "anthropic" : null
@@ -21,6 +23,8 @@ export type AskInput = {
   // Today's date, the account, who is asking, and what the page shows.
   situation: string
   tools: ToolContext
+  // The signed-in person's id, so Claude Code's tool server can open their Google Ads connection.
+  userId?: string
 }
 
 export class AssistantError extends Error {

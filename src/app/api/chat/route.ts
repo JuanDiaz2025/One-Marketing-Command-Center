@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import { askClaude } from "@/lib/assistant/claude"
+import { askClaudeCode } from "@/lib/assistant/claude-code"
 import { askOpenAI } from "@/lib/assistant/openai"
 import { AssistantError, assistantProvider } from "@/lib/assistant/shared"
 import { getSession } from "@/lib/auth/session"
@@ -54,12 +55,17 @@ export async function POST(request: Request) {
   const situation =
     (account
       ? `Today is ${today}. The selected Google Ads account is "${account.name}" (${formatCustomerId(account.customerId)}), currency ${account.currency}${account.test ? ", a test account with no real spend" : ""}. The person asking is ${session.name} (${session.email}).`
-      : `Today is ${today}. Google Ads isn't connected yet, so only QR code leads are available. The person asking is ${session.name} (${session.email}).`) +
+      : `Today is ${today}. Google Ads isn't connected yet, so only website leads are available. The person asking is ${session.name} (${session.email}).`) +
     (parsed.data.context ? ` ${parsed.data.context} Use that period unless the question names another.` : "")
 
-  const input = { turns: parsed.data.messages, situation, tools: { connection, account } }
+  const input = { turns: parsed.data.messages, situation, tools: { connection, account }, userId: session.sub }
   try {
-    const reply = provider === "openai" ? await askOpenAI(input) : await askClaude(input)
+    const reply =
+      provider === "openai"
+        ? await askOpenAI(input)
+        : provider === "claude-code"
+          ? await askClaudeCode(input)
+          : await askClaude(input)
     return Response.json({ reply })
   } catch (error) {
     if (error instanceof AssistantError) return fail(error.message, error.status)

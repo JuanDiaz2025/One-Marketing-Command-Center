@@ -3,6 +3,7 @@
 import { AdsApiError, runQuery } from "@/lib/google/ads"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
 import { leadSource } from "@/lib/leads/source"
+import { leadChannel } from "@/lib/leads/tracking"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 
 // Written once and handed to whichever AI provider is set up (see claude.ts and openai.ts).
@@ -99,6 +100,8 @@ export async function runTool(
               propertyAddress: l.propertyAddress,
               notes: l.notes,
               source: leadSource(l, placements),
+              channel: leadChannel(l),
+              tracking: l.tracking,
             })),
         ),
       }
