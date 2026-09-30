@@ -16,6 +16,16 @@ import WastedSearches from "@/components/dashboard/wasted-searches"
 import DashboardTabs from "@/components/dashboard/dashboard-tabs"
 import HealthCheck from "@/components/dashboard/health-check"
 import ProblemBanner from "@/components/dashboard/problem-banner"
+import {
+  AdsPanel,
+  ConversionsPanel,
+  DevicesPanel,
+  KeywordsPanel,
+  TimingPanel,
+  adProblems,
+  conversionProblems,
+  keywordProblems,
+} from "@/components/dashboard/insights"
 import Locations from "@/components/dashboard/locations"
 import Paged from "@/components/ui/paged"
 import GoogleAdsMark from "@/components/google-ads-mark"
@@ -38,6 +48,7 @@ import { getHealthIssues, wastedSearchIssue, type Issue } from "@/lib/google/hea
 import { describePeriod, periodQuery, resolvePeriod, type Period } from "@/lib/google/period"
 import { firstSeen } from "@/lib/google/seen-searches"
 import { missedCallIssue, tryGetCalls } from "@/lib/google/calls"
+import { getInsights, type Insights } from "@/lib/google/insights"
 import { locationIssues, tryGetLocations, type LocationReport } from "@/lib/google/locations"
 import { findWastedSearches, searchKey, type WastedSummary } from "@/lib/google/wasted-searches"
 import { cn } from "@/lib/utils"
@@ -77,6 +88,7 @@ type Loaded =
       searchTerms: { terms: SearchTerm[] } | { error: string }
       wasted: WastedSummary
       locations: LocationReport | { error: string }
+      insights: Insights
       issues: Issue[]
     }
 
@@ -102,7 +114,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
     if (!account) return { kind: "no-accounts", connection }
     // Calls cover the same stretch as the period (all time: the last year).
     const callDays = Math.min(365, Math.round((Date.parse(period.end) - Date.parse(period.start)) / 86_400_000) + 1)
-    const [report, searchTerms, locations, calls] = await Promise.all([
+    const [report, searchTerms, locations, calls, insights] = await Promise.all([
       getReport(connection, account, period),
       getSearchTerms(connection, account, period).then(
         (terms) => ({ terms }),
@@ -112,6 +124,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
       ),
       tryGetLocations(connection, account, period),
       tryGetCalls(connection, account, callDays),
+      getInsights(connection, account, period),
     ])
     const { totals } = report
     const costPerConversion = totals.conversions ? totals.cost / totals.conversions : 0
@@ -131,7 +144,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
     }
     const callIssue = "calls" in calls ? missedCallIssue(calls.calls, callDays) : null
     if (callIssue) issues.splice(callIssue.severity === "high" ? 0 : issues.length, 0, callIssue)
-    return { kind: "report", connection, report, searchTerms, wasted, locations, issues }
+    return { kind: "report", connection, report, searchTerms, wasted, locations, insights, issues }
   } catch (error) {
     if (error instanceof AdsApiError) return { kind: "error", message: error.message, code: error.code }
     console.error("Google Ads request failed:", error)
@@ -237,6 +250,7 @@ export default async function Dashboard({ searchParams }: PageProps<"/dashboard"
             searchTerms={loaded.searchTerms}
             wasted={loaded.wasted}
             locations={loaded.locations}
+            insights={loaded.insights}
             issues={loaded.issues}
             connection={loaded.connection}
             period={period}
@@ -283,6 +297,7 @@ function Report({
   searchTerms,
   wasted,
   locations,
+  insights,
   issues,
   connection,
   period,
@@ -291,6 +306,7 @@ function Report({
   searchTerms: { terms: SearchTerm[] } | { error: string }
   wasted: WastedSummary
   locations: LocationReport | { error: string }
+  insights: Insights
   issues: Issue[]
   connection: AdsConnection
   period: Period
@@ -299,6 +315,12 @@ function Report({
   const money = (n: number, cents = false) => formatMoney(n, account.currency, cents)
   const chart = groupForChart(report.daily)
   const locationProblems = issues.filter((i) => LOCATION_ISSUES.has(i.id))
+  const costPerLead = totals.conversions ? totals.cost / totals.conversions : 0
+  const shareByCampaign = new Map("rows" in insights.share ? insights.share.rows.map((r) => [r.campaign, r]) : [])
+  const pct = (v: number | null | undefined) => (v === null || v === undefined ? "–" : v <= 0.1 && v > 0 ? "< 10%" : formatPercent(v, 0))
+  const kwProblems = "rows" in insights.keywords ? keywordProblems(insights.keywords.rows, costPerLead) : 0
+  const adIssues = "rows" in insights.ads ? adProblems(insights.ads.rows) : 0
+  const convIssues = "rows" in insights.conversions ? conversionProblems(insights.conversions.rows) : 0
   const campaignsWithoutLeads = report.campaigns.filter((c) => c.cost > 0 && c.conversions < 0.5).length
   const kpis = [
     { label: "Spend", value: money(totals.cost), note: `${formatNumber(totals.impressions)} impressions` },
@@ -401,7 +423,7 @@ function Report({
                   <Paged
                     noun="campaigns"
                     table={{
-                      className: "w-full min-w-[720px] text-sm",
+                      className: "w-full min-w-[1000px] text-sm",
                       bodyClassName: "divide-y tabular-nums",
                       head: (
                         <thead className="text-left text-xs text-muted-foreground">
@@ -412,7 +434,12 @@ function Report({
                             <th className="px-3 py-3 text-right font-medium">Clicks</th>
                             <th className="px-3 py-3 text-right font-medium">Click rate</th>
                             <th className="px-3 py-3 text-right font-medium">Conv.</th>
-                            <th className="px-5 py-3 text-right font-medium sm:px-6">Cost / conv.</th>
+                            <th className="px-3 py-3 text-right font-medium">Cost / conv.</th>
+                            <th className="px-3 py-3 text-right font-medium" title="How often your ads showed when they could have (search campaigns)">
+                              Impr. share
+                            </th>
+                            <th className="px-3 py-3 text-right font-medium">Lost to budget</th>
+                            <th className="px-5 py-3 text-right font-medium sm:px-6">Lost to rank</th>
                           </tr>
                         </thead>
                       ),
@@ -442,9 +469,19 @@ function Report({
                         <td className="px-3 py-3 text-right">
                           {formatNumber(Math.round(c.conversions * 10) / 10)}
                         </td>
-                        <td className="px-5 py-3 text-right sm:px-6">
+                        <td className="px-3 py-3 text-right">
                           {c.conversions ? money(c.cost / c.conversions, true) : "–"}
                         </td>
+                        <td className="px-3 py-3 text-right">{pct(shareByCampaign.get(c.name)?.impressionShare)}</td>
+                        <td
+                          className={cn(
+                            "px-3 py-3 text-right",
+                            (shareByCampaign.get(c.name)?.lostToBudget ?? 0) >= 0.2 && "font-semibold text-destructive",
+                          )}
+                        >
+                          {pct(shareByCampaign.get(c.name)?.lostToBudget)}
+                        </td>
+                        <td className="px-5 py-3 text-right sm:px-6">{pct(shareByCampaign.get(c.name)?.lostToRank)}</td>
                       </tr>
                     ))}
                   />
@@ -455,6 +492,29 @@ function Report({
                 )}
               </section>
             ),
+          },
+          {
+            id: "keywords",
+            label: "Keywords",
+            count: kwProblems,
+            tone: kwProblems ? "warn" : undefined,
+            content: <KeywordsPanel part={insights.keywords} money={money} costPerLead={costPerLead} />,
+          },
+          {
+            id: "ads",
+            label: "Ads",
+            count: adIssues,
+            tone: adIssues ? "bad" : undefined,
+            content: <AdsPanel part={insights.ads} money={money} />,
+          },
+          { id: "devices", label: "Devices", content: <DevicesPanel part={insights.devices} money={money} /> },
+          { id: "times", label: "Best times", content: <TimingPanel part={insights.times} money={money} /> },
+          {
+            id: "conversions",
+            label: "Conversion tracking",
+            count: convIssues,
+            tone: convIssues ? "bad" : undefined,
+            content: <ConversionsPanel part={insights.conversions} />,
           },
           {
             id: "trends",
