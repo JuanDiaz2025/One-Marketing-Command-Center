@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Download } from "lucide-react"
+import { Download, Settings2 } from "lucide-react"
 
 import AppHeader from "@/components/app-header"
 import AssistantLauncher from "@/components/dashboard/assistant-launcher"
@@ -11,6 +11,7 @@ import ConversionTargets, { type TargetsView } from "@/components/leads/conversi
 import PhoneCalls from "@/components/leads/phone-calls"
 import RulesEditor from "@/components/leads/rules-editor"
 import ScoringSettings from "@/components/leads/scoring-settings"
+import Disclosure from "@/components/ui/disclosure"
 import WebhookSetup from "@/components/leads/webhook-setup"
 import { formatNumber } from "@/components/dashboard/format"
 import { buttonVariants } from "@/components/ui/button"
@@ -22,6 +23,7 @@ import { tryGetCalls } from "@/lib/google/calls"
 import { conversionTargets, sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncWordPress } from "@/lib/leads/wordpress"
 import { leadSource } from "@/lib/leads/source"
+import type { LeadRule } from "@/lib/leads/rules"
 import { getRules } from "@/lib/leads/rules-store"
 import { getScoringSettings } from "@/lib/leads/scoring"
 import { listLeads, listQrCodes, scoreUnscored } from "@/lib/leads/store"
@@ -83,6 +85,16 @@ async function loadCalls(sub: string) {
   } catch {
     return { error: "Couldn't reach Google Ads for calls." }
   }
+}
+
+// One line for the folded automation settings: what's running, in plain words.
+function automationSummary(rules: LeadRule[], targets: TargetsView | null, on: boolean) {
+  if (!on) return "New leads aren't sent to Google Ads automatically. You set every status yourself."
+  const active = rules.filter((r) => r.enabled && r.when.length)
+  const parts = active.slice(0, 3).map((r) => r.name)
+  const more = active.length > 3 ? ` and ${active.length - 3} more` : ""
+  const where = targets?.interested ? ` · sending to “${targets.interested.name}”${targets.closed ? ` and “${targets.closed.name}”` : ""}` : ""
+  return `${active.length ? `${parts.join(" · ")}${more}` : "No rules on"}${where}`
 }
 
 // For the rules editor's "would have set N of your last leads": the last 90 days, at most 300.
@@ -236,14 +248,27 @@ export default async function LeadsPage() {
           {leads.length ? (
             <>
               <p className="mt-1 text-sm text-muted-foreground">
-                Set a lead&apos;s <strong>Status</strong> as you work it. <strong>Interested</strong> (and Appointment, Offer made) and{" "}
-                <strong>Closed deal</strong> are sent back to Google Ads as conversions, so Google learns which clicks bring real
-                sellers. They&apos;re matched by the lead&apos;s Google click ID, or by their email and phone, which are scrambled
-                first. Google never sees them in plain text.
+                Every lead is scored and good ones are sent to Google Ads automatically. Set a lead&apos;s <strong>Status</strong> as you
+                work it: <strong>Interested</strong> and <strong>Closed deal</strong> are sent to Google Ads too.
               </p>
-              <ScoringSettings autoStatus={scoring.autoStatus} />
-              <RulesEditor initial={rules} recent={recent} channels={channels} enabled={scoring.autoStatus} />
-              {targets && <ConversionTargets view={targets} />}
+              {/* The automation runs by itself; its settings stay folded away unless you open them. */}
+              <Disclosure className="group/auto mt-4 rounded-xl border bg-muted/20" initialOpen={false}>
+                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm">
+                  <Settings2 className="size-4 text-muted-foreground" />
+                  <span className="font-medium">Automation settings</span>
+                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", scoring.autoStatus ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground")}>
+                    {scoring.autoStatus ? "Running automatically" : "Off"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-muted-foreground">{automationSummary(rules, targets, scoring.autoStatus)}</span>
+                  <span className="text-xs text-primary group-open/auto:hidden">Show</span>
+                  <span className="hidden text-xs text-primary group-open/auto:inline">Hide</span>
+                </summary>
+                <div className="border-t px-4 pb-4">
+                  <ScoringSettings autoStatus={scoring.autoStatus} />
+                  <RulesEditor initial={rules} recent={recent} channels={channels} enabled={scoring.autoStatus} />
+                  {targets && <ConversionTargets view={targets} />}
+                </div>
+              </Disclosure>
               <div className="mt-4">
                 <LeadsTable rows={leads.map((l) => toRow(l, placements))} />
               </div>
