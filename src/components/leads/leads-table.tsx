@@ -37,6 +37,55 @@ export type LeadRow = {
 
 const PAGE = 25
 
+// The date choices above the table. Days are counted in this computer's time zone.
+const ranges = [
+  { id: "all", label: "All time" },
+  { id: "today", label: "Today" },
+  { id: "yesterday", label: "Yesterday" },
+  { id: "7", label: "Last 7 days" },
+  { id: "30", label: "Last 30 days" },
+  { id: "90", label: "Last 90 days" },
+  { id: "month", label: "This month" },
+  { id: "lastmonth", label: "Last month" },
+  { id: "custom", label: "Pick dates…" },
+] as const
+type RangeId = (typeof ranges)[number]["id"]
+
+const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
+const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
+const fromInput = (v: string) => {
+  const [y, m, d] = v.split("-").map(Number)
+  return y && m && d ? new Date(y, m - 1, d) : null
+}
+const toInput = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+
+// [from, to) for a choice, or null for all time.
+function rangeBounds(id: RangeId, from: string, to: string): [Date, Date] | null {
+  const today = startOfDay(new Date())
+  switch (id) {
+    case "today":
+      return [today, addDays(today, 1)]
+    case "yesterday":
+      return [addDays(today, -1), today]
+    case "7":
+    case "30":
+    case "90":
+      return [addDays(today, -(Number(id) - 1)), addDays(today, 1)]
+    case "month":
+      return [new Date(today.getFullYear(), today.getMonth(), 1), addDays(today, 1)]
+    case "lastmonth":
+      return [new Date(today.getFullYear(), today.getMonth() - 1, 1), new Date(today.getFullYear(), today.getMonth(), 1)]
+    case "custom": {
+      const a = fromInput(from)
+      const b = fromInput(to)
+      if (!a && !b) return null
+      return [a ?? new Date(0), b ? addDays(b, 1) : addDays(today, 1)]
+    }
+    default:
+      return null
+  }
+}
+
 const statusTone: Record<string, string> = {
   new: "border-border bg-card",
   interested: "border-emerald-500/50 bg-emerald-500/10 text-emerald-800",
@@ -126,6 +175,15 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
   const [channel, setChannel] = useState("")
   const [status, setStatus] = useState("")
   const [grade, setGrade] = useState("")
+  const [range, setRange] = useState<RangeId>("all")
+  const [from, setFrom] = useState(() => toInput(addDays(new Date(), -29)))
+  const [to, setTo] = useState(() => toInput(new Date()))
+  const bounds = rangeBounds(range, from, to)
+  const inRange = (r: LeadRow) => {
+    if (!bounds) return true
+    const t = Date.parse(r.receivedAt)
+    return t >= bounds[0].getTime() && t < bounds[1].getTime()
+  }
   const [page, setPage] = useState(0)
 
   const channels = useMemo(() => {
@@ -138,6 +196,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
     const q = query.trim().toLowerCase()
     return rows.filter(
       (r) =>
+        inRange(r) &&
         (!channel || r.channel === channel) &&
         (!status || r.status === status) &&
         (!grade || r.score?.grade === grade) &&
@@ -146,7 +205,8 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
             .filter(Boolean)
             .some((v) => v!.toLowerCase().includes(q))),
     )
-  }, [rows, query, channel, status, grade])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, query, channel, status, grade, range, from, to])
 
   const pages = Math.max(1, Math.ceil(shown.length / PAGE))
   const current = Math.min(page, pages - 1)
@@ -173,6 +233,53 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
             className="h-10 w-full rounded-lg border bg-card pr-3 pl-9 text-sm"
           />
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Date</span>
+          <select
+            value={range}
+            onChange={(e) => {
+              setRange(e.target.value as RangeId)
+              setPage(0)
+            }}
+            className={cn("h-10 rounded-lg border bg-card px-2 text-sm", range !== "all" && "border-primary font-medium text-primary")}
+          >
+            {ranges.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {range === "custom" && (
+          <div className="flex items-center gap-2 text-sm">
+            <label className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">From</span>
+              <input
+                type="date"
+                value={from}
+                max={to || undefined}
+                onChange={(e) => {
+                  setFrom(e.target.value)
+                  setPage(0)
+                }}
+                className="h-10 rounded-lg border bg-card px-2 text-sm"
+              />
+            </label>
+            <label className="flex items-center gap-1.5">
+              <span className="text-muted-foreground">to</span>
+              <input
+                type="date"
+                value={to}
+                min={from || undefined}
+                onChange={(e) => {
+                  setTo(e.target.value)
+                  setPage(0)
+                }}
+                className="h-10 rounded-lg border bg-card px-2 text-sm"
+              />
+            </label>
+          </div>
+        )}
         <label className="flex items-center gap-2 text-sm">
           <span className="text-muted-foreground">Channel</span>
           <select
