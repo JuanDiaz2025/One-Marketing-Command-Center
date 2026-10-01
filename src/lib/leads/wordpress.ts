@@ -15,10 +15,14 @@ type WordPressState = {
   lastError?: string
   saved?: number // how many submissions the plugin has saved in all
   plugin?: string // the plugin's version
+  events?: SiteEvent[] // what happened to the latest form submissions on the site (plugin 1.2+)
 }
 
+// One form submission as the site saw it: no names or numbers, just when, which form and the outcome.
+export type SiteEvent = { at: string; form?: string; status: string; saved: boolean }
+
 type SavedLead = { id: number; received: string; form?: string; fields?: Record<string, unknown> }
-type Answer = { ok?: boolean; code?: string; error?: string; message?: string; leads?: SavedLead[]; total?: number; plugin?: string }
+type Answer = { ok?: boolean; code?: string; error?: string; message?: string; leads?: SavedLead[]; total?: number; plugin?: string; events?: SiteEvent[] }
 
 const file = jsonFileStore<WordPressState>("wordpress.json", () => ({}))
 const SYNC_EVERY_MS = 30_000
@@ -114,9 +118,16 @@ export function syncWordPress(force = false): Promise<void> {
         const leads = info.leads ?? []
         for (const saved of leads) {
           lastId = Math.max(lastId, saved.id)
-          const fields = { ...saved.fields }
+          const { _omcc_flag: flag, ...fields } = { ...saved.fields }
           if (saved.form && !fields.form_title) fields.form_title = saved.form
           const lead = parseWebsiteLead(fields)
+          if (lead && (flag === "spam" || flag === "aborted")) {
+            const why =
+              flag === "spam"
+                ? "Contact Form 7 marked this as spam (usually reCAPTCHA), so you may not have got its email. Check it: it may be a real person."
+                : "Another WordPress plugin stopped this form before its email went out."
+            lead.notes = [`⚠ ${why}`, lead.notes].filter(Boolean).join("\n")
+          }
           if (!lead) {
             await logAttempt({ ok: false, result: "no-contact", fields: Object.keys(fields).slice(0, 30) })
             continue
@@ -136,6 +147,7 @@ export function syncWordPress(force = false): Promise<void> {
         s.lastSync = new Date().toISOString()
         s.saved = info.total
         s.plugin = info.plugin
+        if (Array.isArray(info.events)) s.events = info.events.slice(0, 20)
         delete s.lastError
       })
     } catch (error) {

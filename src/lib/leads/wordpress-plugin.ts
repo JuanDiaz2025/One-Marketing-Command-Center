@@ -9,7 +9,7 @@
 import { TRACKING_FIELDS, TRACKING_SNIPPET } from "@/lib/leads/wordpress-snippets"
 import { zipFiles } from "@/lib/zip"
 
-export const PLUGIN_VERSION = "1.1.0"
+export const PLUGIN_VERSION = "1.2.0"
 export const PLUGIN_FOLDER = "omcc-lead-saver"
 
 const phpString = (s: string) => `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`
@@ -69,10 +69,13 @@ function omcc_leads_text($value) {
 
 // Lead tracking, built in: hidden fields on every Contact Form 7 form...
 add_filter('wpcf7_form_hidden_fields', function ($fields) {
+	$form = class_exists('WPCF7_ContactForm') ? WPCF7_ContactForm::get_current() : null;
 	foreach (array(${TRACKING_FIELDS.map((f) => `'${f}'`).join(", ")}) as $name) {
-		if (!isset($fields[$name])) {
-			$fields[$name] = '';
+		// Skip a field the form already has (e.g. its own [hidden utm_source]).
+		if (isset($fields[$name]) || ($form && $form->scan_form_tags(array('name' => $name)))) {
+			continue;
 		}
+		$fields[$name] = '';
 	}
 	return $fields;
 });
@@ -89,12 +92,42 @@ OMCC_TRACKING;
 // email goes out, so a lead is kept even if the email fails).
 add_action('wpcf7_before_send_mail', 'omcc_leads_save', 1, 3);
 function omcc_leads_save($form, $abort = null, $submission = null) {
+	omcc_leads_store($form, $submission, '');
+}
+
+// Every submission's outcome, after Contact Form 7 is done with it. Ones it turned away as spam
+// (often reCAPTCHA wrongly blocking a real person) or that another plugin stopped are saved too,
+// marked, so a real lead is never silently lost. Each outcome is also noted for the Leads page.
+add_action('wpcf7_submit', 'omcc_leads_after_submit', 99, 2);
+function omcc_leads_after_submit($form, $result) {
+	$status = is_array($result) && isset($result['status']) ? (string) $result['status'] : '';
+	$saved = !empty($GLOBALS['omcc_leads_saved']);
+	if (!$saved && in_array($status, array('spam', 'aborted', 'mail_sent', 'mail_failed'), true)) {
+		$saved = omcc_leads_store($form, null, in_array($status, array('spam', 'aborted'), true) ? $status : '');
+	}
+	omcc_leads_note($form, $status, $saved);
+}
+
+function omcc_leads_note($form, $status, $saved) {
+	$events = get_option('omcc_leads_events');
+	$events = is_array($events) ? $events : array();
+	array_unshift($events, array(
+		'at' => gmdate('Y-m-d\TH:i:s\Z'),
+		'form' => is_object($form) && method_exists($form, 'title') ? substr((string) $form->title(), 0, 100) : '',
+		'status' => substr($status, 0, 40),
+		'saved' => (bool) $saved,
+	));
+	update_option('omcc_leads_events', array_slice($events, 0, 20), false);
+}
+
+// Saves one submission. $flag is '' for a normal one, or 'spam' / 'aborted'.
+function omcc_leads_store($form, $submission, $flag) {
 	try {
 		if (!$submission && class_exists('WPCF7_Submission')) {
 			$submission = WPCF7_Submission::get_instance();
 		}
 		if (!$submission || !method_exists($submission, 'get_posted_data')) {
-			return;
+			return false;
 		}
 		$fields = array();
 		foreach ((array) $submission->get_posted_data() as $name => $value) {
@@ -115,14 +148,25 @@ function omcc_leads_save($form, $abort = null, $submission = null) {
 		if ($url && !isset($fields['page_url'])) {
 			$fields['page_url'] = (string) $url;
 		}
+		if ($flag !== '') {
+			$fields['_omcc_flag'] = $flag;
+		}
+		$json = wp_json_encode($fields, JSON_INVALID_UTF8_SUBSTITUTE);
 		global $wpdb;
-		$wpdb->insert(
+		$ok = $wpdb->insert(
 			omcc_leads_table(),
-			array('received' => gmdate('Y-m-d H:i:s'), 'form' => substr($title, 0, 200), 'fields' => wp_json_encode($fields)),
+			array('received' => gmdate('Y-m-d H:i:s'), 'form' => substr($title, 0, 200), 'fields' => $json ? $json : '{}'),
 			array('%s', '%s', '%s')
 		);
+		if ($ok === false) {
+			error_log('Command Center Lead Saver could not save a lead: ' . $wpdb->last_error);
+			return false;
+		}
+		$GLOBALS['omcc_leads_saved'] = true;
+		return true;
 	} catch (\Throwable $e) {
 		error_log('Command Center Lead Saver could not save a lead: ' . $e->getMessage());
+		return false;
 	}
 }
 
@@ -167,6 +211,7 @@ function omcc_leads_list($request) {
 		'ok' => true,
 		'plugin' => OMCC_LEADS_VERSION,
 		'total' => intval($wpdb->get_var("SELECT COUNT(*) FROM $table")),
+		'events' => is_array(get_option('omcc_leads_events')) ? get_option('omcc_leads_events') : array(),
 		'leads' => $leads,
 	), 200);
 }
@@ -196,6 +241,18 @@ function omcc_leads_pick($fields, $names) {
 	return '';
 }
 
+function omcc_leads_explain($status) {
+	$map = array(
+		'mail_sent' => 'Sent normally.',
+		'mail_failed' => 'Accepted, but Contact Form 7 could not send its email (the lead is still saved).',
+		'spam' => 'Blocked as spam by Contact Form 7 (usually reCAPTCHA). Saved anyway, so you can check it.',
+		'aborted' => 'Stopped by another plugin before sending. Saved anyway.',
+		'validation_failed' => 'Not sent: a required field was missing or wrong.',
+		'acceptance_missing' => 'Not sent: the consent box wasn\'t ticked.',
+	);
+	return isset($map[$status]) ? $map[$status] : ($status !== '' ? $status : 'Unknown');
+}
+
 function omcc_leads_admin() {
 	global $wpdb;
 	$table = omcc_leads_table();
@@ -211,7 +268,7 @@ function omcc_leads_admin() {
 		: '<strong>The Command Center hasn&rsquo;t connected yet.</strong> In the app, open Leads → Website leads and type in this site&rsquo;s address.';
 	echo '</p>';
 	if ($rows) {
-		echo '<table class="widefat striped"><thead><tr><th>Received</th><th>Form</th><th>Name</th><th>Email</th><th>Phone</th></tr></thead><tbody>';
+		echo '<table class="widefat striped"><thead><tr><th>Received</th><th>Form</th><th>Name</th><th>Email</th><th>Phone</th><th>Status</th></tr></thead><tbody>';
 		foreach ($rows as $row) {
 			$f = json_decode($row['fields'], true);
 			$f = is_array($f) ? $f : array();
@@ -219,11 +276,26 @@ function omcc_leads_admin() {
 			echo '<td>' . esc_html($row['form']) . '</td>';
 			echo '<td>' . esc_html(omcc_leads_pick($f, array('your-name', 'name', 'full-name', 'first-name'))) . '</td>';
 			echo '<td>' . esc_html(omcc_leads_pick($f, array('your-email', 'email'))) . '</td>';
-			echo '<td>' . esc_html(omcc_leads_pick($f, array('your-phone', 'your-tel', 'phone', 'tel'))) . '</td></tr>';
+			echo '<td>' . esc_html(omcc_leads_pick($f, array('your-phone', 'your-tel', 'phone', 'tel'))) . '</td>';
+			echo '<td>' . (!empty($f['_omcc_flag']) ? '<strong style="color:#b32d2e">Marked as ' . esc_html($f['_omcc_flag']) . ' by Contact Form 7</strong>' : 'OK') . '</td></tr>';
 		}
 		echo '</tbody></table>';
 	} else {
 		echo '<p>No leads saved yet. Send a test from your form and refresh this page.</p>';
+	}
+	$events = get_option('omcc_leads_events');
+	echo '<h2>Recent form submissions</h2>';
+	if (is_array($events) && $events) {
+		echo '<table class="widefat striped"><thead><tr><th>When</th><th>Form</th><th>What happened</th><th>Saved here</th></tr></thead><tbody>';
+		foreach ($events as $event) {
+			echo '<tr><td>' . esc_html(get_date_from_gmt(str_replace(array('T', 'Z'), array(' ', ''), $event['at']), $format)) . '</td>';
+			echo '<td>' . esc_html($event['form']) . '</td>';
+			echo '<td>' . esc_html(omcc_leads_explain($event['status'])) . '</td>';
+			echo '<td>' . ($event['saved'] ? 'Yes' : 'No') . '</td></tr>';
+		}
+		echo '</tbody></table>';
+	} else {
+		echo '<p>No form has been sent since this version of the plugin was installed.</p>';
 	}
 	echo '</div>';
 }

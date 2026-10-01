@@ -9,7 +9,7 @@ import { buttonVariants } from "@/components/ui/button"
 import { tunnelUrl, webhookSecret } from "@/lib/leads/webhook"
 import { recentAttempts, type WebhookAttempt } from "@/lib/leads/webhook-log"
 import { CF7_HIDDEN_FIELDS, TRACKING_SNIPPET } from "@/lib/leads/wordpress-snippets"
-import { getWordPress } from "@/lib/leads/wordpress"
+import { getWordPress, type SiteEvent } from "@/lib/leads/wordpress"
 import { PLUGIN_VERSION } from "@/lib/leads/wordpress-plugin"
 import { cn } from "@/lib/utils"
 
@@ -24,6 +24,18 @@ function describe(a: WebhookAttempt) {
   if (a.result === "wrong-key") return "Turned away: the key in the address was wrong or missing. Copy the address above again."
   return `Turned away: no name, phone or email found. The form sent: ${a.fields?.length ? a.fields.join(", ") : "no fields"}.`
 }
+
+// What happened to a form submission on the site, in plain words.
+const outcome: Record<string, string> = {
+  mail_sent: "Sent normally",
+  mail_failed: "Accepted, but your site couldn't send its email (the lead is still saved)",
+  spam: "Blocked as spam by Contact Form 7 (usually reCAPTCHA). Saved anyway and marked, so check it",
+  aborted: "Stopped by another plugin before its email went out. Saved anyway",
+  validation_failed: "Not sent: a required field was empty or wrong",
+  acceptance_missing: "Not sent: the consent box wasn't ticked",
+}
+const describeEvent = (e: SiteEvent) => outcome[e.status] ?? (e.status || "Unknown")
+const badEvent = (e: SiteEvent) => e.status === "spam" || e.status === "aborted" || e.status === "mail_failed"
 
 // Connecting the WordPress site: the Lead Saver plugin keeps every Contact Form 7 lead on the site,
 // and the app picks them up. Below that, the lead log, UTM tracking set-up, and the older instant
@@ -87,6 +99,38 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
                     : "Not checked yet."}
               </span>
             </p>
+          )}
+
+          {wp.site && wp.events && wp.events.length > 0 && (
+            <div className="flex flex-col gap-1.5 rounded-lg border bg-card p-3">
+              <p className="font-medium">Forms sent on your site lately</p>
+              <ul className="flex flex-col gap-1">
+                {wp.events.slice(0, 8).map((e) => (
+                  <li key={e.at + e.status} className="flex items-start gap-2">
+                    {badEvent(e) ? (
+                      <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                    ) : e.saved ? (
+                      <CircleCheck className="mt-0.5 size-4 shrink-0 text-emerald-600" />
+                    ) : (
+                      <CircleAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className={cn(badEvent(e) && "font-medium text-amber-900")}>
+                      <span className="text-muted-foreground">
+                        {timeAgo(e.at)}
+                        {e.form ? ` · ${e.form}` : ""} ·{" "}
+                      </span>
+                      {describeEvent(e)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {wp.events.some((e) => e.status === "spam") && (
+                <p className="text-amber-900">
+                  If real people are being blocked as spam, check reCAPTCHA in WordPress (<strong>Contact → Integration</strong>):
+                  the keys must be for reCAPTCHA v3 and for your site&apos;s address. Their leads are still saved and show up here.
+                </p>
+              )}
+            </div>
           )}
 
           {connected && wp.plugin && wp.plugin !== PLUGIN_VERSION && (
