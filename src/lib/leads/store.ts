@@ -107,7 +107,15 @@ export async function updateLead(id: string, change: (lead: Lead) => void) {
   return file.update((db) => {
     const lead = db.leads.find((l) => l.id === id)
     if (!lead) return null
+    const before = lead.status
     change(lead)
+    // A new status changes the score (Interested adds points, Closed deal is 100...).
+    if (lead.status !== before) {
+      lead.score = scoreLead(
+        lead,
+        db.leads.filter((l) => l.createdAt < lead.createdAt),
+      )
+    }
     return lead
   })
 }

@@ -8,7 +8,7 @@
 // number 20, a full name 5, a paid ad click 10, a seller search ("sell my house fast") 10, a
 // motivated seller in the message (inherited, foreclosure, repairs...) 15, coming back again 5.
 import { jsonFileStore } from "@/lib/json-file-store"
-import type { Lead, LeadGrade, LeadScore } from "@/lib/leads/types"
+import type { Lead, LeadGrade, LeadScore, LeadStatus } from "@/lib/leads/types"
 
 export const HOT_AT = 70
 export const WARM_AT = 40
@@ -51,7 +51,38 @@ const PROPERTY_LINK = /(zillow|redfin|realtor|trulia|homes|movoto|loopnet|google
 const SPAM_FLAG = "Contact Form 7 marked this as spam"
 
 // Scores a lead. `earlier` are the leads that came before it, to spot someone coming back.
+// What the status you set adds: your own judgment is the strongest signal there is.
+// Each step also has a lowest score: once you've set an appointment or made an offer, the lead has
+// proven itself, whatever it typed into the form.
+const STATUS_POINTS: Partial<Record<LeadStatus, { points: number; atLeast?: number; why: string }>> = {
+  interested: { points: 15, atLeast: 50, why: "You marked it Interested" },
+  appointment: { points: 25, atLeast: 75, why: "You set an appointment" },
+  offer: { points: 35, atLeast: 85, why: "You made an offer" },
+  not_interested: { points: -40, why: "You marked it Not interested" },
+}
+const VOUCHED: LeadStatus[] = ["interested", "appointment", "offer", "closed"]
+
+// The score, worked out again whenever the lead changes (it arrives, or you change its status).
 export function scoreLead(lead: Lead, earlier: Lead[] = []): LeadScore {
+  const status = lead.status ?? "new"
+  // Once you've said a lead is real (Interested or further), the automatic junk checks don't apply.
+  const vouched = VOUCHED.includes(status)
+  const base = baseScore(lead, earlier, vouched)
+  if (status === "closed") {
+    return { value: 100, grade: "hot", reasons: ["100 Closed deal: you closed it", ...base.reasons] }
+  }
+  const extra = STATUS_POINTS[status]
+  if (!extra) return base
+  if (base.grade === "junk" && status === "not_interested") return { ...base, reasons: [...base.reasons, extra.why] }
+  const reasons = [...base.reasons.filter((r) => !r.startsWith("Warm, not Hot")), `${extra.points > 0 ? "+" : ""}${extra.points} ${extra.why}`]
+  const value = Math.max(extra.atLeast ?? 0, Math.min(100, base.value + extra.points))
+  // Hot needs a sign they want to sell; you marking them Interested or further is that sign.
+  let grade: LeadGrade = value >= HOT_AT ? "hot" : value >= WARM_AT ? "warm" : "cold"
+  if (status === "not_interested" && grade !== "cold") grade = "cold"
+  return { value, grade, reasons }
+}
+
+function baseScore(lead: Lead, earlier: Lead[], vouched: boolean): LeadScore {
   const reasons: string[] = []
   let points = 0
   const add = (n: number, why: string) => {
@@ -69,13 +100,15 @@ export function scoreLead(lead: Lead, earlier: Lead[] = []): LeadScore {
 
   // Brought in from the website without a recognized name, phone or email: needs a person to look.
   if (name.startsWith("Website lead (check the notes)")) {
-    return { value: 0, grade: "cold", reasons: ["Its fields weren't recognized, so it can't be scored: check its notes"], unscored: true }
+    return { value: 0, grade: "cold", reasons: ["Its fields weren't recognized, so it can't be scored: check its notes"], unscored: !vouched }
   }
 
-  // Clear junk first.
-  if (FAKE_NAME.test(name) || /\btest\b/i.test(name) || /(https?:\/\/|www\.)/i.test(name)) return junk("looks like a test or a fake name")
-  if (SPAM_WORDS.test(message)) return junk("the message is advertising, not a seller")
-  if (!phoneOk && !emailOk) return junk(lead.phone || lead.email ? "the phone number and email don't look real" : "no phone number or email")
+  // Clear junk first (unless you've already said the lead is real).
+  if (!vouched) {
+    if (FAKE_NAME.test(name) || /\btest\b/i.test(name) || /(https?:\/\/|www\.)/i.test(name)) return junk("looks like a test or a fake name")
+    if (SPAM_WORDS.test(message)) return junk("the message is advertising, not a seller")
+    if (!phoneOk && !emailOk) return junk(lead.phone || lead.email ? "the phone number and email don't look real" : "no phone number or email")
+  }
 
   // Contact details.
   if (phoneOk) add(25, "Real phone number")
@@ -101,7 +134,7 @@ export function scoreLead(lead: Lead, earlier: Lead[] = []): LeadScore {
   // What they said.
   const motive = message.match(MOTIVATED)
   if (motive) add(15, `Motivated seller: mentions "${motive[0].toLowerCase()}"`)
-  const wantsToSell = Boolean(motive) || SELLER_SEARCH.test(searched)
+  const wantsToSell = vouched || Boolean(motive) || SELLER_SEARCH.test(searched)
   const links = (message.match(LINKS) ?? []).filter((l) => !PROPERTY_LINK.test(l)).length
   if (links) add(-30, "Message has links (often spam)")
   if (notes.includes(SPAM_FLAG)) add(-25, "Blocked as spam on the website (check it: it may be a real person)")

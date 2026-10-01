@@ -81,6 +81,15 @@ export default function ScoringSettings({ autoStatus }: { autoStatus: boolean })
           <li>−30 a message with links, other than Zillow, Redfin, Realtor.com or map links (often spam)</li>
           <li>Junk: a test or fake name, an advert, or no real phone or email</li>
         </ul>
+        <p className="mt-3 font-medium">When you change the status, the score updates right away</p>
+        <ul className="mt-1 grid gap-x-6 gap-y-1 text-muted-foreground sm:grid-cols-2">
+          <li>Interested: +15, at least 50</li>
+          <li>Appointment: +25, at least 75 (Hot)</li>
+          <li>Offer made: +35, at least 85 (Hot)</li>
+          <li>Closed deal: 100 (Hot)</li>
+          <li>Not interested: −40, never Hot</li>
+          <li>Marking a lead Interested or further means it&apos;s real, so it&apos;s never counted as Junk</li>
+        </ul>
         <p className="mt-2 text-muted-foreground">
           Only leads that arrived in the last 24 hours go through the rules. Older leads (from before scoring, or brought in
           late from the website) are scored too, but nothing old is sent to Google Ads without you.
