@@ -108,8 +108,6 @@ export default async function LeadsPage() {
 
   // Conversions held back by a set-up step Google needs, so the page can say what to do.
   const waiting = leads.flatMap((l) => Object.values(l.conversions ?? {})).filter((c) => c?.state === "pending" && c.waitingFor)
-  const needsPermission = waiting.some((c) => c?.waitingFor === "permission")
-  const needsApi = waiting.some((c) => c?.waitingFor === "api")
 
   const kpis = [
     { label: "Form leads, last 7 days", value: formatNumber(countSince(leads, 7)) },
