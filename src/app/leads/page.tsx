@@ -70,10 +70,29 @@ function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
 // One line on what Google Ads has heard about this lead, for the table.
 function googleState(lead: Lead): LeadRow["google"] {
   const all = Object.values(lead.conversions ?? {})
+  // Taken back (or being taken back) because the lead turned out Not interested.
+  const backs = all.map((c) => c?.retraction).filter(Boolean)
+  if (backs.length) {
+    const failed = backs.find((r) => r!.state === "failed")
+    if (failed) return { state: "retract_failed", detail: failed.error }
+    if (backs.some((r) => r!.state === "pending")) return { state: "retracting", detail: "Not interested: telling Google to stop counting it." }
+    return { state: "retracted", detail: "Not interested: Google no longer counts it as a good lead." }
+  }
   if (!all.length) return lead.googleBlockedBy ? { state: "held", detail: `Not sent: rule “${lead.googleBlockedBy}”` } : undefined
   const order = ["failed", "pending", "skipped", "sent"] as const
   const worst = order.find((s) => all.some((c) => c?.state === s))!
   const entry = all.find((c) => c?.state === worst)!
+  // Once Google has checked what it was sent, say what it decided.
+  const decided = all.map((c) => c?.google).filter(Boolean)
+  if (worst === "sent" && decided.some((g) => g!.status === "rejected")) {
+    return { state: "rejected", detail: `Google: ${decided.find((g) => g!.status === "rejected")!.reason}` }
+  }
+  if (worst === "sent" && decided.length && decided.every((g) => g!.status === "accepted")) {
+    return { state: "accepted", detail: decided.map((g) => g!.reason).filter(Boolean).join("; ") || "Google counts it. It shows in Google Ads under the date of the ad click." }
+  }
+  if (worst === "sent" && all.some((c) => c?.requestId)) {
+    return { state: "checking", detail: "Google has it and is checking it (30 minutes to 24 hours)." }
+  }
   const why = [entry.rule && `Rule “${entry.rule}”`, entry.value !== undefined && entry.value !== 1 && `worth $${entry.value}`].filter(Boolean).join(", ")
   return { state: worst, detail: entry.error ?? ([why, entry.matchedBy && `matched by ${entry.matchedBy}`].filter(Boolean).join(" · ") || undefined) }
 }

@@ -16,11 +16,27 @@ export function applyStatus(lead: Lead, status: LeadStatus, by: "auto" | "you", 
   lead.statusChangedAt = now
   lead.statusBy = by
   if (by === "you") delete lead.statusRule
+  // Not interested after all: take back from Google Ads what was already sent for this lead, so
+  // its bidding stops counting that click as a success. (Nothing is sent for it otherwise.)
+  if (status === "not_interested") {
+    for (const entry of Object.values(lead.conversions ?? {})) {
+      if (entry?.state === "sent" && !entry.retraction) entry.retraction = { state: "pending", at: now }
+    }
+    return
+  }
   for (const kind of KINDS[status] ?? []) {
     lead.conversions ??= {}
     // Once sent, a conversion stays sent; a failed one is tried again when set again.
     const entry = lead.conversions[kind]
-    if (!entry || entry.state === "failed" || entry.state === "skipped") lead.conversions[kind] = { state: "pending", at: now }
+    if (entry?.retraction && entry.retraction.state !== "sent") {
+      // Changed your mind before Google was told: keep the conversion, don't take it back.
+      delete entry.retraction
+    } else if (entry?.retraction?.state === "sent") {
+      // Taken back earlier and good again: send it as a new conversion.
+      lead.conversions[kind] = { state: "pending", at: now, transactionId: `${lead.id}-${kind}-${Date.now().toString(36)}` }
+    } else if (!entry || entry.state === "failed" || entry.state === "skipped") {
+      lead.conversions[kind] = { state: "pending", at: now }
+    }
   }
 }
 

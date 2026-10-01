@@ -70,6 +70,15 @@ export type ConversionUpload = {
   // The value sent with it (1 when not set), and the Google Ads rule that queued it, if one did.
   value?: number
   rule?: string
+  // What it was sent as: the id Google knows it by and the conversion action it went to, so it
+  // can be taken back later.
+  transactionId?: string
+  action?: string
+  // Google's id for the upload, and what Google decided once it had checked it.
+  requestId?: string
+  google?: { status: "processing" | "accepted" | "rejected"; reason?: string; checkedAt: string }
+  // Taking it back from Google Ads (a retraction), when the lead turned out Not interested.
+  retraction?: { state: "pending" | "sent" | "failed"; at: string; tries?: number; lastTry?: string; error?: string }
 }
 
 // How good a lead looks the moment it arrives, scored by the app (scoring.ts).

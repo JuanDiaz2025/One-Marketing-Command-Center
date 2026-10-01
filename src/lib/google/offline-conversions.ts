@@ -11,7 +11,7 @@
 import { createHash } from "node:crypto"
 
 import { AdsApiError, postToAds, runQuery } from "@/lib/google/ads"
-import { ingestEvents } from "@/lib/google/data-manager"
+import { ingestEvents, requestStatus } from "@/lib/google/data-manager"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
 import { DATA_MANAGER_SCOPE } from "@/lib/google/oauth"
 import { jsonFileStore } from "@/lib/json-file-store"
@@ -188,20 +188,22 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
   }
   let error: string | undefined
   let code = ""
+  let action = ""
+  let requestId: string | undefined
   try {
-    const action = await conversionAction(connection, account, kind)
-    await ingestEvents(connection, account, action.split("/").pop()!, [
+    action = await conversionAction(connection, account, kind)
+    ;({ requestId } = await ingestEvents(connection, account, action.split("/").pop()!, [
       {
         eventTimestamp: new Date(entry.at).toISOString(),
         // The same lead and stage is only ever counted once, even if sent again.
-        transactionId: `${lead.id}-${kind}`,
+        transactionId: entry.transactionId ?? `${lead.id}-${kind}`,
         eventSource: "WEB",
         ...(gclid ? { adIdentifiers: { gclid } } : {}),
         ...(ids.length ? { userData: { userIdentifiers: ids } } : {}),
         conversionValue: entry.value ?? 1,
         currency: account.currency || "USD",
       },
-    ])
+    ]))
   } catch (e) {
     error = e instanceof Error ? e.message : String(e)
     code = e instanceof AdsApiError ? (e.code ?? "") : ""
@@ -225,7 +227,97 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
           waitingFor,
           state: waitingFor || (RETRY.test(`${code} ${error}`) && tries < MAX_TRIES) ? "pending" : "failed",
         }
-      : { at: current.at, value: current.value, rule: current.rule, tries, lastTry: now, state: "sent", matchedBy: [gclid && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
+      : { at: current.at, value: current.value, rule: current.rule, transactionId: current.transactionId ?? `${l.id}-${kind}`, action, requestId, tries, lastTry: now, state: "sent", matchedBy: [gclid && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
+  })
+}
+
+// Google's reasons in plain words.
+const REASONS: Record<string, string> = {
+  INVALID_CLICK_ID: "Google doesn't recognize the click ID (a typed-in test, or a click from another account)",
+  CLICK_NOT_FOUND: "Google couldn't find that ad click",
+  EXPIRED_EVENT: "the ad click was too long ago (over 90 days)",
+  EVENT_TOO_OLD: "the ad click was too long ago (over 90 days)",
+  DUPLICATE_TRANSACTION_ID: "it was already sent before",
+  NO_MATCH: "Google couldn't match it to anyone who clicked your ads",
+}
+const humanize = (reason: string) => REASONS[reason] ?? reason.toLowerCase().replace(/_/g, " ")
+
+// Asks Google what it decided about a sent conversion: at most every 30 minutes, starting 30
+// minutes after sending, for up to 3 days.
+async function checkDecision(connection: AdsConnection, lead: Lead, kind: ConversionKind) {
+  const entry = lead.conversions?.[kind]
+  if (!entry?.requestId) return
+  let decided: NonNullable<typeof entry.google>
+  const now = new Date().toISOString()
+  try {
+    const res = await requestStatus(connection, entry.requestId)
+    const statuses = res.requestStatusPerDestination ?? []
+    const errors = statuses.flatMap((d) => d.errorInfo?.errorCounts ?? []).map((e) => e.reason ?? "").filter(Boolean)
+    const warnings = statuses.flatMap((d) => d.warningInfo?.warningCounts ?? []).map((w) => w.reason ?? "").filter(Boolean)
+    const states = statuses.map((d) => d.requestStatus)
+    if (!states.length || states.some((st) => st === "PROCESSING" || st === "REQUEST_STATUS_UNKNOWN")) decided = { status: "processing", checkedAt: now }
+    else if (states.every((st) => st === "SUCCESS") && !errors.length) decided = { status: "accepted", reason: warnings.map(humanize).join("; ") || undefined, checkedAt: now }
+    else decided = { status: "rejected", reason: [...errors, ...warnings].map(humanize).join("; ") || "Google turned it down", checkedAt: now }
+  } catch {
+    decided = { status: "processing", checkedAt: now } // try again later
+  }
+  await updateLead(lead.id, (l) => {
+    const e = l.conversions?.[kind]
+    if (e && e.requestId === entry.requestId) e.google = decided
+  })
+}
+const CHECK_AFTER_MS = 30 * 60_000
+const CHECK_FOR_MS = 3 * 24 * 60 * 60_000
+
+// Google Ads' time format: "yyyy-mm-dd hh:mm:ss+00:00".
+const adsTime = (iso: string) => `${new Date(iso).toISOString().slice(0, 19).replace("T", " ")}+00:00`
+// Not found yet usually means Google hasn't finished processing the conversion (it takes hours).
+const RETRACT_RETRY = /CONVERSION_NOT_FOUND|TOO_RECENT|ADJUSTMENT_PRECEDES|INTERNAL|TRANSIENT|UNAVAILABLE|RESOURCE_EXHAUSTED|DEADLINE/i
+
+type AdjustResult = { partialFailureError?: { message?: string; details?: { errors?: { message?: string; errorCode?: Record<string, string> }[] }[] } }
+
+// Takes a sent conversion back from Google Ads (a retraction), by the id it was sent with, or by
+// its Google click id and time when Google doesn't know that id.
+async function retract(connection: AdsConnection, account: AdsAccount, lead: Lead, kind: ConversionKind) {
+  const entry = lead.conversions?.[kind]
+  const r = entry?.retraction
+  if (!entry || !r) return
+  const sentTo = entry.action ?? (await conversionAction(connection, account, kind).catch(() => undefined))
+  let error: string | undefined
+  let code = ""
+  if (!sentTo) error = "Couldn't find which conversion action it was sent to."
+  else {
+    const base = { conversionAction: sentTo, adjustmentType: "RETRACTION", adjustmentDateTime: adsTime(r.at) }
+    const attempt = async (id: Record<string, unknown>) => {
+      const res = await postToAds<AdjustResult>(connection, account, ":uploadConversionAdjustments", {
+        conversionAdjustments: [{ ...base, ...id }],
+        partialFailure: true,
+      })
+      const f = res.partialFailureError?.details?.[0]?.errors?.[0]
+      return res.partialFailureError
+        ? { error: f?.message ?? res.partialFailureError.message ?? "Google Ads refused it.", code: f?.errorCode ? Object.values(f.errorCode)[0] : "" }
+        : null
+    }
+    try {
+      let failed = await attempt({ orderId: entry.transactionId ?? `${lead.id}-${kind}` })
+      const gclid = lead.tracking?.gclid
+      if (failed && /NOT_FOUND|ORDER_ID/i.test(`${failed.code} ${failed.error}`) && gclid) {
+        failed = await attempt({ gclidDateTimePair: { gclid, conversionDateTime: adsTime(entry.at) } })
+      }
+      if (failed) ({ error, code } = failed)
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e)
+      code = e instanceof AdsApiError ? (e.code ?? "") : ""
+    }
+  }
+  const now = new Date().toISOString()
+  await updateLead(lead.id, (l) => {
+    const current = l.conversions?.[kind]?.retraction
+    if (!current || current.state !== "pending") return
+    const tries = (current.tries ?? 0) + 1
+    l.conversions![kind]!.retraction = error
+      ? { ...current, tries, lastTry: now, error, state: RETRACT_RETRY.test(`${code} ${error}`) && tries < MAX_TRIES ? "pending" : "failed" }
+      : { at: current.at, tries, lastTry: now, state: "sent" }
   })
 }
 
@@ -255,6 +347,28 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
             l.conversions![kind] = { state: "pending", at: entry!.at }
           })
           lead.conversions![kind] = entry = { state: "pending", at: entry.at }
+        }
+        // Sent earlier but Not interested now (e.g. before take-backs existed): take it back.
+        if (entry?.state === "sent" && !entry.retraction && lead.status === "not_interested") {
+          const at = new Date().toISOString()
+          await updateLead(lead.id, (l) => {
+            const e = l.conversions?.[kind]
+            if (e?.state === "sent" && !e.retraction) e.retraction = { state: "pending", at }
+          })
+          entry.retraction = { state: "pending", at }
+        }
+        // What Google decided about one it already has.
+        if (entry?.state === "sent" && entry.requestId && entry.google?.status !== "accepted" && entry.google?.status !== "rejected") {
+          const sentAt = Date.parse(entry.lastTry ?? entry.at)
+          const lastCheck = entry.google ? Date.parse(entry.google.checkedAt) : 0
+          if (Date.now() - sentAt >= CHECK_AFTER_MS && Date.now() - sentAt < CHECK_FOR_MS && Date.now() - lastCheck >= CHECK_AFTER_MS) {
+            await checkDecision(connection, lead, kind)
+          }
+        }
+        const r = entry?.retraction
+        if (r?.state === "pending" && (!r.lastTry || Date.now() - Date.parse(r.lastTry) >= RETRY_AFTER_MS)) {
+          await retract(connection, account, lead, kind)
+          continue
         }
         if (entry?.state !== "pending") continue
         const wait = entry.waitingFor ? SETUP_RETRY_MS : RETRY_AFTER_MS

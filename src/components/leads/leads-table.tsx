@@ -33,7 +33,7 @@ export type LeadRow = {
   statusRule?: string
   score?: { value: number; grade: "hot" | "warm" | "cold" | "junk"; reasons: string[] }
   // What Google Ads heard: a conversion sent, waiting to be sent, failed or skipped.
-  google?: { state: "sent" | "pending" | "failed" | "skipped" | "held"; detail?: string }
+  google?: { state: "sent" | "pending" | "failed" | "skipped" | "held" | "retracting" | "retracted" | "retract_failed" | "checking" | "accepted" | "rejected"; detail?: string }
 }
 
 const PAGE = 25
@@ -129,6 +129,12 @@ const googleLabel = {
   failed: { text: "Not sent", cls: "bg-destructive/10 text-destructive" },
   skipped: { text: "Can't match", cls: "bg-muted text-muted-foreground" },
   held: { text: "Not sent (rule)", cls: "bg-muted text-muted-foreground" },
+  checking: { text: "Sent, Google checking", cls: "bg-sky-500/10 text-sky-800" },
+  accepted: { text: "Accepted by Google ✓", cls: "bg-emerald-500/15 text-emerald-800" },
+  rejected: { text: "Rejected by Google", cls: "bg-destructive/10 text-destructive" },
+  retracting: { text: "Taking back from Google", cls: "bg-amber-500/15 text-amber-800" },
+  retracted: { text: "Taken back from Google ✓", cls: "bg-muted text-foreground" },
+  retract_failed: { text: "Couldn't take back", cls: "bg-destructive/10 text-destructive" },
 } as const
 
 // The status picker in each row. Interested and later stages tell Google Ads this lead was good.
@@ -386,10 +392,10 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
                   ) : (
                     empty
                   )}
-                  {r.google && r.google.state !== "failed" && r.google.detail && (
+                  {r.google && r.google.state !== "failed" && r.google.state !== "retract_failed" && r.google.state !== "rejected" && r.google.detail && (
                     <p className="mt-1 max-w-56 text-xs whitespace-normal text-muted-foreground">{r.google.detail}</p>
                   )}
-                  {r.google?.state === "failed" && r.google.detail && (
+                  {(r.google?.state === "failed" || r.google?.state === "retract_failed" || r.google?.state === "rejected") && r.google.detail && (
                     <p className="mt-1 max-w-56 text-xs whitespace-normal text-destructive">{r.google.detail}</p>
                   )}
                 </td>

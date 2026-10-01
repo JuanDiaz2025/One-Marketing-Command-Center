@@ -86,3 +86,24 @@ export async function ingestEvents(
   const violation = e.details?.flatMap((d) => d.fieldViolations ?? [])[0]
   throw new AdsApiError(violation?.description ? `${message} ${violation.description}` : message, e.status)
 }
+
+export type RequestStatus = {
+  requestStatusPerDestination?: {
+    requestStatus?: "REQUEST_STATUS_UNKNOWN" | "SUCCESS" | "PROCESSING" | "FAILED" | "PARTIAL_SUCCESS"
+    errorInfo?: { errorCounts?: { recordCount?: string; reason?: string }[] }
+    warningInfo?: { warningCounts?: { recordCount?: string; reason?: string }[] }
+  }[]
+}
+
+// What Google decided about an earlier upload: it checks them after taking them in (30 minutes to
+// 24 hours), and can still turn one down, e.g. for a click ID it doesn't recognize.
+export async function requestStatus(connection: AdsConnection, requestId: string) {
+  const res = await fetch(`https://datamanager.googleapis.com/v1/requestStatus:retrieve?requestId=${encodeURIComponent(requestId)}`, {
+    headers: { Authorization: `Bearer ${await accessToken(connection)}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(30_000),
+  })
+  const body = (await res.json().catch(() => ({}))) as RequestStatus & ErrorBody
+  if (!res.ok) throw new AdsApiError(body.error?.message ?? `Google answered ${res.status}.`, body.error?.status)
+  return body
+}
