@@ -13,6 +13,7 @@ import { createHash } from "node:crypto"
 import { AdsApiError, postToAds, runQuery } from "@/lib/google/ads"
 import { ingestEvents } from "@/lib/google/data-manager"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
+import { DATA_MANAGER_SCOPE } from "@/lib/google/oauth"
 import { jsonFileStore } from "@/lib/json-file-store"
 import { applyStatus } from "@/lib/leads/status"
 import { listLeads, updateLead } from "@/lib/leads/store"
@@ -269,4 +270,86 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
     }
   })
   return running
+}
+
+// Sends every waiting or failed conversion again now, without the hourly wait (the Leads page's
+// "Try again now"). Ones that can't be matched (no click ID, email or phone) are left as they are.
+export async function retryNow(connection: AdsConnection, account: AdsAccount) {
+  for (const lead of await listLeads()) {
+    for (const kind of ["interested", "closed"] as const) {
+      const entry = lead.conversions?.[kind]
+      if (entry?.state !== "pending" && entry?.state !== "failed") continue
+      await updateLead(lead.id, (l) => {
+        const e = l.conversions?.[kind]
+        if (e && (e.state === "pending" || e.state === "failed")) l.conversions![kind] = { state: "pending", at: e.at, value: e.value, rule: e.rule }
+      })
+    }
+  }
+  await sendPendingConversions(connection, account)
+}
+
+export type CheckStep = { ok: boolean; title: string; detail: string }
+
+// Checks, one by one, everything sending to Google Ads needs, and says what to do about the
+// first thing that's wrong. The last step asks Google to check a test conversion without
+// counting it (validateOnly).
+export async function checkSending(connection: AdsConnection, account: AdsAccount): Promise<CheckStep[]> {
+  const steps: CheckStep[] = [{ ok: true, title: "Google Ads connected", detail: `Account “${account.name}” (${account.customerId}), signed in as ${connection.email}.` }]
+  const granted = connection.scopes ?? []
+  if (!granted.includes(DATA_MANAGER_SCOPE)) {
+    steps.push({
+      ok: false,
+      title: "Permission to send conversions",
+      detail: granted.length
+        ? "Google didn't give the app permission to send conversions. Click “connect Google Ads again” and leave every box ticked, including the one about your advertising data."
+        : "This connection was made before the app needed it. Click “connect Google Ads again” and leave every box ticked.",
+    })
+  } else steps.push({ ok: true, title: "Permission to send conversions", detail: "Granted." })
+
+  let actionId: string | undefined
+  try {
+    const t = await conversionTargets(connection, account)
+    const q = t.interested
+    steps.push(
+      q
+        ? { ok: true, title: "Conversion action for qualified leads", detail: `“${q.name}” (accepts imported leads).` }
+        : { ok: true, title: "Conversion action for qualified leads", detail: "None that accepts imports yet: the app makes “Qualified lead (Command Center import)” with the first lead." },
+    )
+    actionId = q?.resourceName.split("/").pop()
+  } catch (e) {
+    steps.push({ ok: false, title: "Conversion actions", detail: `Couldn't read them from Google Ads: ${e instanceof Error ? e.message : String(e)}` })
+    return steps
+  }
+
+  if (!actionId) return steps
+  try {
+    await ingestEvents(
+      connection,
+      account,
+      actionId,
+      [
+        {
+          eventTimestamp: new Date().toISOString(),
+          transactionId: `command-center-check-${Date.now()}`,
+          eventSource: "WEB",
+          userData: { userIdentifiers: [{ emailAddress: sha256("check@example.com") }] },
+          conversionValue: 1,
+          currency: account.currency || "USD",
+        },
+      ],
+      true,
+    )
+    steps.push({ ok: true, title: "Test send to Google (not counted)", detail: "Google accepted it. Sending works." })
+  } catch (e) {
+    const code = e instanceof AdsApiError ? e.code : undefined
+    steps.push({
+      ok: false,
+      title: "Test send to Google (not counted)",
+      detail:
+        code === "API_OFF" || code === "NEEDS_PERMISSION"
+          ? (e as Error).message
+          : `Google said: “${e instanceof Error ? e.message : String(e)}”. Send this message to your developer.`,
+    })
+  }
+  return steps
 }

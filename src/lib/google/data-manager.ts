@@ -28,7 +28,14 @@ type ErrorBody = {
 
 // Sends events for one conversion action. Throws AdsApiError with a code saying what to do:
 // NEEDS_PERMISSION (connect Google Ads again), API_OFF (turn on the API), TRANSIENT, or none.
-export async function ingestEvents(connection: AdsConnection, account: AdsAccount, conversionActionId: string, events: DataManagerEvent[]) {
+// `validateOnly` asks Google to check the request without counting anything (for the Leads page's check).
+export async function ingestEvents(
+  connection: AdsConnection,
+  account: AdsAccount,
+  conversionActionId: string,
+  events: DataManagerEvent[],
+  validateOnly = false,
+) {
   const destination = {
     operatingAccount: { accountType: "GOOGLE_ADS", accountId: account.customerId },
     ...(account.loginCustomerId && account.loginCustomerId !== account.customerId
@@ -39,7 +46,7 @@ export async function ingestEvents(connection: AdsConnection, account: AdsAccoun
   const res = await fetch("https://datamanager.googleapis.com/v1/events:ingest", {
     method: "POST",
     headers: { Authorization: `Bearer ${await accessToken(connection)}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ destinations: [destination], encoding: "HEX", events }),
+    body: JSON.stringify({ destinations: [destination], encoding: "HEX", events, ...(validateOnly ? { validateOnly: true } : {}) }),
     cache: "no-store",
     signal: AbortSignal.timeout(30_000),
   })

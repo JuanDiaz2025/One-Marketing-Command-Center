@@ -11,6 +11,7 @@ import ConversionTargets, { type TargetsView } from "@/components/leads/conversi
 import PhoneCalls from "@/components/leads/phone-calls"
 import RulesEditor from "@/components/leads/rules-editor"
 import ScoringSettings from "@/components/leads/scoring-settings"
+import SendingCheck from "@/components/leads/sending-check"
 import Disclosure from "@/components/ui/disclosure"
 import WebhookSetup from "@/components/leads/webhook-setup"
 import { formatNumber } from "@/components/dashboard/format"
@@ -160,6 +161,12 @@ export default async function LeadsPage() {
   // Conversions held back by a set-up step Google needs, so the page can say what to do.
   const waiting = leads.flatMap((l) => Object.values(l.conversions ?? {})).filter((c) => c?.state === "pending" && c.waitingFor)
 
+  // Leads Google Ads hasn't taken yet (failed, or still waiting after a try), and the latest reason.
+  const stuckEntries = leads
+    .flatMap((l) => Object.values(l.conversions ?? {}))
+    .filter((c) => c && (c.state === "failed" || (c.state === "pending" && c.lastTry)))
+  const lastError = stuckEntries.sort((a, b) => (b!.lastTry ?? "").localeCompare(a!.lastTry ?? ""))[0]?.error
+
   const kpis = [
     { label: "Form leads, last 7 days", value: formatNumber(countSince(leads, 7)) },
     { label: "Form leads, last 30 days", value: formatNumber(countSince(leads, 30)) },
@@ -251,6 +258,11 @@ export default async function LeadsPage() {
                 Every lead is scored and good ones are sent to Google Ads automatically. Set a lead&apos;s <strong>Status</strong> as you
                 work it: <strong>Interested</strong> and <strong>Closed deal</strong> are sent to Google Ads too.
               </p>
+              {stuckEntries.length > 0 && (
+                <div className="mt-4">
+                  <SendingCheck stuck={stuckEntries.length} lastError={lastError} />
+                </div>
+              )}
               {/* The automation runs by itself; its settings stay folded away unless you open them. */}
               <Disclosure className="group/auto mt-4 rounded-xl border bg-muted/20" initialOpen={false}>
                 <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm">
@@ -267,6 +279,11 @@ export default async function LeadsPage() {
                   <ScoringSettings autoStatus={scoring.autoStatus} />
                   <RulesEditor initial={rules} recent={recent} channels={channels} enabled={scoring.autoStatus} />
                   {targets && <ConversionTargets view={targets} />}
+                  {!stuckEntries.length && (
+                    <div className="mt-4">
+                      <SendingCheck stuck={0} />
+                    </div>
+                  )}
                 </div>
               </Disclosure>
               <div className="mt-4">
