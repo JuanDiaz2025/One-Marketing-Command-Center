@@ -146,7 +146,7 @@ Everything is saved in the `.data/` folder next to the app (it's never committed
 - `leads.json`: leads from the website (and any older QR code leads).
 - `webhook-log.json`: the last few times something called the website-leads webhook.
 - `wordpress.json`: your website's address and how far its saved leads have been picked up.
-- `conversion-actions.json`: the two conversion actions the app created in Google Ads.
+- `conversion-actions.json`: which Google Ads conversion action each lead stage goes to (your own "Qualified lead" / "Converted lead", found automatically, or one you picked on the Leads page).
 - `lead-scoring.json`: whether the status is set from each lead's score (on unless you turn it off).
 - `chats.json`: your chat conversations (the latest 50 per person), so they're still there after a refresh or a restart. **Past chats** in the chat lists them; **New chat** starts a fresh one.
 - `chat-problem.log`: why the chat last answered without its tools, if it did.

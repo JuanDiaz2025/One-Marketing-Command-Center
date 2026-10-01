@@ -7,6 +7,7 @@ import { assistantProvider } from "@/lib/assistant/shared"
 import { countSince } from "@/components/leads/lead-list"
 import LeadsTable, { type LeadRow } from "@/components/leads/leads-table"
 import LiveRefresh from "@/components/leads/live-refresh"
+import ConversionTargets, { type TargetsView } from "@/components/leads/conversion-targets"
 import PhoneCalls from "@/components/leads/phone-calls"
 import ScoringSettings from "@/components/leads/scoring-settings"
 import WebhookSetup from "@/components/leads/webhook-setup"
@@ -17,7 +18,7 @@ import { cn } from "@/lib/utils"
 import { requireSession } from "@/lib/auth/session"
 import { activeAccount } from "@/lib/google/active-account"
 import { tryGetCalls } from "@/lib/google/calls"
-import { sendPendingConversions } from "@/lib/google/offline-conversions"
+import { conversionTargets, sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncWordPress } from "@/lib/leads/wordpress"
 import { leadSource } from "@/lib/leads/source"
 import { getScoringSettings } from "@/lib/leads/scoring"
@@ -80,6 +81,25 @@ async function loadCalls(sub: string) {
   }
 }
 
+// Which conversion action each stage goes to, or null when Google Ads isn't connected or answering.
+async function loadTargets(sub: string): Promise<TargetsView | null> {
+  try {
+    const active = await activeAccount(sub)
+    if (!active) return null
+    const t = await conversionTargets(active.connection, active.account)
+    const brief = (o?: { resourceName: string; name: string }) => o && { resourceName: o.resourceName, name: o.name }
+    return {
+      options: t.options.map((o) => ({ resourceName: o.resourceName, name: o.name, importable: o.importable })),
+      interested: brief(t.interested),
+      closed: brief(t.closed),
+      chosen: t.chosen,
+    }
+  } catch (error) {
+    console.error("Couldn't look up conversion actions:", error)
+    return null
+  }
+}
+
 // Offline conversions waiting to go to Google Ads (new ones, and retries at most hourly).
 async function sendConversions(sub: string) {
   try {
@@ -100,7 +120,13 @@ export default async function LeadsPage() {
     Promise.all([scoreUnscored().then(() => syncWordPress()), sendConversions(user.sub)]),
     new Promise((resolve) => setTimeout(resolve, 3000)),
   ])
-  const [qrCodes, leads, calls, scoring] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub), getScoringSettings()])
+  const [qrCodes, leads, calls, scoring, targets] = await Promise.all([
+    listQrCodes(),
+    listLeads(),
+    loadCalls(user.sub),
+    getScoringSettings(),
+    loadTargets(user.sub),
+  ])
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0
@@ -202,6 +228,7 @@ export default async function LeadsPage() {
                 first. Google never sees them in plain text.
               </p>
               <ScoringSettings autoStatus={scoring.autoStatus} />
+              {targets && <ConversionTargets view={targets} />}
               <div className="mt-4">
                 <LeadsTable rows={leads.map((l) => toRow(l, placements))} />
               </div>

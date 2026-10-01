@@ -4,9 +4,10 @@
 // snippet) and, when there is one, the lead's email and phone, scrambled with SHA-256 first
 // (Google's "enhanced conversions for leads"). Google never receives the plain email or phone.
 //
-// The app creates its own two conversion actions the first time ("Command Center – Interested
-// lead" and "Command Center – Deal closed"), as secondary conversions so they don't change bidding
-// until you choose to make them primary.
+// Each stage goes to a conversion action in the account: your own "Qualified lead" and "Converted
+// lead" actions when there are ones that accept imports (found by name, then by category), or
+// one you pick on the Leads page. Only when there's none does the app create its own
+// ("Command Center – Interested lead" / "– Deal closed"), as secondary conversions.
 import { createHash } from "node:crypto"
 
 import { AdsApiError, postToAds, runQuery } from "@/lib/google/ads"
@@ -22,7 +23,10 @@ export const ACTIONS: Record<ConversionKind, { name: string; category: string }>
   closed: { name: "Command Center – Deal closed", category: "CONVERTED_LEAD" },
 }
 
-const actionsFile = jsonFileStore<Record<string, Partial<Record<ConversionKind, string>>>>("conversion-actions.json", () => ({}))
+// Per account: the conversion action each stage goes to, and whether you picked it yourself.
+type Targets = { interested?: string; closed?: string; chosen?: Partial<Record<ConversionKind, boolean>>; checkedAt?: string; v?: 2 }
+const actionsFile = jsonFileStore<Record<string, Targets>>("conversion-actions.json", () => ({}))
+const RECHECK_MS = 24 * 60 * 60_000
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex")
 
@@ -52,38 +56,106 @@ function identifiers(lead: Lead) {
   return ids
 }
 
-// The conversion action's resource name, creating it the first time.
-async function conversionAction(connection: AdsConnection, account: AdsAccount, kind: ConversionKind) {
-  const cached = (await actionsFile.read())[account.customerId]?.[kind]
-  if (cached) return cached
-  const { name, category } = ACTIONS[kind]
-  const found = (await runQuery(
+export type ConversionActionOption = { resourceName: string; name: string; category: string; type: string; importable: boolean }
+
+// The account's enabled conversion actions. Only "import from clicks" ones can receive leads.
+export async function listConversionActions(connection: AdsConnection, account: AdsAccount): Promise<ConversionActionOption[]> {
+  const rows = (await runQuery(
     connection,
     account,
-    `SELECT conversion_action.resource_name, conversion_action.name FROM conversion_action WHERE conversion_action.name = '${name}' AND conversion_action.status != 'REMOVED'`,
-  )) as { conversionAction?: { resourceName?: string } }[]
-  let resource = found[0]?.conversionAction?.resourceName
-  if (!resource) {
-    const created = await postToAds<{ results?: { resourceName?: string }[] }>(connection, account, "/conversionActions:mutate", {
-      operations: [
-        {
-          create: {
-            name,
-            type: "UPLOAD_CLICKS",
-            category,
-            status: "ENABLED",
-            countingType: "ONE_PER_CLICK",
-            primaryForGoal: false,
-            valueSettings: { defaultValue: 1, alwaysUseDefaultValue: true },
-          },
-        },
-      ],
+    "SELECT conversion_action.resource_name, conversion_action.name, conversion_action.category, conversion_action.type FROM conversion_action WHERE conversion_action.status = 'ENABLED'",
+  )) as { conversionAction?: { resourceName?: string; name?: string; category?: string; type?: string } }[]
+  return rows
+    .map((r) => r.conversionAction ?? {})
+    .filter((a): a is Required<typeof a> => Boolean(a.resourceName && a.name))
+    .map((a) => ({ resourceName: a.resourceName, name: a.name, category: a.category ?? "", type: a.type ?? "", importable: a.type === "UPLOAD_CLICKS" }))
+    .sort((x, y) => x.name.localeCompare(y.name))
+}
+
+// Your own action for a stage: by name first ("Qualified lead" / "Converted lead"), then by
+// Google's category; the app's own actions only if there's nothing else.
+const NAMES: Record<ConversionKind, RegExp> = { interested: /qualified\s*lead/i, closed: /convert(ed)?\s*lead|closed?\s*(deal|lead)|deal\s*closed/i }
+const isOurs = (o: ConversionActionOption) => o.name.startsWith("Command Center")
+function pick(options: ConversionActionOption[], kind: ConversionKind) {
+  const ok = options.filter((o) => o.importable && !isOurs(o))
+  return (
+    ok.find((o) => NAMES[kind].test(o.name)) ??
+    ok.find((o) => o.category === ACTIONS[kind].category) ??
+    options.find((o) => o.importable && o.name === ACTIONS[kind].name)
+  )
+}
+
+// Which action each stage goes to, looking them up (again once a day, for stages you didn't pick).
+export async function conversionTargets(connection: AdsConnection, account: AdsAccount) {
+  const options = await listConversionActions(connection, account)
+  let saved = (await actionsFile.read())[account.customerId] ?? {}
+  const stale = saved.v !== 2 || !saved.checkedAt || Date.now() - Date.parse(saved.checkedAt) > RECHECK_MS
+  const gone = (r?: string) => Boolean(r && !options.some((o) => o.resourceName === r))
+  if (stale || gone(saved.interested) || gone(saved.closed)) {
+    saved = await actionsFile.update((db) => {
+      const t: Targets = { ...db[account.customerId], v: 2, checkedAt: new Date().toISOString() }
+      t.chosen ??= {}
+      for (const kind of ["interested", "closed"] as const) {
+        if (t.chosen[kind] && !gone(t[kind])) continue
+        t.chosen[kind] = false
+        t[kind] = pick(options, kind)?.resourceName
+      }
+      db[account.customerId] = t
+      return t
     })
-    resource = created.results?.[0]?.resourceName
-    if (!resource) throw new AdsApiError("Google Ads didn't create the conversion action.")
+  }
+  const named = (r?: string) => options.find((o) => o.resourceName === r)
+  return {
+    options,
+    interested: named(saved.interested),
+    closed: named(saved.closed),
+    chosen: saved.chosen ?? {},
+  }
+}
+
+// You pick the action for a stage on the Leads page; it stays until you change it.
+export async function setConversionTarget(connection: AdsConnection, account: AdsAccount, kind: ConversionKind, resourceName: string) {
+  const options = await listConversionActions(connection, account)
+  if (!options.some((o) => o.resourceName === resourceName && o.importable)) {
+    throw new AdsApiError("That conversion action can't receive imported leads. Pick one whose source is \"Import from clicks\".")
   }
   await actionsFile.update((db) => {
-    db[account.customerId] = { ...db[account.customerId], [kind]: resource }
+    const t: Targets = { ...db[account.customerId], v: 2, checkedAt: db[account.customerId]?.checkedAt ?? new Date().toISOString() }
+    t[kind] = resourceName
+    t.chosen = { ...t.chosen, [kind]: true }
+    db[account.customerId] = t
+  })
+}
+
+// The conversion action a stage is sent to, creating the app's own one only if the account has
+// nothing that fits.
+async function conversionAction(connection: AdsConnection, account: AdsAccount, kind: ConversionKind) {
+  const saved = (await actionsFile.read())[account.customerId]
+  const fresh = saved?.v === 2 && saved.checkedAt && Date.now() - Date.parse(saved.checkedAt) < RECHECK_MS
+  if (fresh && saved[kind]) return saved[kind]!
+  const targets = await conversionTargets(connection, account)
+  const target = targets[kind]?.resourceName
+  if (target) return target
+  const { name, category } = ACTIONS[kind]
+  const created = await postToAds<{ results?: { resourceName?: string }[] }>(connection, account, "/conversionActions:mutate", {
+    operations: [
+      {
+        create: {
+          name,
+          type: "UPLOAD_CLICKS",
+          category,
+          status: "ENABLED",
+          countingType: "ONE_PER_CLICK",
+          primaryForGoal: false,
+          valueSettings: { defaultValue: 1, alwaysUseDefaultValue: true },
+        },
+      },
+    ],
+  })
+  const resource = created.results?.[0]?.resourceName
+  if (!resource) throw new AdsApiError("Google Ads didn't create the conversion action.")
+  await actionsFile.update((db) => {
+    db[account.customerId] = { ...db[account.customerId], [kind]: resource, v: 2, checkedAt: new Date().toISOString() }
   })
   return resource
 }
