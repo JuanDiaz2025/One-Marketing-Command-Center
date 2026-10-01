@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { setLeadStatusAction } from "@/lib/leads/status-actions"
 import { leadStatuses } from "@/lib/leads/types"
+import { formatPhone, telHref } from "@/lib/phone"
 import { cn } from "@/lib/utils"
 
 export type LeadRow = {
@@ -166,7 +167,6 @@ function StatusCell({ id, status, auto }: { id: string; status: string; auto: bo
     </div>
   )
 }
-const telHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`
 
 // Leads as a spreadsheet: one row per lead, a column per detail, searchable and filterable.
 export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
@@ -202,7 +202,9 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
         (!q ||
           [r.name, r.phone, r.email, r.address, r.utmCampaign, r.utmTerm, r.utmSource, r.notes, r.form]
             .filter(Boolean)
-            .some((v) => v!.toLowerCase().includes(q))),
+            .some((v) => v!.toLowerCase().includes(q)) ||
+          // "(510) 394-5339", "510-394" or "5103945339" all find the same number.
+          (q.replace(/\D/g, "").length >= 3 && Boolean(r.phone?.replace(/\D/g, "").includes(q.replace(/\D/g, ""))))),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, query, channel, status, grade, range, from, to])
@@ -387,7 +389,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
                 <td className={td}>
                   {r.phone ? (
                     <a href={telHref(r.phone)} className="text-primary hover:underline">
-                      {r.phone}
+                      {formatPhone(r.phone)}
                     </a>
                   ) : (
                     empty

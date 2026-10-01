@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/auth/session"
+import { formatPhone } from "@/lib/phone"
 import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 import { gradeLabels } from "@/lib/leads/scoring"
@@ -30,7 +31,7 @@ export async function GET() {
       l.score ? String(l.score.value) : "",
       l.score ? gradeLabels[l.score.grade] : "",
       leadStatuses.find((s) => s.id === (l.status ?? "new"))?.label,
-      l.phone,
+      l.phone && formatPhone(l.phone),
       l.email,
       l.propertyAddress,
       leadChannel(l),

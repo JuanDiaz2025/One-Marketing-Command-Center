@@ -3,6 +3,7 @@ import { Mail, MapPin, Phone } from "lucide-react"
 import Paged from "@/components/ui/paged"
 import { leadSource } from "@/lib/leads/source"
 import type { Lead, QrCode } from "@/lib/leads/types"
+import { formatPhone, telHref } from "@/lib/phone"
 
 // Server-rendered pages call this once per request, so reading the clock here is fine.
 export function timeAgo(iso: string, now = Date.now()) {
@@ -20,7 +21,6 @@ export function countSince(leads: Lead[], days: number, now = Date.now()) {
   return leads.filter((l) => now - Date.parse(l.createdAt) < days * 86_400_000).length
 }
 
-const telHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`
 
 export default function LeadList({ leads, qrCodes }: { leads: Lead[]; qrCodes: QrCode[] }) {
   const codeNames = new Map(qrCodes.map((c) => [c.id, c.placement]))
@@ -41,7 +41,7 @@ export default function LeadList({ leads, qrCodes }: { leads: Lead[]; qrCodes: Q
             {lead.phone && (
               <a href={telHref(lead.phone)} className="inline-flex items-center gap-1.5 text-primary">
                 <Phone className="size-3.5" />
-                {lead.phone}
+                {formatPhone(lead.phone)}
               </a>
             )}
             {lead.email && (
