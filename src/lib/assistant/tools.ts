@@ -104,6 +104,8 @@ export async function runTool(
               notes: l.notes,
               source: leadSource(l, placements),
               channel: leadChannel(l),
+              score: l.score && { value: l.score.value, grade: l.score.grade, reasons: l.score.reasons },
+              status: l.status ?? "new",
               tracking: l.tracking,
             })),
         ),

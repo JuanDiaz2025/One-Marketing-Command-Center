@@ -67,6 +67,15 @@ export type ConversionUpload = {
   matchedBy?: string
 }
 
+// How good a lead looks the moment it arrives, scored by the app (scoring.ts).
+export type LeadGrade = "hot" | "warm" | "cold" | "junk"
+export type LeadScore = {
+  value: number // 0-100
+  grade: LeadGrade
+  // Why, in plain words: "+25 Real phone number", "-30 Message has links (often spam)"...
+  reasons: string[]
+}
+
 export type Lead = {
   id: string
   // Set for leads from a QR code form. Website leads have `source` instead.
@@ -84,5 +93,8 @@ export type Lead = {
   inboxId?: string
   status?: LeadStatus
   statusChangedAt?: string
+  // "auto" when the app set the status from the lead's score; anything you set yourself wins.
+  statusBy?: "auto" | "you"
+  score?: LeadScore
   conversions?: Partial<Record<ConversionKind, ConversionUpload>>
 }

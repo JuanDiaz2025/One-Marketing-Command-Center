@@ -3,6 +3,8 @@
 import { randomBytes } from "node:crypto"
 
 import { jsonFileStore } from "@/lib/json-file-store"
+import { getScoringSettings, scoreLead } from "@/lib/leads/scoring"
+import { applyStatus } from "@/lib/leads/status"
 import type { Lead, QrCode } from "@/lib/leads/types"
 
 type Db = { qrCodes: QrCode[]; leads: Lead[] }
@@ -59,7 +61,10 @@ const sameSource = (a?: string, b?: string) => Boolean(a && b && a.replace(/^wp:
 // The same lead can arrive twice when the website uses both the Lead Saver plugin and a webhook:
 // one with an email or phone in common from within 15 minutes of the other, where only one of
 // them came from the plugin, is taken to be the same lead. A plugin lead is added once (by its id).
+// Every new lead is scored on arrival; with automatic status on (the default), a Hot lead is
+// marked Interested (Google Ads hears about it) and a Junk one Not interested.
 export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?: string) {
+  const { autoStatus } = await getScoringSettings()
   return file.update((db) => {
     const at = createdAt ? new Date(createdAt).toISOString() : new Date().toISOString()
     if (input.inboxId) {
@@ -80,6 +85,11 @@ export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?:
       return same
     }
     const lead: Lead = { ...input, id: newId(), createdAt: at }
+    lead.score = scoreLead(lead, db.leads)
+    if (autoStatus && !lead.status && !lead.qrCodeId) {
+      if (lead.score.grade === "hot") applyStatus(lead, "interested", "auto")
+      else if (lead.score.grade === "junk") applyStatus(lead, "not_interested", "auto")
+    }
     db.leads.push(lead)
     return lead
   })
@@ -92,5 +102,18 @@ export async function updateLead(id: string, change: (lead: Lead) => void) {
     if (!lead) return null
     change(lead)
     return lead
+  })
+}
+
+// Scores leads that came in before scoring existed. Their status is left alone, so nothing old
+// is sent to Google Ads without you choosing it.
+export async function scoreUnscored() {
+  const db = await file.read()
+  if (db.leads.every((l) => l.score)) return
+  await file.update((db) => {
+    const byDate = [...db.leads].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    byDate.forEach((lead, i) => {
+      lead.score ??= scoreLead(lead, byDate.slice(0, i))
+    })
   })
 }

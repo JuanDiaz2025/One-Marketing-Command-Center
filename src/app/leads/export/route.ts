@@ -1,7 +1,9 @@
 import { getSession } from "@/lib/auth/session"
 import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
+import { gradeLabels } from "@/lib/leads/scoring"
 import { leadChannel } from "@/lib/leads/tracking"
+import { leadStatuses } from "@/lib/leads/types"
 
 // Quote every cell, and stop spreadsheet apps from running a value that starts like a formula.
 function cell(value: string | undefined) {
@@ -18,13 +20,16 @@ export async function GET() {
 
   const rows = [
     [
-      "Date", "Name", "Phone", "Email", "Property address", "Channel", "UTM source", "UTM medium", "UTM campaign",
+      "Date", "Name", "Score", "Grade", "Status", "Phone", "Email", "Property address", "Channel", "UTM source", "UTM medium", "UTM campaign",
       "UTM term", "UTM content", "Google click ID", "Facebook click ID", "Microsoft click ID", "Landing page", "Referrer",
       "Form", "Notes",
     ],
     ...leads.map((l) => [
       l.createdAt,
       l.name,
+      l.score ? String(l.score.value) : "",
+      l.score ? gradeLabels[l.score.grade] : "",
+      leadStatuses.find((s) => s.id === (l.status ?? "new"))?.label,
       l.phone,
       l.email,
       l.propertyAddress,

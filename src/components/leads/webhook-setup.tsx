@@ -132,8 +132,8 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
             <div className="flex flex-col gap-1.5 rounded-lg border bg-card p-3">
               <p className="font-medium">Forms sent on your site lately</p>
               <ul className="flex flex-col gap-1">
-                {wp.events.slice(0, 8).map((e) => (
-                  <li key={e.at + e.status} className="flex items-start gap-2">
+                {wp.events.slice(0, 8).map((e, i) => (
+                  <li key={`${e.at}-${i}`} className="flex items-start gap-2">
                     {badEvent(e) ? (
                       <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
                     ) : e.saved ? (
@@ -207,8 +207,8 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
           <p className="font-medium">What came in lately</p>
           {attempts.length ? (
             <ul className="flex flex-col gap-1.5">
-              {attempts.map((a) => (
-                <li key={a.at} className="flex items-start gap-2">
+              {attempts.map((a, i) => (
+                <li key={`${a.at}-${i}`} className="flex items-start gap-2">
                   {a.ok ? (
                     <CircleCheck className="mt-0.5 size-4 shrink-0 text-emerald-600" />
                   ) : (

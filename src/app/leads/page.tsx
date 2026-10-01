@@ -8,6 +8,7 @@ import { countSince } from "@/components/leads/lead-list"
 import LeadsTable, { type LeadRow } from "@/components/leads/leads-table"
 import LiveRefresh from "@/components/leads/live-refresh"
 import PhoneCalls from "@/components/leads/phone-calls"
+import ScoringSettings from "@/components/leads/scoring-settings"
 import WebhookSetup from "@/components/leads/webhook-setup"
 import { formatNumber } from "@/components/dashboard/format"
 import { buttonVariants } from "@/components/ui/button"
@@ -18,7 +19,8 @@ import { tryGetCalls } from "@/lib/google/calls"
 import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncWordPress } from "@/lib/leads/wordpress"
 import { leadSource } from "@/lib/leads/source"
-import { listLeads, listQrCodes } from "@/lib/leads/store"
+import { getScoringSettings } from "@/lib/leads/scoring"
+import { listLeads, listQrCodes, scoreUnscored } from "@/lib/leads/store"
 import { leadChannel, pagePath } from "@/lib/leads/tracking"
 import type { Lead } from "@/lib/leads/types"
 
@@ -52,6 +54,8 @@ function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
     referrer: t.referrer,
     notes: lead.notes,
     status: lead.status ?? "new",
+    statusBy: lead.statusBy,
+    score: lead.score,
     google: googleState(lead),
   }
 }
@@ -93,10 +97,10 @@ export default async function LeadsPage() {
   // Pick up anything new saved on the WordPress site first (at most every 30 seconds), waiting up
   // to 3 seconds for it; a slower check shows its leads on the next refresh.
   await Promise.race([
-    Promise.all([syncWordPress(), sendConversions(user.sub)]),
+    Promise.all([scoreUnscored().then(() => syncWordPress()), sendConversions(user.sub)]),
     new Promise((resolve) => setTimeout(resolve, 3000)),
   ])
-  const [qrCodes, leads, calls] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub)])
+  const [qrCodes, leads, calls, scoring] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub), getScoringSettings()])
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0
@@ -165,6 +169,7 @@ export default async function LeadsPage() {
                 sellers. They&apos;re matched by the lead&apos;s Google click ID, or by their email and phone, which are scrambled
                 first. Google never sees them in plain text.
               </p>
+              <ScoringSettings autoStatus={scoring.autoStatus} />
               <div className="mt-4">
                 <LeadsTable rows={leads.map((l) => toRow(l, placements))} />
               </div>

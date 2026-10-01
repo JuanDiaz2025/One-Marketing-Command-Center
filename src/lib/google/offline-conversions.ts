@@ -12,21 +12,13 @@ import { createHash } from "node:crypto"
 import { AdsApiError, postToAds, runQuery } from "@/lib/google/ads"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
 import { jsonFileStore } from "@/lib/json-file-store"
+import { applyStatus } from "@/lib/leads/status"
 import { listLeads, updateLead } from "@/lib/leads/store"
 import type { ConversionKind, Lead, LeadStatus } from "@/lib/leads/types"
 
 export const ACTIONS: Record<ConversionKind, { name: string; category: string }> = {
   interested: { name: "Command Center – Interested lead", category: "QUALIFIED_LEAD" },
   closed: { name: "Command Center – Deal closed", category: "CONVERTED_LEAD" },
-}
-
-// Which conversions each status means. A deal can close without "Interested" being set first;
-// Google still hears about both.
-const KINDS: Partial<Record<LeadStatus, ConversionKind[]>> = {
-  interested: ["interested"],
-  appointment: ["interested"],
-  offer: ["interested"],
-  closed: ["interested", "closed"],
 }
 
 const actionsFile = jsonFileStore<Record<string, Partial<Record<ConversionKind, string>>>>("conversion-actions.json", () => ({}))
@@ -159,21 +151,10 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
   })
 }
 
-// Sets a lead's status and queues the conversions it means; they're sent right away when
-// Google Ads is connected, and retried later if Google isn't ready for them yet.
+// Sets a lead's status (chosen by you) and queues the conversions it means; they're sent right
+// away when Google Ads is connected, and retried later if Google isn't ready for them yet.
 export async function setLeadStatus(id: string, status: LeadStatus) {
-  const now = new Date().toISOString()
-  return updateLead(id, (lead) => {
-    lead.status = status
-    lead.statusChangedAt = now
-    for (const kind of KINDS[status] ?? []) {
-      lead.conversions ??= {}
-      // Once sent, a conversion stays sent; a failed one is tried again when set again.
-      if (!lead.conversions[kind] || lead.conversions[kind]!.state === "failed" || lead.conversions[kind]!.state === "skipped") {
-        lead.conversions[kind] = { state: "pending", at: now }
-      }
-    }
-  })
+  return updateLead(id, (lead) => applyStatus(lead, status, "you"))
 }
 
 // Sends every conversion waiting to go: new ones at once, retries at most hourly.

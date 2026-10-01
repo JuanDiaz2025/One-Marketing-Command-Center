@@ -34,6 +34,8 @@ export async function buildSnapshot({ connection, account }: ToolContext) {
       propertyAddress: l.propertyAddress,
       source: leadSource(l, placements),
       channel: leadChannel(l),
+      score: l.score && { value: l.score.value, grade: l.score.grade, reasons: l.score.reasons },
+      status: l.status ?? "new",
       tracking: l.tracking,
       notes: l.notes?.slice(0, 200),
     }))

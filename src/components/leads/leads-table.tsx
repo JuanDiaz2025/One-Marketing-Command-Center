@@ -29,6 +29,8 @@ export type LeadRow = {
   referrer?: string
   notes?: string
   status: string
+  statusBy?: "auto" | "you"
+  score?: { value: number; grade: "hot" | "warm" | "cold" | "junk"; reasons: string[] }
   // What Google Ads heard: a conversion sent, waiting to be sent, failed or skipped.
   google?: { state: "sent" | "pending" | "failed" | "skipped"; detail?: string }
 }
@@ -44,6 +46,33 @@ const statusTone: Record<string, string> = {
   not_interested: "border-border bg-muted text-muted-foreground",
 }
 
+const gradeStyle = {
+  hot: { label: "Hot", cls: "bg-red-600 text-white" },
+  warm: { label: "Warm", cls: "bg-amber-400 text-amber-950" },
+  cold: { label: "Cold", cls: "bg-sky-100 text-sky-900" },
+  junk: { label: "Junk", cls: "bg-muted text-muted-foreground line-through" },
+} as const
+
+// The lead's score, with the reasons one click away.
+function ScoreCell({ score }: { score?: LeadRow["score"] }) {
+  if (!score) return <span className="text-muted-foreground/60">–</span>
+  const g = gradeStyle[score.grade]
+  return (
+    <details className="group/score">
+      <summary className="flex cursor-pointer list-none items-center gap-1.5">
+        <span className={cn("rounded-full px-2 py-0.5 text-xs font-semibold", g.cls)}>{g.label}</span>
+        <span className="text-xs font-medium tabular-nums">{score.grade === "junk" ? "" : score.value}</span>
+        <span className="text-xs text-primary underline-offset-2 group-open/score:hidden hover:underline">why?</span>
+      </summary>
+      <ul className="mt-1 max-w-64 space-y-0.5 text-xs whitespace-normal text-muted-foreground">
+        {score.reasons.map((r, i) => (
+          <li key={i}>{r}</li>
+        ))}
+      </ul>
+    </details>
+  )
+}
+
 const googleLabel = {
   sent: { text: "Sent to Google ✓", cls: "bg-emerald-500/10 text-emerald-700" },
   pending: { text: "Waiting for Google", cls: "bg-amber-500/15 text-amber-800" },
@@ -52,8 +81,9 @@ const googleLabel = {
 } as const
 
 // The status picker in each row. Interested and later stages tell Google Ads this lead was good.
-function StatusCell({ id, status }: { id: string; status: string }) {
+function StatusCell({ id, status, auto }: { id: string; status: string; auto: boolean }) {
   const [value, setValue] = useState(status)
+  const [byApp, setByApp] = useState(auto)
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
   return (
@@ -65,6 +95,7 @@ function StatusCell({ id, status }: { id: string; status: string }) {
         onChange={(e) => {
           const next = e.target.value
           setValue(next)
+          setByApp(false)
           setError(null)
           start(async () => {
             const res = await setLeadStatusAction(id, next)
@@ -82,6 +113,7 @@ function StatusCell({ id, status }: { id: string; status: string }) {
           </option>
         ))}
       </select>
+      {byApp && value !== "new" && <span className="text-xs text-muted-foreground">Set by its score</span>}
       {error && <span className="text-xs text-destructive">{error}</span>}
     </div>
   )
@@ -93,6 +125,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
   const [query, setQuery] = useState("")
   const [channel, setChannel] = useState("")
   const [status, setStatus] = useState("")
+  const [grade, setGrade] = useState("")
   const [page, setPage] = useState(0)
 
   const channels = useMemo(() => {
@@ -107,12 +140,13 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
       (r) =>
         (!channel || r.channel === channel) &&
         (!status || r.status === status) &&
+        (!grade || r.score?.grade === grade) &&
         (!q ||
           [r.name, r.phone, r.email, r.address, r.utmCampaign, r.utmTerm, r.utmSource, r.notes, r.form]
             .filter(Boolean)
             .some((v) => v!.toLowerCase().includes(q))),
     )
-  }, [rows, query, channel, status])
+  }, [rows, query, channel, status, grade])
 
   const pages = Math.max(1, Math.ceil(shown.length / PAGE))
   const current = Math.min(page, pages - 1)
@@ -175,15 +209,34 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
             ))}
           </select>
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Score</span>
+          <select
+            value={grade}
+            onChange={(e) => {
+              setGrade(e.target.value)
+              setPage(0)
+            }}
+            className="h-10 rounded-lg border bg-card px-2 text-sm"
+          >
+            <option value="">All</option>
+            {(["hot", "warm", "cold", "junk"] as const).map((g) => (
+              <option key={g} value={g}>
+                {gradeStyle[g].label} ({rows.filter((r) => r.score?.grade === g).length})
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="max-h-[70vh] overflow-auto rounded-xl border">
-        <table className="w-full min-w-[1750px] border-collapse text-sm tabular-nums">
+        <table className="w-full min-w-[1850px] border-collapse text-sm tabular-nums">
           <thead>
             <tr>
               <th className={th}>#</th>
               <th className={th}>Received</th>
               <th className={th}>Name</th>
+              <th className={th} title="Scored when the lead arrived, from 0 to 100">Score</th>
               <th className={th}>Status</th>
               <th className={th} title="Interested and closed leads are sent back to Google Ads as conversions">Google Ads</th>
               <th className={th}>Phone</th>
@@ -209,7 +262,10 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
                 <td className={td}>{r.received}</td>
                 <td className={`${td} font-medium`}>{r.name}</td>
                 <td className={td}>
-                  <StatusCell id={r.id} status={r.status} />
+                  <ScoreCell score={r.score} />
+                </td>
+                <td className={td}>
+                  <StatusCell id={r.id} status={r.status} auto={r.statusBy === "auto"} />
                 </td>
                 <td className={td} title={r.google?.detail}>
                   {r.google ? (
@@ -289,7 +345,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
             ))}
             {!visible.length && (
               <tr>
-                <td colSpan={19} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={20} className="px-3 py-6 text-center text-muted-foreground">
                   No leads match.
                 </td>
               </tr>

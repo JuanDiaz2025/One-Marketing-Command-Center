@@ -107,6 +107,12 @@ The plugin also does the lead tracking (UTM tags, Google click ID, landing page,
 
 The app picks up new leads every 30 seconds while it's open (and whenever the chat needs leads), keeping the time each one was really sent. In WordPress, **Contact → Command Center leads** shows what's been saved and when the app last picked leads up. The app reads them from `/wp-json/omcc/v1/leads` (or `?rest_route=/omcc/v1/leads` on sites without pretty permalinks), sending the key. If a security plugin or firewall blocks the WordPress REST API, allow `/wp-json/omcc/`. CF7 to Webhook isn't needed with it; if both are on, a lead still shows up only once.
 
+## Lead scoring
+
+Every lead is scored from 0 to 100 when it arrives (`src/lib/leads/scoring.ts`): a real phone number, a property address, an email, a full name, a paid ad click, a seller search ("sell my house fast"), a motivated seller in the message (inherited, foreclosure, repairs...) and coming back again add points; a fake-looking number, links in the message or a reCAPTCHA spam block take points away. Tests, fake names, adverts and leads with no real phone or email are Junk. Hot is 70+, Warm 40 to 69.
+
+With **Set the status from the score** on (the default, on the Leads page), a new Hot lead is marked **Interested**, which sends Google Ads an offline conversion, and Junk is marked **Not interested**. That follows Google Ads' advice to send back only qualified leads. A status you set yourself always wins; leads from before scoring keep their status.
+
 ## Other way: an instant webhook
 
 Not needed with the Lead Saver plugin; useful for other form plugins. It only works while the app is running and reachable from the internet.
@@ -139,6 +145,7 @@ Everything is saved in the `.data/` folder next to the app (it's never committed
 - `webhook-log.json`: the last few times something called the website-leads webhook.
 - `wordpress.json`: your website's address and how far its saved leads have been picked up.
 - `conversion-actions.json`: the two conversion actions the app created in Google Ads.
+- `lead-scoring.json`: whether the status is set from each lead's score (on unless you turn it off).
 - `chats.json`: your chat conversations (the latest 50 per person), so they're still there after a refresh or a restart. **Past chats** in the chat lists them; **New chat** starts a fresh one.
 - `chat-problem.log`: why the chat last answered without its tools, if it did.
 - `public-url`: the tunnel address from go-online.bat.
