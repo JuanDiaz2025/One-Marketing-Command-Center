@@ -435,6 +435,8 @@ export async function checkSending(connection: AdsConnection, account: AdsAccoun
     return steps
   }
 
+  steps.push(...(await accountSettings(connection, account)))
+
   if (!actionId) return steps
   try {
     await ingestEvents(
@@ -466,4 +468,80 @@ export async function checkSending(connection: AdsConnection, account: AdsAccoun
     })
   }
   return steps
+}
+
+type TrackingRow = {
+  customer?: {
+    id?: string
+    conversionTrackingSetting?: {
+      acceptedCustomerDataTerms?: boolean
+      enhancedConversionsForLeadsEnabled?: boolean
+      conversionTrackingStatus?: string
+      googleAdsConversionCustomer?: string
+    }
+  }
+}
+type ActionRow = { conversionAction?: { name?: string; status?: string; type?: string; category?: string; primaryForGoal?: boolean } }
+
+// The Google Ads settings that make imported leads count, read from the account. These can only
+// be changed in Google Ads itself, so each one that's off says where to click.
+async function accountSettings(connection: AdsConnection, account: AdsAccount): Promise<CheckStep[]> {
+  const out: CheckStep[] = []
+  try {
+    const rows = (await runQuery(
+      connection,
+      account,
+      "SELECT customer.id, customer.conversion_tracking_setting.accepted_customer_data_terms, customer.conversion_tracking_setting.enhanced_conversions_for_leads_enabled, customer.conversion_tracking_setting.conversion_tracking_status, customer.conversion_tracking_setting.google_ads_conversion_customer FROM customer LIMIT 1",
+    )) as TrackingRow[]
+    const t = rows[0]?.customer?.conversionTrackingSetting ?? {}
+    out.push(
+      t.enhancedConversionsForLeadsEnabled
+        ? { ok: true, title: "Enhanced conversions for leads", detail: "On." }
+        : {
+            ok: false,
+            title: "Enhanced conversions for leads",
+            detail:
+              "Off. In Google Ads: Goals → Settings → Enhanced conversions for leads → turn it on, pick “Google Ads API” as the way you send data, and save. Without it, leads without a click ID can't be matched and lead goals show “Misconfigured”.",
+          },
+      t.acceptedCustomerDataTerms
+        ? { ok: true, title: "Customer data terms", detail: "Accepted." }
+        : {
+            ok: false,
+            title: "Customer data terms",
+            detail: "Not accepted. In Google Ads: Goals → Settings → Customer data terms → read and accept them. Google won't use the scrambled email or phone until you do.",
+          },
+    )
+    const owner = t.googleAdsConversionCustomer?.match(/customers\/(\d+)/)?.[1]
+    if (owner && owner !== account.customerId) {
+      out.push({
+        ok: false,
+        title: "Who owns the conversion actions",
+        detail: `This account's conversions are managed by account ${owner} (cross-account conversion tracking). Leads must be sent to that account: pick it in the Account list on the Google Ads page.`,
+      })
+    }
+  } catch (e) {
+    out.push({ ok: false, title: "Google Ads conversion settings", detail: `Couldn't read them: ${e instanceof Error ? e.message : String(e)}` })
+  }
+  // The lead goals' actions: Google flags a goal as misconfigured when its primary action can't
+  // take imports, or none is primary.
+  try {
+    const rows = (await runQuery(
+      connection,
+      account,
+      "SELECT conversion_action.name, conversion_action.status, conversion_action.type, conversion_action.category, conversion_action.primary_for_goal FROM conversion_action WHERE conversion_action.category IN ('QUALIFIED_LEAD', 'CONVERTED_LEAD') AND conversion_action.status != 'REMOVED'",
+    )) as ActionRow[]
+    for (const goal of ["QUALIFIED_LEAD", "CONVERTED_LEAD"] as const) {
+      const label = goal === "QUALIFIED_LEAD" ? "Qualified lead goal" : "Converted lead goal"
+      const actions = rows.map((r) => r.conversionAction ?? {}).filter((a) => a.category === goal)
+      const primary = actions.filter((a) => a.primaryForGoal && a.status === "ENABLED")
+      const list = actions.map((a) => `“${a.name}” (${a.type === "UPLOAD_CLICKS" ? "import" : (a.type ?? "").toLowerCase().replace(/_/g, " ")}${a.primaryForGoal ? ", primary" : ", secondary"}${a.status !== "ENABLED" ? `, ${(a.status ?? "").toLowerCase()}` : ""})`).join(", ")
+      if (!actions.length) out.push({ ok: false, title: label, detail: "No conversion action in this goal. The app makes one with the first lead." })
+      else if (!primary.length) out.push({ ok: false, title: label, detail: `No primary action, so Google can't use it for bidding: ${list}. In Google Ads: Goals → Summary → ${label.replace(" goal", "")} → Edit goal → make the import action primary.` })
+      else if (!primary.some((a) => a.type === "UPLOAD_CLICKS")) out.push({ ok: false, title: label, detail: `Its primary action doesn't take imported leads: ${list}. Make the “import” action primary (Goals → Summary → Edit goal).` })
+      else out.push({ ok: true, title: label, detail: list })
+    }
+  } catch (e) {
+    out.push({ ok: false, title: "Lead goals", detail: `Couldn't read them: ${e instanceof Error ? e.message : String(e)}` })
+  }
+  return out
 }
