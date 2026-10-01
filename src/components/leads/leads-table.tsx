@@ -22,7 +22,6 @@ export type LeadRow = {
   utmMedium?: string
   utmCampaign?: string
   utmTerm?: string
-  utmContent?: string
   gclid?: string
   landingPage?: string
   landingPath?: string
@@ -337,7 +336,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
       </div>
 
       <div className="max-h-[70vh] overflow-auto rounded-xl border">
-        <table className="w-full min-w-[1850px] border-collapse text-sm tabular-nums">
+        <table className="w-full min-w-[1750px] border-collapse text-sm tabular-nums">
           <thead>
             <tr>
               <th className={th}>#</th>
@@ -354,7 +353,6 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
               <th className={th}>UTM medium</th>
               <th className={th}>UTM campaign</th>
               <th className={th}>UTM term (keyword)</th>
-              <th className={th}>UTM content</th>
               <th className={th}>Google click ID</th>
               <th className={th}>Landing page</th>
               <th className={th}>Referrer</th>
@@ -426,9 +424,6 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
                 <td className={`${td} max-w-48 truncate`} title={r.utmTerm}>
                   {r.utmTerm || empty}
                 </td>
-                <td className={`${td} max-w-40 truncate`} title={r.utmContent}>
-                  {r.utmContent || empty}
-                </td>
                 <td className={td} title={r.gclid}>
                   {r.gclid ? `Yes · ${r.gclid.slice(0, 8)}…` : empty}
                 </td>
@@ -452,7 +447,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
             ))}
             {!visible.length && (
               <tr>
-                <td colSpan={20} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={19} className="px-3 py-6 text-center text-muted-foreground">
                   No leads match.
                 </td>
               </tr>
