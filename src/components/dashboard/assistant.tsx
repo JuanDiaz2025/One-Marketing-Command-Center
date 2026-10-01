@@ -177,6 +177,9 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
   const [showHistory, setShowHistory] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
   const poll = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Set once the person asks something or starts a new chat, so the saved chat loading on
+  // page open doesn't replace what they just did.
+  const touched = useRef(false)
   const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: "nearest" }))
 
   const refreshList = () =>
@@ -200,26 +203,42 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
     const chat = await load()
     if (!chat) return
     setChatId(chat.id)
-    setMessages(chat.messages)
     setError(null)
     setErrorCode(null)
     setShowHistory(false)
     setPending(Boolean(chat.pendingSince))
-    scrollDown()
+    show(chat)
     if (chat.pendingSince) {
       poll.current = setInterval(async () => {
         const fresh = await load()
         if (fresh && !fresh.pendingSince) {
           clearInterval(poll.current!)
-          setMessages(fresh.messages)
           setPending(false)
-          scrollDown()
+          if (!show(fresh) && fresh.messages.length <= chat.messages.length - 1) {
+            setInput(chat.messages.at(-1)?.content ?? "")
+            setError("That answer didn't come through. Your question is back in the box: press Send to ask again.")
+          }
         }
       }, 3000)
     }
   }
 
+  // Shows a saved chat. A question left without an answer (the app was closed while it was being
+  // answered) goes back into the box to send again. Returns whether that happened.
+  function show(chat: SavedChat) {
+    const last = chat.messages.at(-1)
+    const cutOff = !chat.pendingSince && last?.role === "user"
+    setMessages(cutOff ? chat.messages.slice(0, -1) : chat.messages)
+    if (cutOff) {
+      setInput(last!.content)
+      setError("The answer to your last question didn't come through. It's back in the box: press Send to ask again.")
+    }
+    scrollDown()
+    return cutOff
+  }
+
   function newChat() {
+    touched.current = true
     if (poll.current) clearInterval(poll.current)
     setChatId(undefined)
     setMessages([])
@@ -240,7 +259,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
     if (!enabled) return
     let cancelled = false
     refreshList().then((list) => {
-      if (!cancelled && list[0]) openChat(list[0].id)
+      if (!cancelled && !touched.current && list[0]) openChat(list[0].id)
     })
     return () => {
       cancelled = true
@@ -252,6 +271,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
   async function ask(question: string) {
     const text = question.trim()
     if (!text || pending || !enabled) return
+    touched.current = true
     const next: Message[] = [...messages, { role: "user", content: text }]
     setMessages(next)
     setInput("")
@@ -319,7 +339,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
       </div>
       {enabled && (
         <div className="flex gap-2 px-5 pt-3">
-          <Button type="button" variant="outline" size="sm" onClick={newChat} disabled={!messages.length && !chatId}>
+          <Button type="button" variant="outline" size="sm" onClick={newChat} disabled={pending || (!messages.length && !chatId)}>
             <Plus data-icon="inline-start" />
             New chat
           </Button>
@@ -327,6 +347,8 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
             type="button"
             variant={showHistory ? "secondary" : "outline"}
             size="sm"
+            disabled={pending}
+            title={pending ? "Wait for the answer first" : undefined}
             onClick={() => {
               if (!showHistory) refreshList()
               setShowHistory(!showHistory)
@@ -338,7 +360,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
           </Button>
         </div>
       )}
-      {enabled && showHistory && (
+      {enabled && showHistory && !pending && (
         <div className="mx-5 mt-3 max-h-64 overflow-y-auto rounded-xl border">
           {chats.length ? (
             <ul className="divide-y">
