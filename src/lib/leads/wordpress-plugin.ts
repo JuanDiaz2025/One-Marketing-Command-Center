@@ -1,12 +1,15 @@
 // The small WordPress plugin that saves every Contact Form 7 submission in the site's own database
-// and hands them to the app when it asks with the right key. WordPress is always online, so leads
+// and hands them to the app when it asks with the right key. It also does the lead tracking by
+// itself: it adds the UTM / click id hidden fields to every Contact Form 7 form and puts the
+// tracking script on every page, so nothing has to be pasted into WordPress. WordPress is always online, so leads
 // sent while this computer or the app is off are kept there until the app picks them up.
 //
 // The app builds the plugin with its key filled in; the Leads page offers it as a .zip to upload in
 // WordPress (Plugins → Add New → Upload Plugin).
+import { TRACKING_FIELDS, TRACKING_SNIPPET } from "@/lib/leads/wordpress-snippets"
 import { zipFiles } from "@/lib/zip"
 
-export const PLUGIN_VERSION = "1.0.0"
+export const PLUGIN_VERSION = "1.1.0"
 export const PLUGIN_FOLDER = "omcc-lead-saver"
 
 const phpString = (s: string) => `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`
@@ -63,6 +66,24 @@ function omcc_leads_text($value) {
 	}
 	return is_scalar($value) ? substr(trim((string) $value), 0, 5000) : '';
 }
+
+// Lead tracking, built in: hidden fields on every Contact Form 7 form...
+add_filter('wpcf7_form_hidden_fields', function ($fields) {
+	foreach (array(${TRACKING_FIELDS.map((f) => `'${f}'`).join(", ")}) as $name) {
+		if (!isset($fields[$name])) {
+			$fields[$name] = '';
+		}
+	}
+	return $fields;
+});
+
+// ...and the script that remembers where each visitor came from and fills them in.
+add_action('wp_footer', function () {
+	echo <<<'OMCC_TRACKING'
+${TRACKING_SNIPPET}
+OMCC_TRACKING;
+	echo "\n";
+});
 
 // Saves a submission the moment Contact Form 7 accepts it (after its spam checks, before the
 // email goes out, so a lead is kept even if the email fails).
