@@ -36,6 +36,16 @@ export async function checkSendingAction(): Promise<{ steps: CheckStep[] }> {
     version = (await readFile(path.join(process.cwd(), ".data", "app-version"), "utf8")).trim().slice(0, 7) || version
   } catch {}
   const steps: CheckStep[] = [{ ok: true, title: "App version", detail: `${version}. If something below fails, close the app and start it with start.bat to get the latest version first.` }]
+  // The app's Google sign-in client ID starts with its Google Cloud project's number: that's the
+  // project Google checks for the Data Manager API.
+  const project = process.env.GOOGLE_CLIENT_ID?.trim().match(/^(\d+)-/)?.[1]
+  if (project) {
+    steps.push({
+      ok: true,
+      title: "Google Cloud project",
+      detail: `${project} (your app's Google sign-in belongs to it). The Data Manager API must be on in this project, not another one: https://console.cloud.google.com/apis/library/datamanager.googleapis.com?project=${project}`,
+    })
+  }
   try {
     const active = await activeAccount(session.sub)
     if (!active) return { steps: [...steps, { ok: false, title: "Google Ads connected", detail: "Google Ads isn't connected. Connect it on the Google Ads page." }] }
