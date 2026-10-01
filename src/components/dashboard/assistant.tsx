@@ -3,13 +3,23 @@
 import { useEffect, useRef, useState } from "react"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { Check, CircleCheck, Copy, Download, LoaderCircle, LogIn, MessageSquareText, SendHorizontal, Settings, X } from "lucide-react"
+import { Check, CircleCheck, Copy, Download, History, LoaderCircle, LogIn, MessageSquareText, Plus, SendHorizontal, Settings, Trash2, X } from "lucide-react"
 
 import { ASK_EVENT } from "@/components/dashboard/ask-button"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
 type Message = { role: "user" | "assistant"; content: string }
+type ChatSummary = { id: string; title: string; updatedAt: string; pending: boolean }
+type SavedChat = { id: string; messages: Message[]; pendingSince?: string }
+
+const ago = (iso: string) => {
+  const mins = Math.round((Date.now() - Date.parse(iso)) / 60_000)
+  if (mins < 1) return "just now"
+  if (mins < 60) return `${mins} min ago`
+  if (mins < 24 * 60) return `${Math.round(mins / 60)} h ago`
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+}
 
 const suggestions = [
   "What's wrong with our ads right now, and what should we fix first?",
@@ -162,7 +172,82 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [errorCode, setErrorCode] = useState<string | null>(null)
+  const [chatId, setChatId] = useState<string | undefined>(undefined)
+  const [chats, setChats] = useState<ChatSummary[]>([])
+  const [showHistory, setShowHistory] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
+  const poll = useRef<ReturnType<typeof setInterval> | null>(null)
+  const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: "nearest" }))
+
+  const refreshList = () =>
+    fetch("/api/chat/history")
+      .then((r) => (r.ok ? r.json() : { chats: [] }))
+      .then((b: { chats?: ChatSummary[] }) => {
+        setChats(b.chats ?? [])
+        return b.chats ?? []
+      })
+      .catch(() => [] as ChatSummary[])
+
+  // Opens a saved chat. If it's still being answered (e.g. the page was refreshed while Claude
+  // was working), keep checking until the reply is saved.
+  async function openChat(id: string) {
+    if (poll.current) clearInterval(poll.current)
+    const load = () =>
+      fetch(`/api/chat/history?id=${id}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((b: { chat?: SavedChat } | null) => b?.chat ?? null)
+        .catch(() => null)
+    const chat = await load()
+    if (!chat) return
+    setChatId(chat.id)
+    setMessages(chat.messages)
+    setError(null)
+    setErrorCode(null)
+    setShowHistory(false)
+    setPending(Boolean(chat.pendingSince))
+    scrollDown()
+    if (chat.pendingSince) {
+      poll.current = setInterval(async () => {
+        const fresh = await load()
+        if (fresh && !fresh.pendingSince) {
+          clearInterval(poll.current!)
+          setMessages(fresh.messages)
+          setPending(false)
+          scrollDown()
+        }
+      }, 3000)
+    }
+  }
+
+  function newChat() {
+    if (poll.current) clearInterval(poll.current)
+    setChatId(undefined)
+    setMessages([])
+    setPending(false)
+    setError(null)
+    setErrorCode(null)
+    setShowHistory(false)
+  }
+
+  async function removeChat(id: string) {
+    await fetch(`/api/chat/history?id=${id}`, { method: "DELETE" }).catch(() => null)
+    if (id === chatId) newChat()
+    refreshList()
+  }
+
+  // Pick up where you left off: the latest conversation opens when the page loads.
+  useEffect(() => {
+    if (!enabled) return
+    let cancelled = false
+    refreshList().then((list) => {
+      if (!cancelled && list[0]) openChat(list[0].id)
+    })
+    return () => {
+      cancelled = true
+      if (poll.current) clearInterval(poll.current)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled])
 
   async function ask(question: string) {
     const text = question.trim()
@@ -178,10 +263,11 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // The server takes the last 40 messages at most.
-        body: JSON.stringify({ messages: next.slice(-40), context }),
+        // The server saves the conversation (up to 200 messages) and answers from the last 40.
+        body: JSON.stringify({ messages: next.slice(-200), context, chatId }),
       })
       const body = await res.json().catch(() => ({}))
+      if (typeof body.chatId === "string" && res.ok) setChatId(body.chatId)
       if (!res.ok || typeof body.reply !== "string") {
         setError(body.error ?? "Something went wrong. Please try again.")
         setErrorCode(typeof body.code === "string" ? body.code : null)
@@ -190,6 +276,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
         return
       }
       setMessages([...next, { role: "assistant", content: body.reply }])
+      refreshList()
     } catch {
       setError("Couldn't reach the app. Is it still running?")
       setMessages(messages)
@@ -230,6 +317,51 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
           </Button>
         )}
       </div>
+      {enabled && (
+        <div className="flex gap-2 px-5 pt-3">
+          <Button type="button" variant="outline" size="sm" onClick={newChat} disabled={!messages.length && !chatId}>
+            <Plus data-icon="inline-start" />
+            New chat
+          </Button>
+          <Button
+            type="button"
+            variant={showHistory ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => {
+              if (!showHistory) refreshList()
+              setShowHistory(!showHistory)
+            }}
+            aria-expanded={showHistory}
+          >
+            <History data-icon="inline-start" />
+            Past chats{chats.length ? ` (${chats.length})` : ""}
+          </Button>
+        </div>
+      )}
+      {enabled && showHistory && (
+        <div className="mx-5 mt-3 max-h-64 overflow-y-auto rounded-xl border">
+          {chats.length ? (
+            <ul className="divide-y">
+              {chats.map((c) => (
+                <li key={c.id} className={cn("flex items-center gap-2 px-3 py-2", c.id === chatId && "bg-primary/5")}>
+                  <button type="button" onClick={() => openChat(c.id)} className="min-w-0 flex-1 text-left">
+                    <span className="block truncate text-sm font-medium">{c.title}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {ago(c.updatedAt)}
+                      {c.pending ? " · still answering…" : ""}
+                    </span>
+                  </button>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`Delete "${c.title}"`} onClick={() => removeChat(c.id)}>
+                    <Trash2 />
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="p-3 text-sm text-muted-foreground">No saved chats yet. Your conversations are saved here as you go.</p>
+          )}
+        </div>
+      )}
 
       {!enabled ? (
         <div className="m-5 flex gap-2 rounded-xl bg-muted p-4 text-sm">

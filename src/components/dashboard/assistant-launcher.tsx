@@ -8,7 +8,8 @@ import { ASK_EVENT } from "@/components/dashboard/ask-button"
 import { cn } from "@/lib/utils"
 
 // A button that stays in the bottom corner of every page and opens the assistant in a panel.
-// The assistant stays mounted while closed, so the conversation is still there when reopened.
+// The assistant stays mounted while closed, and conversations are saved, so they are still there
+// when reopened, on another page, or after a refresh.
 export default function AssistantLauncher({ enabled, context }: { enabled: boolean; context?: string }) {
   const [open, setOpen] = useState(false)
 

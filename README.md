@@ -139,6 +139,7 @@ Everything is saved in the `.data/` folder next to the app (it's never committed
 - `webhook-log.json`: the last few times something called the website-leads webhook.
 - `wordpress.json`: your website's address and how far its saved leads have been picked up.
 - `conversion-actions.json`: the two conversion actions the app created in Google Ads.
+- `chats.json`: your chat conversations (the latest 50 per person), so they're still there after a refresh or a restart. **Past chats** in the chat lists them; **New chat** starts a fresh one.
 - `chat-problem.log`: why the chat last answered without its tools, if it did.
 - `public-url`: the tunnel address from go-online.bat.
 - `webhook-secret`: the key WordPress sends with each lead, unless `LEADS_WEBHOOK_SECRET` is set.
