@@ -107,6 +107,8 @@ The plugin also does the lead tracking (UTM tags, Google click ID, landing page,
 
 The app picks up new leads every 30 seconds while it's open (and whenever the chat needs leads), keeping the time each one was really sent. In WordPress, **Contact → Command Center leads** shows what's been saved and when the app last picked leads up. The app reads them from `/wp-json/omcc/v1/leads` (or `?rest_route=/omcc/v1/leads` on sites without pretty permalinks), sending the key. If a security plugin or firewall blocks the WordPress REST API, allow `/wp-json/omcc/`. CF7 to Webhook isn't needed with it; if both are on, a lead still shows up only once.
 
+**Sending conversions to Google Ads uses Google's Data Manager API** (Google closed the Google Ads API's conversion upload to new apps). Once: turn on the Data Manager API in the Google Cloud project that has the app's sign-in client (https://console.cloud.google.com/apis/library/datamanager.googleapis.com), then connect Google Ads again in the app so Google grants the `datamanager` permission. Until both are done, conversions wait (the Leads page says so) and are sent by themselves within a few minutes after.
+
 ## Lead scoring
 
 Every lead is scored from 0 to 100 when it arrives (`src/lib/leads/scoring.ts`): a real phone number, a property address, an email, a full name, a paid ad click, a seller search ("sell my house fast"), a motivated seller in the message (inherited, foreclosure, repairs...) and coming back again add points; a fake-looking number, links in the message or a reCAPTCHA spam block take points away. Tests, fake names, adverts and leads with no real phone or email are Junk. Hot is 70+, Warm 40 to 69.

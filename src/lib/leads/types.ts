@@ -65,6 +65,8 @@ export type ConversionUpload = {
   error?: string
   // How Google can match it: the ad click id, or the lead's email/phone (enhanced conversions).
   matchedBy?: string
+  // Held back until a set-up step is done: a Google permission, or the Data Manager API turned on.
+  waitingFor?: "permission" | "api"
 }
 
 // How good a lead looks the moment it arrives, scored by the app (scoring.ts).

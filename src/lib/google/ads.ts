@@ -17,7 +17,7 @@ export class AdsApiError extends Error {
 // Access tokens last an hour; keep them in memory rather than refreshing on every request.
 const accessTokens = new Map<string, { token: string; expires: number }>()
 
-async function accessToken(connection: AdsConnection) {
+export async function accessToken(connection: AdsConnection) {
   const cached = accessTokens.get(connection.refreshToken)
   if (cached && cached.expires > Date.now() + 60_000) return cached.token
   try {

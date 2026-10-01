@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     if (!session) return to("/login?next=/dashboard")
     if (!tokens.scope.split(" ").includes(ADS_SCOPE)) return failed("scope")
     if (!tokens.refresh_token) return failed("no_refresh_token")
-    await saveConnection(session.sub, user.email, tokens.refresh_token)
+    await saveConnection(session.sub, user.email, tokens.refresh_token, tokens.scope.split(" "))
     return to("/dashboard?connected=1")
   } catch (error) {
     console.error("Google sign-in failed:", error instanceof OAuthError ? error.message : error)

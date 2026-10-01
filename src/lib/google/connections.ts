@@ -21,6 +21,8 @@ type StoredConnection = {
   accounts: AdsAccount[]
   accountsFetchedAt?: string
   selectedCustomerId?: string
+  // The permissions Google granted when connecting (connections from before this was kept have none).
+  scopes?: string[]
 }
 
 export type AdsConnection = Omit<StoredConnection, "refreshToken"> & { refreshToken: string }
@@ -35,7 +37,7 @@ export async function getConnection(sub: string): Promise<AdsConnection | null> 
   return refreshToken ? { ...stored, refreshToken } : null
 }
 
-export async function saveConnection(sub: string, email: string, refreshToken: string) {
+export async function saveConnection(sub: string, email: string, refreshToken: string, scopes: string[] = []) {
   const sealed = await seal(refreshToken)
   await file.update((db) => {
     db[sub] = {
@@ -44,6 +46,7 @@ export async function saveConnection(sub: string, email: string, refreshToken: s
       connectedAt: new Date().toISOString(),
       accounts: [],
       selectedCustomerId: db[sub]?.selectedCustomerId,
+      scopes,
     }
   })
 }

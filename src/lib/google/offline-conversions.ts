@@ -1,5 +1,5 @@
 // Feeding lead quality back to Google Ads: when the team marks a lead Interested or Closed deal,
-// the app uploads an offline conversion for it, so Google's bidding learns which clicks bring real
+// the app sends an offline conversion for it through Google's Data Manager API (data-manager.ts), so Google's bidding learns which clicks bring real
 // sellers. Each upload is matched by the lead's Google click id (gclid, from the WordPress tracking
 // snippet) and, when there is one, the lead's email and phone, scrambled with SHA-256 first
 // (Google's "enhanced conversions for leads"). Google never receives the plain email or phone.
@@ -10,6 +10,7 @@
 import { createHash } from "node:crypto"
 
 import { AdsApiError, postToAds, runQuery } from "@/lib/google/ads"
+import { ingestEvents } from "@/lib/google/data-manager"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
 import { jsonFileStore } from "@/lib/json-file-store"
 import { applyStatus } from "@/lib/leads/status"
@@ -23,8 +24,6 @@ export const ACTIONS: Record<ConversionKind, { name: string; category: string }>
 
 const actionsFile = jsonFileStore<Record<string, Partial<Record<ConversionKind, string>>>>("conversion-actions.json", () => ({}))
 
-// Google's format: "yyyy-mm-dd hh:mm:ss+00:00".
-const googleTime = (iso: string) => `${new Date(iso).toISOString().slice(0, 19).replace("T", " ")}+00:00`
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex")
 
 // Google's normalizing rules: lower case, no spaces; Gmail addresses without dots before the @.
@@ -45,11 +44,11 @@ export function normalizePhone(phone: string) {
 }
 
 function identifiers(lead: Lead) {
-  const ids: Record<string, string>[] = []
+  const ids: ({ emailAddress: string } | { phoneNumber: string })[] = []
   const email = lead.email ? normalizeEmail(lead.email) : null
   const phone = lead.phone ? normalizePhone(lead.phone) : null
-  if (email) ids.push({ hashedEmail: sha256(email) })
-  if (phone) ids.push({ hashedPhoneNumber: sha256(phone) })
+  if (email) ids.push({ emailAddress: sha256(email) })
+  if (phone) ids.push({ phoneNumber: sha256(phone) })
   return ids
 }
 
@@ -92,12 +91,11 @@ async function conversionAction(connection: AdsConnection, account: AdsAccount, 
 // Errors worth trying again later: a just-created conversion action, or a click Google hasn't
 // processed yet. Anything else is reported and not retried.
 const RETRY = /TOO_RECENT|CLICK_NOT_FOUND|INTERNAL|TRANSIENT|DEADLINE|UNAVAILABLE|RESOURCE_EXHAUSTED|RATE/i
+const SETUP_RETRY_MS = 5 * 60_000
+// Refused by the old upload Google closed to new apps: send these again the new way.
+const OLD_UPLOAD_CLOSED = /Data Manager API|ConversionUploadService|limited to existing users/i
 const MAX_TRIES = 12
 const RETRY_AFTER_MS = 60 * 60_000
-
-type UploadResult = {
-  partialFailureError?: { message?: string; details?: { errors?: { message?: string; errorCode?: Record<string, string> }[] }[] }
-}
 
 async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead, kind: ConversionKind) {
   const entry = lead.conversions?.[kind]
@@ -114,24 +112,18 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
   let code = ""
   try {
     const action = await conversionAction(connection, account, kind)
-    const res = await postToAds<UploadResult>(connection, account, ":uploadClickConversions", {
-      conversions: [
-        {
-          conversionAction: action,
-          conversionDateTime: googleTime(entry.at),
-          conversionValue: 1,
-          currencyCode: account.currency || "USD",
-          ...(gclid ? { gclid } : {}),
-          ...(ids.length ? { userIdentifiers: ids } : {}),
-        },
-      ],
-      partialFailure: true,
-    })
-    const failure = res.partialFailureError?.details?.[0]?.errors?.[0]
-    if (res.partialFailureError) {
-      error = failure?.message ?? res.partialFailureError.message ?? "Google Ads refused the conversion."
-      code = failure?.errorCode ? Object.values(failure.errorCode)[0] : ""
-    }
+    await ingestEvents(connection, account, action.split("/").pop()!, [
+      {
+        eventTimestamp: new Date(entry.at).toISOString(),
+        // The same lead and stage is only ever counted once, even if sent again.
+        transactionId: `${lead.id}-${kind}`,
+        eventSource: "WEB",
+        ...(gclid ? { adIdentifiers: { gclid } } : {}),
+        ...(ids.length ? { userData: { userIdentifiers: ids } } : {}),
+        conversionValue: 1,
+        currency: account.currency || "USD",
+      },
+    ])
   } catch (e) {
     error = e instanceof Error ? e.message : String(e)
     code = e instanceof AdsApiError ? (e.code ?? "") : ""
@@ -139,13 +131,17 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
   const now = new Date().toISOString()
   await updateLead(lead.id, (l) => {
     const tries = (entry.tries ?? 0) + 1
+    // Waiting on a set-up step (a permission, the API turned on): keep it waiting, without
+    // counting tries, and check again every few minutes.
+    const waitingFor = code === "NEEDS_PERMISSION" ? "permission" : code === "API_OFF" ? "api" : undefined
     l.conversions![kind] = error
       ? {
           ...entry,
-          tries,
+          tries: waitingFor ? (entry.tries ?? 0) : tries,
           lastTry: now,
           error,
-          state: RETRY.test(`${code} ${error}`) && tries < MAX_TRIES ? "pending" : "failed",
+          waitingFor,
+          state: waitingFor || (RETRY.test(`${code} ${error}`) && tries < MAX_TRIES) ? "pending" : "failed",
         }
       : { at: entry.at, tries, lastTry: now, state: "sent", matchedBy: [gclid && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
   })
@@ -164,9 +160,16 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
     const leads = await listLeads()
     for (const lead of leads) {
       for (const kind of ["interested", "closed"] as const) {
-        const entry = lead.conversions?.[kind]
+        let entry = lead.conversions?.[kind]
+        if (entry?.state === "failed" && OLD_UPLOAD_CLOSED.test(entry.error ?? "")) {
+          await updateLead(lead.id, (l) => {
+            l.conversions![kind] = { state: "pending", at: entry!.at }
+          })
+          lead.conversions![kind] = entry = { state: "pending", at: entry.at }
+        }
         if (entry?.state !== "pending") continue
-        if (entry.lastTry && Date.now() - Date.parse(entry.lastTry) < RETRY_AFTER_MS) continue
+        const wait = entry.waitingFor ? SETUP_RETRY_MS : RETRY_AFTER_MS
+        if (entry.lastTry && Date.now() - Date.parse(entry.lastTry) < wait) continue
         await upload(connection, account, lead, kind)
       }
     }

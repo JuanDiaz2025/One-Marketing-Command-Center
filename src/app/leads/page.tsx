@@ -12,6 +12,7 @@ import ScoringSettings from "@/components/leads/scoring-settings"
 import WebhookSetup from "@/components/leads/webhook-setup"
 import { formatNumber } from "@/components/dashboard/format"
 import { buttonVariants } from "@/components/ui/button"
+import { DATA_MANAGER_LIBRARY } from "@/lib/google/data-manager"
 import { cn } from "@/lib/utils"
 import { requireSession } from "@/lib/auth/session"
 import { activeAccount } from "@/lib/google/active-account"
@@ -105,6 +106,11 @@ export default async function LeadsPage() {
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0
 
+  // Conversions held back by a set-up step Google needs, so the page can say what to do.
+  const waiting = leads.flatMap((l) => Object.values(l.conversions ?? {})).filter((c) => c?.state === "pending" && c.waitingFor)
+  const needsPermission = waiting.some((c) => c?.waitingFor === "permission")
+  const needsApi = waiting.some((c) => c?.waitingFor === "api")
+
   const kpis = [
     { label: "Form leads, last 7 days", value: formatNumber(countSince(leads, 7)) },
     { label: "Form leads, last 30 days", value: formatNumber(countSince(leads, 30)) },
@@ -136,6 +142,35 @@ export default async function LeadsPage() {
             )}
           </div>
         </div>
+
+        {waiting.length > 0 && (
+          <section className="rounded-2xl border-2 border-amber-500/50 bg-amber-500/10 p-5 text-amber-950">
+            <h2 className="text-lg font-semibold">
+              {waiting.length} conversion{waiting.length === 1 ? " is" : "s are"} waiting to go to Google Ads
+            </h2>
+            <p className="mt-1">
+              Google now takes offline conversions through its Data Manager API. Two one-time steps, then they&apos;re sent by
+              themselves within a few minutes:
+            </p>
+            <ol className="mt-2 list-decimal space-y-2 pl-5">
+              <li>
+                <strong>Turn on the Data Manager API:</strong> open{" "}
+                <a href={DATA_MANAGER_LIBRARY} target="_blank" rel="noreferrer" className="font-medium underline">
+                  the Data Manager API page in Google Cloud
+                </a>
+                , sign in with the Google account that made the app&apos;s sign-in settings, make sure the same project is picked at the
+                top, and click <strong>Enable</strong>.
+              </li>
+              <li>
+                <strong>Allow it in the app:</strong>{" "}
+                <a href="/api/auth/google?intent=ads" className="font-medium underline">
+                  connect Google Ads again
+                </a>{" "}
+                with the account you use for Google Ads, and leave every box ticked when Google asks.
+              </li>
+            </ol>
+          </section>
+        )}
 
         <section aria-label="Lead counts" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           {kpis.map((kpi) => (
