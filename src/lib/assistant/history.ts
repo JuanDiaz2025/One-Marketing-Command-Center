@@ -24,7 +24,12 @@ const KEEP_MESSAGES = 200
 // A question still "pending" after this long was cut off (e.g. the app restarted): stop waiting.
 const PENDING_MAX_MS = 15 * 60_000
 
-const isPending = (c: Chat) => Boolean(c.pendingSince && Date.now() - Date.parse(c.pendingSince) < PENDING_MAX_MS)
+// The chats being answered right now, by this running app. After a restart (e.g. an update) the
+// set starts empty, so a question cut off by the restart isn't waited for.
+const g = globalThis as typeof globalThis & { __omccAnswering?: Set<string> }
+const answering = (g.__omccAnswering ??= new Set<string>())
+const isPending = (c: Chat) =>
+  Boolean(c.pendingSince && answering.has(c.id) && Date.now() - Date.parse(c.pendingSince) < PENDING_MAX_MS)
 const titleOf = (messages: ChatMessage[]) => {
   const first = messages.find((m) => m.role === "user")?.content.trim().replace(/\s+/g, " ") ?? "New chat"
   return first.length > 70 ? `${first.slice(0, 67)}…` : first
@@ -56,6 +61,7 @@ export async function saveQuestion(user: string, id: string | undefined, message
     chat.title = titleOf(chat.messages)
     chat.updatedAt = now
     chat.pendingSince = now
+    answering.add(chat.id)
     // Drop the oldest chats beyond the limit.
     chats.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).splice(KEEP_CHATS)
     return chat.id
@@ -70,6 +76,8 @@ export async function saveReply(user: string, id: string, reply: string) {
     chat.updatedAt = new Date().toISOString()
     delete chat.pendingSince
   })
+  // Only after the reply is saved, so nobody sees the question as cut off in between.
+  answering.delete(id)
 }
 
 // The question couldn't be answered: take it back out (the page puts it back in the box to retry).
@@ -82,6 +90,7 @@ export async function dropQuestion(user: string, id: string) {
     delete chat.pendingSince
     if (!chat.messages.length) db[user] = chats!.filter((c) => c.id !== id)
   })
+  answering.delete(id)
 }
 
 export async function deleteChat(user: string, id: string) {

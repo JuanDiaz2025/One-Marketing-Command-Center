@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises"
+import path from "node:path"
+
 import { headers } from "next/headers"
 import { CircleAlert, CircleCheck, Download, Globe, TriangleAlert } from "lucide-react"
 
@@ -21,8 +24,21 @@ const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/
 function describe(a: WebhookAttempt) {
   if (a.result === "lead") return `Lead received: ${a.lead ?? "website lead"}`
   if (a.result === "test") return "Connection test: OK"
+  if (a.result === "unrecognized") {
+    return `Lead saved as "Website lead", but its name, phone and email weren't recognized: check its notes. The form sent: ${a.fields?.join(", ") || "no fields"}.`
+  }
   if (a.result === "wrong-key") return "Turned away: the key in the address was wrong or missing. Copy the address above again."
   return `Turned away: no name, phone or email found. The form sent: ${a.fields?.length ? a.fields.join(", ") : "no fields"}.`
+}
+
+// Whether the old Google Sheet inbox (removed) was set up here: its leads no longer come in.
+async function oldSheetInbox() {
+  try {
+    const state = JSON.parse(await readFile(path.join(process.cwd(), ".data", "lead-inbox.json"), "utf8")) as { url?: string }
+    return Boolean(state.url)
+  } catch {
+    return false
+  }
 }
 
 // What happened to a form submission on the site, in plain words.
@@ -52,9 +68,10 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
   const wp = await getWordPress()
   const connected = Boolean(wp.site && wp.lastSync && !wp.lastError)
   const siteName = wp.site?.replace(/^https?:\/\//, "")
+  const usedSheet = await oldSheetInbox()
 
   return (
-    <Disclosure className="group rounded-2xl border bg-card shadow-xs" initialOpen={!connected || websiteLeads === 0}>
+    <Disclosure className="group rounded-2xl border bg-card shadow-xs" initialOpen={!connected || websiteLeads === 0 || usedSheet}>
       <summary className="flex cursor-pointer list-none items-center gap-3 p-5 sm:px-6">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
           <Globe className="size-5" />
@@ -71,6 +88,16 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
         </span>
       </summary>
       <div className="flex flex-col gap-5 border-t px-5 py-5 text-sm sm:px-6">
+        {usedSheet && (
+          <p className="flex gap-2 rounded-xl border-2 border-amber-500/50 bg-amber-500/10 p-4 font-medium text-amber-950">
+            <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-600" />
+            <span>
+              The Google Sheet lead inbox you set up before isn&apos;t used any more, so leads sent to it don&apos;t come in here.
+              Set up the Lead Saver below, then in Contact Form 7&apos;s <strong>Webhook</strong> tab remove the Google Sheet
+              address. Check the Sheet for any leads sent since the update.
+            </span>
+          </p>
+        )}
         <section
           className={cn(
             "flex flex-col gap-3 rounded-xl border-2 p-4",

@@ -8,12 +8,22 @@ $branch = 'claude/peaceful-einstein-53zbjx'
 $root = Split-Path -Parent $PSScriptRoot
 $versionFile = Join-Path $root '.data\app-version'
 
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+$headers = @{ 'User-Agent' = 'OneMarketingCommandCenter-updater'; 'Accept' = 'application/vnd.github+json' }
+$latest = $null
 try {
-  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-  $headers = @{ 'User-Agent' = 'OneMarketingCommandCenter-updater'; 'Accept' = 'application/vnd.github+json' }
   $latest = (Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/commits/$branch" -Headers $headers -TimeoutSec 20).sha
 } catch {
-  Write-Host "Couldn't check for updates (no internet?). Starting the version you have."
+  # The branch may have been merged and removed: then use the repository's main branch, but only
+  # if it has this updater too (so it really holds this version of the app, not an older one).
+  try {
+    $main = (Invoke-RestMethod -Uri "https://api.github.com/repos/$repo" -Headers $headers -TimeoutSec 20).default_branch
+    Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/contents/scripts/update.ps1?ref=$main" -Headers $headers -TimeoutSec 20 | Out-Null
+    $latest = (Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/commits/$main" -Headers $headers -TimeoutSec 20).sha
+  } catch {}
+}
+if (-not $latest) {
+  Write-Host "Couldn't check for updates right now. Starting the version you have."
   exit 0
 }
 $current = ''
@@ -34,10 +44,10 @@ try {
   $src = (Get-ChildItem (Join-Path $tmp 'x') -Directory | Select-Object -First 1).FullName
   if (-not (Test-Path (Join-Path $src 'package.json'))) { throw 'the download looks incomplete' }
   # Everything except your settings, data and installed packages...
-  robocopy $src $root /E /XD node_modules .data .next .git src /XF .env.local /NFL /NDL /NJH /NJS /NP | Out-Null
+  robocopy $src $root /E /XD node_modules .data .next .git src /XF .env.local /R:2 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
   if ($LASTEXITCODE -ge 8) { throw "copying failed ($LASTEXITCODE)" }
   # ...and the app's code exactly as released, so files removed in the update are removed here too.
-  robocopy (Join-Path $src 'src') (Join-Path $root 'src') /MIR /NFL /NDL /NJH /NJS /NP | Out-Null
+  robocopy (Join-Path $src 'src') (Join-Path $root 'src') /MIR /R:2 /W:2 /NFL /NDL /NJH /NJS /NP | Out-Null
   if ($LASTEXITCODE -ge 8) { throw "copying failed ($LASTEXITCODE)" }
   New-Item -ItemType Directory -Force (Join-Path $root '.data') | Out-Null
   Set-Content -Path $versionFile -Value $latest -NoNewline

@@ -180,6 +180,8 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
   // Set once the person asks something or starts a new chat, so the saved chat loading on
   // page open doesn't replace what they just did.
   const touched = useRef(false)
+  // Changes whenever another chat is shown, so a reply only lands in the chat it belongs to.
+  const view = useRef(0)
   const scrollDown = () => requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: "nearest" }))
 
   const refreshList = () =>
@@ -193,7 +195,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
 
   // Opens a saved chat. If it's still being answered (e.g. the page was refreshed while Claude
   // was working), keep checking until the reply is saved.
-  async function openChat(id: string) {
+  async function openChat(id: string, auto = false) {
     if (poll.current) clearInterval(poll.current)
     const load = () =>
       fetch(`/api/chat/history?id=${id}`)
@@ -201,7 +203,9 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
         .then((b: { chat?: SavedChat } | null) => b?.chat ?? null)
         .catch(() => null)
     const chat = await load()
-    if (!chat) return
+    // Opened by itself on page load, but the person already started something: leave it be.
+    if (!chat || (auto && touched.current)) return
+    const mine = ++view.current
     setChatId(chat.id)
     setError(null)
     setErrorCode(null)
@@ -210,8 +214,19 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
     show(chat)
     if (chat.pendingSince) {
       poll.current = setInterval(async () => {
+        if (view.current !== mine) return clearInterval(poll.current!)
         const fresh = await load()
-        if (fresh && !fresh.pendingSince) {
+        if (view.current !== mine) return
+        if (!fresh) {
+          // The question failed and its chat was removed: put the question back.
+          clearInterval(poll.current!)
+          setPending(false)
+          setMessages(chat.messages.slice(0, -1))
+          setInput(chat.messages.at(-1)?.content ?? "")
+          setError("That answer didn't come through. Your question is back in the box: press Send to ask again.")
+          return
+        }
+        if (!fresh.pendingSince) {
           clearInterval(poll.current!)
           setPending(false)
           if (!show(fresh) && fresh.messages.length <= chat.messages.length - 1) {
@@ -239,6 +254,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
 
   function newChat() {
     touched.current = true
+    view.current++
     if (poll.current) clearInterval(poll.current)
     setChatId(undefined)
     setMessages([])
@@ -259,7 +275,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
     if (!enabled) return
     let cancelled = false
     refreshList().then((list) => {
-      if (!cancelled && !touched.current && list[0]) openChat(list[0].id)
+      if (!cancelled && !touched.current && list[0]) openChat(list[0].id, true)
     })
     return () => {
       cancelled = true
@@ -278,6 +294,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
     setError(null)
     setErrorCode(null)
     setPending(true)
+    const mine = view.current
     requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }))
     try {
       const res = await fetch("/api/chat", {
@@ -287,6 +304,11 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
         body: JSON.stringify({ messages: next.slice(-200), context, chatId }),
       })
       const body = await res.json().catch(() => ({}))
+      // Another chat was opened meanwhile: this reply is saved in its own chat (Past chats).
+      if (view.current !== mine) {
+        refreshList()
+        return
+      }
       if (typeof body.chatId === "string" && res.ok) setChatId(body.chatId)
       if (!res.ok || typeof body.reply !== "string") {
         setError(body.error ?? "Something went wrong. Please try again.")
@@ -298,11 +320,12 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
       setMessages([...next, { role: "assistant", content: body.reply }])
       refreshList()
     } catch {
+      if (view.current !== mine) return
       setError("Couldn't reach the app. Is it still running?")
       setMessages(messages)
       setInput(text)
     } finally {
-      setPending(false)
+      if (view.current === mine) setPending(false)
       requestAnimationFrame(() => endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }))
     }
   }
@@ -339,7 +362,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
       </div>
       {enabled && (
         <div className="flex gap-2 px-5 pt-3">
-          <Button type="button" variant="outline" size="sm" onClick={newChat} disabled={pending || (!messages.length && !chatId)}>
+          <Button type="button" variant="outline" size="sm" onClick={newChat} disabled={!messages.length && !chatId}>
             <Plus data-icon="inline-start" />
             New chat
           </Button>
@@ -347,8 +370,6 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
             type="button"
             variant={showHistory ? "secondary" : "outline"}
             size="sm"
-            disabled={pending}
-            title={pending ? "Wait for the answer first" : undefined}
             onClick={() => {
               if (!showHistory) refreshList()
               setShowHistory(!showHistory)
@@ -360,7 +381,7 @@ export default function Assistant({ enabled, context, onClose }: AssistantProps)
           </Button>
         </div>
       )}
-      {enabled && showHistory && !pending && (
+      {enabled && showHistory && (
         <div className="mx-5 mt-3 max-h-64 overflow-y-auto rounded-xl border">
           {chats.length ? (
             <ul className="divide-y">

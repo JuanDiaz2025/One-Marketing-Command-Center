@@ -9,7 +9,7 @@
 import { TRACKING_FIELDS, TRACKING_SNIPPET } from "@/lib/leads/wordpress-snippets"
 import { zipFiles } from "@/lib/zip"
 
-export const PLUGIN_VERSION = "1.2.0"
+export const PLUGIN_VERSION = "1.3.0"
 export const PLUGIN_FOLDER = "omcc-lead-saver"
 
 const phpString = (s: string) => `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`
@@ -60,11 +60,17 @@ add_action('plugins_loaded', function () {
 	}
 });
 
+// Shortens text without cutting a letter like "é" in half (which the database would refuse).
+function omcc_leads_cut($text, $length) {
+	$text = function_exists('mb_substr') ? mb_substr((string) $text, 0, $length, 'UTF-8') : substr((string) $text, 0, $length);
+	return wp_check_invalid_utf8($text, true);
+}
+
 function omcc_leads_text($value) {
 	if (is_array($value)) {
 		return implode(', ', array_filter(array_map('omcc_leads_text', $value), 'strlen'));
 	}
-	return is_scalar($value) ? substr(trim((string) $value), 0, 5000) : '';
+	return is_scalar($value) ? omcc_leads_cut(trim((string) $value), 5000) : '';
 }
 
 // Lead tracking, built in: hidden fields on every Contact Form 7 form...
@@ -113,8 +119,8 @@ function omcc_leads_note($form, $status, $saved) {
 	$events = is_array($events) ? $events : array();
 	array_unshift($events, array(
 		'at' => gmdate('Y-m-d\TH:i:s\Z'),
-		'form' => is_object($form) && method_exists($form, 'title') ? substr((string) $form->title(), 0, 100) : '',
-		'status' => substr($status, 0, 40),
+		'form' => is_object($form) && method_exists($form, 'title') ? omcc_leads_cut($form->title(), 100) : '',
+		'status' => omcc_leads_cut($status, 40),
 		'saved' => (bool) $saved,
 	));
 	update_option('omcc_leads_events', array_slice($events, 0, 20), false);
@@ -151,11 +157,12 @@ function omcc_leads_store($form, $submission, $flag) {
 		if ($flag !== '') {
 			$fields['_omcc_flag'] = $flag;
 		}
-		$json = wp_json_encode($fields, JSON_INVALID_UTF8_SUBSTITUTE);
+		// Bad characters are replaced rather than losing the whole lead (that option needs PHP 7.2).
+		$json = wp_json_encode($fields, defined('JSON_INVALID_UTF8_SUBSTITUTE') ? JSON_INVALID_UTF8_SUBSTITUTE : 0);
 		global $wpdb;
 		$ok = $wpdb->insert(
 			omcc_leads_table(),
-			array('received' => gmdate('Y-m-d H:i:s'), 'form' => substr($title, 0, 200), 'fields' => $json ? $json : '{}'),
+			array('received' => gmdate('Y-m-d H:i:s'), 'form' => omcc_leads_cut($title, 200), 'fields' => $json ? $json : '{}'),
 			array('%s', '%s', '%s')
 		);
 		if ($ok === false) {

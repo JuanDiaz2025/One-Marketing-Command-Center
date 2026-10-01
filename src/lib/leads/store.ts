@@ -52,29 +52,32 @@ export async function listLeads() {
 
 const digits = (s?: string) => s?.replace(/\D/g, "").slice(-10) || undefined
 const SAME_LEAD_MS = 15 * 60_000
+// "wp:www.example.com:12" and "wp:example.com:12" are the same saved lead.
+const sameSource = (a?: string, b?: string) => Boolean(a && b && a.replace(/^wp:www\./, "wp:") === b.replace(/^wp:www\./, "wp:"))
 
 // `createdAt` defaults to now; leads picked up from WordPress keep the time they were really sent.
-// A WordPress lead is added once (by its id), and not again if the webhook already brought it in:
-// a webhook lead with the same email or phone from within 15 minutes is taken to be the same one.
+// The same lead can arrive twice when the website uses both the Lead Saver plugin and a webhook:
+// one with an email or phone in common from within 15 minutes of the other, where only one of
+// them came from the plugin, is taken to be the same lead. A plugin lead is added once (by its id).
 export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?: string) {
   return file.update((db) => {
     const at = createdAt ? new Date(createdAt).toISOString() : new Date().toISOString()
     if (input.inboxId) {
-      const known = db.leads.find((l) => l.inboxId === input.inboxId)
+      const known = db.leads.find((l) => sameSource(l.inboxId, input.inboxId))
       if (known) return known
-      const email = input.email?.toLowerCase()
-      const phone = digits(input.phone)
-      const same = db.leads.find(
-        (l) =>
-          !l.inboxId &&
-          !l.qrCodeId &&
-          Math.abs(Date.parse(l.createdAt) - Date.parse(at)) < SAME_LEAD_MS &&
-          ((email && l.email?.toLowerCase() === email) || (phone && digits(l.phone) === phone)),
-      )
-      if (same) {
-        same.inboxId = input.inboxId
-        return same
-      }
+    }
+    const email = input.email?.toLowerCase()
+    const phone = digits(input.phone)
+    const same = db.leads.find(
+      (l) =>
+        !l.qrCodeId &&
+        Boolean(l.inboxId) !== Boolean(input.inboxId) &&
+        Math.abs(Date.parse(l.createdAt) - Date.parse(at)) < SAME_LEAD_MS &&
+        ((email && l.email?.toLowerCase() === email) || (phone && digits(l.phone) === phone)),
+    )
+    if (same) {
+      same.inboxId ??= input.inboxId
+      return same
     }
     const lead: Lead = { ...input, id: newId(), createdAt: at }
     db.leads.push(lead)

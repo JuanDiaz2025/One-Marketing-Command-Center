@@ -44,12 +44,18 @@ export function normalizeSite(input: string) {
   }
 }
 
+const bareHost = (site: string) => new URL(site).host.replace(/^www\./, "")
+
+// Saves the site's address. Typing the same site again (with or without www) keeps how far its
+// leads have been brought in; a different site starts from its first saved lead.
 export async function setWordPressSite(site: string | null) {
   await file.update((s) => {
+    const same = Boolean(site && s.site && bareHost(site) === bareHost(s.site))
+    const lastId = s.lastId
     for (const key of Object.keys(s)) delete s[key as keyof WordPressState]
     if (site) {
       s.site = site
-      s.lastId = 0
+      s.lastId = same ? (lastId ?? 0) : 0
     }
   })
   lastAttempt = 0
@@ -60,19 +66,25 @@ export async function setWordPressSite(site: string | null) {
 async function ask(state: WordPressState, key: string, after: number): Promise<{ answer: Answer; api: WordPressState["api"] }> {
   const order: NonNullable<WordPressState["api"]>[] = state.api === "rest_route" ? ["rest_route", "wp-json"] : ["wp-json", "rest_route"]
   let last: { status: number; answer: Answer | null } = { status: 0, answer: null }
-  for (const api of order) {
-    const params = `after=${after}&key=${encodeURIComponent(key)}&t=${Date.now()}`
+  const get = async (api: NonNullable<WordPressState["api"]>, keyInAddress: boolean) => {
+    const params = `after=${after}${keyInAddress ? `&key=${encodeURIComponent(key)}` : ""}&t=${Date.now()}`
     const url = api === "wp-json" ? `${state.site}/wp-json/omcc/v1/leads?${params}` : `${state.site}/?rest_route=/omcc/v1/leads&${params}`
     const res = await fetch(url, {
       headers: { "x-omcc-key": key, accept: "application/json", "user-agent": "OneMarketingCommandCenter/1.0" },
       cache: "no-store",
       signal: AbortSignal.timeout(20_000),
     })
-    const answer = (await res.json().catch(() => null)) as Answer | null
-    if (answer?.ok) return { answer, api }
-    last = { status: res.status, answer }
+    return { status: res.status, answer: (await res.json().catch(() => null)) as Answer | null }
+  }
+  for (const api of order) {
+    // The key goes in a header, which stays out of the site's logs. Some hosts drop unknown
+    // headers; only then is it sent in the address instead.
+    let result = await get(api, false)
+    if (result.answer?.code === "omcc_bad_key") result = await get(api, true)
+    if (result.answer?.ok) return { answer: result.answer, api }
+    last = result
     // Our plugin answered (wrong key, still setting up): no point trying the other address.
-    if (answer?.code?.startsWith("omcc_")) break
+    if (result.answer?.code?.startsWith("omcc_")) break
   }
   const { status, answer } = last
   if (answer?.code === "omcc_bad_key") {
@@ -98,7 +110,8 @@ async function ask(state: WordPressState, key: string, after: number): Promise<{
 // Brings in leads saved in WordPress since the last time. At most every 30 seconds, and one at a
 // time; `force` skips the wait (e.g. right after connecting).
 export function syncWordPress(force = false): Promise<void> {
-  if (running) return running
+  // A check already under way may be for the old address: let it finish, then check again.
+  if (running) return force ? running.then(() => syncWordPress(true)) : running
   if (!force && Date.now() - lastAttempt < SYNC_EVERY_MS) return Promise.resolve()
   lastAttempt = Date.now()
   running = (async () => {
@@ -106,7 +119,7 @@ export function syncWordPress(force = false): Promise<void> {
     if (!state.site) return
     try {
       const key = await webhookSecret()
-      const host = new URL(state.site).host
+      const host = bareHost(state.site)
       let lastId = state.lastId ?? 0
       let api = state.api
       let info: Answer = {}
@@ -129,7 +142,18 @@ export function syncWordPress(force = false): Promise<void> {
             lead.notes = [`⚠ ${why}`, lead.notes].filter(Boolean).join("\n")
           }
           if (!lead) {
-            await logAttempt({ ok: false, result: "no-contact", fields: Object.keys(fields).slice(0, 30) })
+            // No field the app recognises as a name, email or phone (e.g. renamed form fields).
+            // The site saved it, so keep it anyway with everything it sent in the notes.
+            const notes = Object.entries(fields)
+              .filter(([k, v]) => !k.startsWith("thb_") && typeof v === "string" && v.trim())
+              .slice(0, 30)
+              .map(([k, v]) => `${k}: ${String(v).slice(0, 300)}`)
+              .join("\n")
+            await addLead(
+              { name: "Website lead (check the notes)", notes: notes || undefined, source: saved.form ? `Website · ${saved.form.slice(0, 60)}` : "Website", inboxId: `wp:${host}:${saved.id}` },
+              Number.isNaN(Date.parse(saved.received)) ? undefined : saved.received,
+            )
+            await logAttempt({ ok: false, result: "unrecognized", fields: Object.keys(fields).slice(0, 30) })
             continue
           }
           await addLead({ ...lead, inboxId: `wp:${host}:${saved.id}` }, Number.isNaN(Date.parse(saved.received)) ? undefined : saved.received)

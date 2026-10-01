@@ -162,7 +162,11 @@ export function parseWebsiteLead(payload: unknown): WebsiteLead | null {
   const used = new Set<number>()
   const take = (names: readonly string[]) => {
     for (const alias of names) {
-      const i = pairs.findIndex(([k], index) => !used.has(index) && norm(k.split(".").pop() ?? k) === alias)
+      // Contact Form 7's default names end in a number (email-123, tel-456): match those too.
+      const i = pairs.findIndex(([k], index) => {
+        const n = norm(k.split(".").pop() ?? k)
+        return !used.has(index) && (n === alias || n.replace(/\d+$/, "") === alias)
+      })
       if (i >= 0) {
         used.add(i)
         return pairs[i][1].slice(0, 500)
