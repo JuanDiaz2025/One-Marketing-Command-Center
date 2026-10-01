@@ -75,7 +75,7 @@ const aliases = {
   lastName: ["lastname", "lname", "last", "surname", "familyname"],
   phone: ["phone", "phonenumber", "tel", "telephone", "mobile", "cell", "cellphone", "yourphone", "yourtel", "bestphone"],
   email: ["email", "emailaddress", "youremail", "mail", "eml"],
-  address: ["propertyaddress", "address", "streetaddress", "street", "address1", "addressline1", "youraddress", "propertylocation", "location"],
+  address: ["propertyaddress", "address", "streetaddress", "street", "address1", "addressline1", "youraddress", "propertylocation", "location", "selectedgoogleaddress"],
   city: ["city", "town"],
   state: ["state", "province", "region"],
   zip: ["zip", "zipcode", "postalcode", "postcode"],
@@ -84,7 +84,7 @@ const aliases = {
 } as const
 
 // Plugin bookkeeping that isn't worth keeping in the notes.
-const skip = new Set(["formid", "formname", "formtitle", "form", "postid", "referer", "referrer", "remoteip", "useragent", "date", "time", "pageurl", "pagetitle", "sourceurl", "fullurl", "submittedpage", "submittedon", "entryid", "id", "nonce", "action", "gdpr", "acceptance", "consent", "recaptcha", "grecaptcharesponse", "honeypot"])
+const skip = new Set(["formid", "formname", "formtitle", "form", "postid", "referer", "referrer", "remoteip", "useragent", "date", "time", "pageurl", "pagetitle", "sourceurl", "fullurl", "submittedpage", "vxwidth", "vxheight", "vxurl", "selectedgoogleaddress", "submittedon", "entryid", "id", "nonce", "action", "gdpr", "acceptance", "consent", "recaptcha", "grecaptcharesponse", "honeypot"])
 
 // Flattens nested payloads into label → value pairs. A field sent as { id|name|label, value }
 // (Elementor with advanced data, many webhook plugins) is keyed by its label or id.
