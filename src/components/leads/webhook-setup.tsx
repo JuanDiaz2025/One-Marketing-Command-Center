@@ -96,10 +96,14 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
                   <Download data-icon="inline-start" />
                   Download the Lead Saver plugin
                 </a>
-                <p className="mt-1">It has your private key inside, so don&apos;t share the file.</p>
+                <p className="mt-1">
+                  This plugin is made for you by this app, so you won&apos;t find it by searching in WordPress: you upload the
+                  file instead. It has your private key inside, so don&apos;t share it.
+                </p>
               </li>
               <li>
-                In WordPress, open <strong>Plugins → Add New Plugin → Upload Plugin</strong>, choose the file you just downloaded
+                In WordPress, open <strong>Plugins → Add New Plugin</strong> and click the <strong>Upload Plugin</strong> button at the
+                top (don&apos;t search). Choose the file you just downloaded
                 (<code className="font-mono">omcc-lead-saver.zip</code>), click <strong>Install Now</strong>, then{" "}
                 <strong>Activate</strong>.
               </li>

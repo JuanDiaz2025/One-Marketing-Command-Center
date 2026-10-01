@@ -5,6 +5,16 @@ cd /d "%~dp0"
 REM Helper mode: started below in a minimized window. Waits until the app answers, then opens the browser.
 if "%~1"=="open-browser" goto open_browser
 
+REM Get the latest version first. This whole block is read before it runs, so it is safe even
+REM when the update replaces this file; after an update, start again with the new version.
+if not "%~1"=="updated" (
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\update.ps1"
+  if errorlevel 10 (
+    start "" "%~f0" updated
+    exit
+  )
+)
+
 title One Marketing Command Center
 
 where node >nul 2>nul

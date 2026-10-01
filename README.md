@@ -16,6 +16,8 @@ Your Google Ads results, website leads and phone calls in one place.
 
 ## Running it
 
+**Updates install themselves.** Each time you start the app with `start.bat`, it checks for a newer version, downloads it and restarts with it. Your settings (`.env.local`) and data (`.data`) are kept. No internet? It just starts the version you have.
+
 **Windows:** unzip the project, open the folder, and double-click `start.bat`.
 
 1. The first time, it installs everything and creates a `.env.local` settings file, which it opens in Notepad.
@@ -98,7 +100,7 @@ Restart the app after saving `.env.local`.
 The **Lead Saver** plugin keeps every Contact Form 7 submission in WordPress itself, so leads sent while the app or your computer is off are never lost, and nothing needs a public address. On the Leads page, open **Website leads (WordPress)**:
 
 1. Click **Download the Lead Saver plugin**. The file has your private key inside, so don't share it.
-2. In WordPress, open **Plugins → Add New Plugin → Upload Plugin**, choose `omcc-lead-saver.zip`, click **Install Now**, then **Activate**.
+2. In WordPress, open **Plugins → Add New Plugin** and click **Upload Plugin** at the top (it isn't in the WordPress plugin store; you upload the file), choose `omcc-lead-saver.zip`, click **Install Now**, then **Activate**.
 3. Type your website's address in the app and click **Connect**.
 
 The app picks up new leads every 30 seconds while it's open (and whenever the chat needs leads), keeping the time each one was really sent. In WordPress, **Contact → Command Center leads** shows what's been saved and when the app last picked leads up. The app reads them from `/wp-json/omcc/v1/leads` (or `?rest_route=/omcc/v1/leads` on sites without pretty permalinks), sending the key. If a security plugin or firewall blocks the WordPress REST API, allow `/wp-json/omcc/`. CF7 to Webhook isn't needed with it; if both are on, a lead still shows up only once.
