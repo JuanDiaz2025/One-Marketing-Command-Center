@@ -17,16 +17,17 @@ import { DATA_MANAGER_SCOPE } from "@/lib/google/oauth"
 import { jsonFileStore } from "@/lib/json-file-store"
 import { applyStatus } from "@/lib/leads/status"
 import { listLeads, updateLead } from "@/lib/leads/store"
-import type { ConversionKind, Lead, LeadStatus } from "@/lib/leads/types"
+import { conversionKinds, type ConversionKind, type Lead, type LeadStatus } from "@/lib/leads/types"
 
 // The actions the app makes when the account has none that accept imported leads.
 export const ACTIONS: Record<ConversionKind, { name: string; category: string; legacy: string }> = {
   interested: { name: "Qualified lead (Command Center import)", category: "QUALIFIED_LEAD", legacy: "Command Center – Interested lead" },
   closed: { name: "Converted lead (Command Center import)", category: "CONVERTED_LEAD", legacy: "Command Center – Deal closed" },
+  invalid: { name: "Invalid lead (Command Center, reporting only)", category: "DEFAULT", legacy: "" },
 }
 
 // Per account: the conversion action each stage goes to, and whether you picked it yourself.
-type Targets = { interested?: string; closed?: string; chosen?: Partial<Record<ConversionKind, boolean>>; checkedAt?: string; v?: 2 }
+type Targets = { interested?: string; closed?: string; invalid?: string; chosen?: Partial<Record<ConversionKind, boolean>>; checkedAt?: string; v?: 2 }
 const actionsFile = jsonFileStore<Record<string, Targets>>("conversion-actions.json", () => ({}))
 const RECHECK_MS = 24 * 60 * 60_000
 
@@ -58,27 +59,36 @@ function identifiers(lead: Lead) {
   return ids
 }
 
-export type ConversionActionOption = { resourceName: string; name: string; category: string; type: string; importable: boolean }
+export type ConversionActionOption = { resourceName: string; name: string; category: string; type: string; importable: boolean; primary: boolean }
 
 // The account's enabled conversion actions. Only "import from clicks" ones can receive leads.
 export async function listConversionActions(connection: AdsConnection, account: AdsAccount): Promise<ConversionActionOption[]> {
   const rows = (await runQuery(
     connection,
     account,
-    "SELECT conversion_action.resource_name, conversion_action.name, conversion_action.category, conversion_action.type FROM conversion_action WHERE conversion_action.status = 'ENABLED'",
-  )) as { conversionAction?: { resourceName?: string; name?: string; category?: string; type?: string } }[]
+    "SELECT conversion_action.resource_name, conversion_action.name, conversion_action.category, conversion_action.type, conversion_action.primary_for_goal FROM conversion_action WHERE conversion_action.status = 'ENABLED'",
+  )) as { conversionAction?: { resourceName?: string; name?: string; category?: string; type?: string; primaryForGoal?: boolean } }[]
   return rows
     .map((r) => r.conversionAction ?? {})
     .filter((a): a is Required<typeof a> => Boolean(a.resourceName && a.name))
-    .map((a) => ({ resourceName: a.resourceName, name: a.name, category: a.category ?? "", type: a.type ?? "", importable: a.type === "UPLOAD_CLICKS" }))
+    .map((a) => ({ resourceName: a.resourceName, name: a.name, category: a.category ?? "", type: a.type ?? "", importable: a.type === "UPLOAD_CLICKS", primary: Boolean(a.primaryForGoal) }))
     .sort((x, y) => x.name.localeCompare(y.name))
 }
 
 // Your own action for a stage: by name first ("Qualified lead" / "Converted lead"), then by
 // Google's category; the app's own actions only if there's nothing else.
-const NAMES: Record<ConversionKind, RegExp> = { interested: /qualified\s*lead/i, closed: /convert(ed)?\s*lead|closed?\s*(deal|lead)|deal\s*closed/i }
+const NAMES: Record<ConversionKind, RegExp> = {
+  interested: /qualified\s*lead/i,
+  closed: /convert(ed)?\s*lead|closed?\s*(deal|lead)|deal\s*closed/i,
+  invalid: /invalid|junk|disqualif|not\s*interested|bad\s*lead|spam/i,
+}
 const isOurs = (o: ConversionActionOption) => o.name.includes("Command Center")
 function pick(options: ConversionActionOption[], kind: ConversionKind) {
+  // Invalid leads only ever go to a secondary action, so they can't teach bidding to find more.
+  if (kind === "invalid") {
+    const ok = options.filter((o) => o.importable && !o.primary)
+    return ok.find((o) => !isOurs(o) && NAMES.invalid.test(o.name)) ?? ok.find((o) => o.name === ACTIONS.invalid.name)
+  }
   const ok = options.filter((o) => o.importable && !isOurs(o))
   return (
     ok.find((o) => NAMES[kind].test(o.name)) ??
@@ -93,11 +103,11 @@ export async function conversionTargets(connection: AdsConnection, account: AdsA
   let saved = (await actionsFile.read())[account.customerId] ?? {}
   const stale = saved.v !== 2 || !saved.checkedAt || Date.now() - Date.parse(saved.checkedAt) > RECHECK_MS
   const gone = (r?: string) => Boolean(r && !options.some((o) => o.resourceName === r))
-  if (stale || gone(saved.interested) || gone(saved.closed)) {
+  if (stale || gone(saved.interested) || gone(saved.closed) || gone(saved.invalid)) {
     saved = await actionsFile.update((db) => {
       const t: Targets = { ...db[account.customerId], v: 2, checkedAt: new Date().toISOString() }
       t.chosen ??= {}
-      for (const kind of ["interested", "closed"] as const) {
+      for (const kind of conversionKinds) {
         if (t.chosen[kind] && !gone(t[kind])) continue
         t.chosen[kind] = false
         t[kind] = pick(options, kind)?.resourceName
@@ -114,6 +124,7 @@ export async function conversionTargets(connection: AdsConnection, account: AdsA
     options,
     interested: named(saved.interested),
     closed: named(saved.closed),
+    invalid: named(saved.invalid),
     chosen: saved.chosen ?? {},
   }
 }
@@ -121,8 +132,12 @@ export async function conversionTargets(connection: AdsConnection, account: AdsA
 // You pick the action for a stage on the Leads page; it stays until you change it.
 export async function setConversionTarget(connection: AdsConnection, account: AdsAccount, kind: ConversionKind, resourceName: string) {
   const options = await listConversionActions(connection, account)
-  if (!options.some((o) => o.resourceName === resourceName && o.importable)) {
+  const chosen = options.find((o) => o.resourceName === resourceName)
+  if (!chosen?.importable) {
     throw new AdsApiError("That conversion action can't receive imported leads. Pick one whose source is \"Import from clicks\".")
+  }
+  if (kind === "invalid" && chosen.primary) {
+    throw new AdsApiError("That action is primary, so Google would bid for more leads like these. Pick a secondary one, or make it secondary in Google Ads first.")
   }
   await actionsFile.update((db) => {
     const t: Targets = { ...db[account.customerId], v: 2, checkedAt: db[account.customerId]?.checkedAt ?? new Date().toISOString() }
@@ -152,8 +167,8 @@ async function conversionAction(connection: AdsConnection, account: AdsAccount, 
           status: "ENABLED",
           countingType: "ONE_PER_CLICK",
           primaryForGoal: false,
-          // The value comes with each lead (your rules' value, or 1).
-          valueSettings: { defaultValue: 1, alwaysUseDefaultValue: false },
+          // The value comes with each lead (your rules' value, or 1; invalid leads are worth 0).
+          valueSettings: { defaultValue: kind === "invalid" ? 0 : 1, alwaysUseDefaultValue: false },
         },
       },
     ],
@@ -200,7 +215,7 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
         eventSource: "WEB",
         ...(gclid ? { adIdentifiers: { gclid } } : {}),
         ...(ids.length ? { userData: { userIdentifiers: ids } } : {}),
-        conversionValue: entry.value ?? 1,
+        conversionValue: entry.value ?? (kind === "invalid" ? 0 : 1),
         currency: account.currency || "USD",
       },
     ]))
@@ -340,7 +355,7 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
   running = (async () => {
     const leads = await listLeads()
     for (const lead of leads) {
-      for (const kind of ["interested", "closed"] as const) {
+      for (const kind of conversionKinds) {
         let entry = lead.conversions?.[kind]
         if (entry?.state === "failed" && OLD_UPLOAD_CLOSED.test(entry.error ?? "")) {
           await updateLead(lead.id, (l) => {
@@ -348,8 +363,9 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
           })
           lead.conversions![kind] = entry = { state: "pending", at: entry.at }
         }
-        // Sent earlier but Not interested now (e.g. before take-backs existed): take it back.
-        if (entry?.state === "sent" && !entry.retraction && lead.status === "not_interested") {
+        // Sent earlier but no longer true (Not interested now, or an invalid report on a lead that's
+        // good again): take it back.
+        if (entry?.state === "sent" && !entry.retraction && (kind === "invalid" ? lead.status !== "not_interested" && !lead.googleBlockedBy && !entry.rule : lead.status === "not_interested")) {
           const at = new Date().toISOString()
           await updateLead(lead.id, (l) => {
             const e = l.conversions?.[kind]
@@ -390,7 +406,7 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
 // "Try again now"). Ones that can't be matched (no click ID, email or phone) are left as they are.
 export async function retryNow(connection: AdsConnection, account: AdsAccount) {
   for (const lead of await listLeads()) {
-    for (const kind of ["interested", "closed"] as const) {
+    for (const kind of conversionKinds) {
       const entry = lead.conversions?.[kind]
       if (entry?.state !== "pending" && entry?.state !== "failed") continue
       await updateLead(lead.id, (l) => {

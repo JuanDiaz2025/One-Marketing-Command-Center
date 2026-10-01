@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils"
 const goesTo: Record<LeadRule["then"], string> = {
   qualified: "goes to your Qualified lead conversion",
   converted: "goes to your Converted lead conversion (and counts as qualified too)",
+  invalid: "goes to a reporting-only Invalid lead action worth $0: Google never bids for it, and its reports show which ads bring leads like this",
   dont_send: "Google Ads never hears about it, unless you set its status yourself",
 }
 
@@ -207,7 +208,7 @@ export default function RulesEditor({ initial, recent, channels, enabled }: { in
                     </option>
                   ))}
                 </select>
-                {rule.then !== "dont_send" && (
+                {rule.then !== "dont_send" && rule.then !== "invalid" && (
                   <label className="flex items-center gap-1.5">
                     <span className="text-muted-foreground">worth $</span>
                     <input
@@ -224,7 +225,7 @@ export default function RulesEditor({ initial, recent, channels, enabled }: { in
                 <span className="text-xs text-muted-foreground">({goesTo[rule.then]})</span>
               </div>
               <span className="text-xs text-muted-foreground">
-                Would have {rule.then === "dont_send" ? "held back" : "sent"} {counts[rule.id] ?? 0} of your last {recent.length} leads.
+                Would have {rule.then === "dont_send" ? "held back" : rule.then === "invalid" ? "reported as invalid" : "sent"} {counts[rule.id] ?? 0} of your last {recent.length} leads.
               </span>
             </div>
           </li>

@@ -5,19 +5,20 @@ import { Target } from "lucide-react"
 
 import { setConversionTargetAction } from "@/lib/leads/conversion-target-actions"
 
-type Option = { resourceName: string; name: string; importable: boolean }
+type Option = { resourceName: string; name: string; importable: boolean; primary?: boolean }
 export type TargetsView = {
   options: Option[]
   interested?: { resourceName: string; name: string }
   closed?: { resourceName: string; name: string }
-  chosen: { interested?: boolean; closed?: boolean }
+  invalid?: { resourceName: string; name: string }
+  chosen: { interested?: boolean; closed?: boolean; invalid?: boolean }
   // Your own action with that name, if it can't receive imported leads.
   blocked: { interested?: string; closed?: string }
 }
 
 const NEW = "" // nothing picked yet: the app creates its own action the first time
 
-function Picker({ kind, label, stages, view }: { kind: "interested" | "closed"; label: string; stages: string; view: TargetsView }) {
+function Picker({ kind, label, stages, view }: { kind: "interested" | "closed" | "invalid"; label: string; stages: string; view: TargetsView }) {
   const [value, setValue] = useState(view[kind]?.resourceName ?? NEW)
   const [pending, start] = useTransition()
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
@@ -44,11 +45,15 @@ function Picker({ kind, label, stages, view }: { kind: "interested" | "closed"; 
         }}
         className="h-10 w-full rounded-lg border bg-card px-2 text-sm"
       >
-        {value === NEW && <option value={NEW}>{`${label[0].toUpperCase()}${label.slice(1)} (Command Center import), made on first use`}</option>}
+        {value === NEW && (
+          <option value={NEW}>
+            {kind === "invalid" ? "Invalid lead (Command Center, reporting only), made on first use" : `${label[0].toUpperCase()}${label.slice(1)} (Command Center import), made on first use`}
+          </option>
+        )}
         {view.options.map((o) => (
-          <option key={o.resourceName} value={o.resourceName} disabled={!o.importable}>
+          <option key={o.resourceName} value={o.resourceName} disabled={!o.importable || (kind === "invalid" && o.primary)}>
             {o.name}
-            {o.importable ? "" : " (can't receive imported leads)"}
+            {!o.importable ? " (can't receive imported leads)" : kind === "invalid" && o.primary ? " (primary: would teach bidding to find more)" : ""}
           </option>
         ))}
       </select>
@@ -58,8 +63,8 @@ function Picker({ kind, label, stages, view }: { kind: "interested" | "closed"; 
             ? "Picked by you."
             : view[kind] && !view[kind]!.name.includes("Command Center")
               ? "✓ Found in your account and ready to receive leads."
-              : view.blocked[kind]
-                ? `Your “${view.blocked[kind]}” action counts something else (like a website form) and can't receive imported leads, so the app uses its own “${label}” import action instead.`
+              : kind !== "invalid" && view.blocked[kind as "interested" | "closed"]
+                ? `Your “${view.blocked[kind as "interested" | "closed"]}” action counts something else (like a website form) and can't receive imported leads, so the app uses its own “${label}” import action instead.`
                 : `No ${label} action that takes imports was found, so the app makes its own the first time a lead reaches this stage.`)}
       </span>
     </label>
@@ -86,6 +91,7 @@ export default function ConversionTargets({ view }: { view: TargetsView }) {
       <div className="flex flex-col gap-3 sm:flex-row">
         <Picker kind="interested" label="qualified lead" stages="Interested, Appointment, Offer made" view={view} />
         <Picker kind="closed" label="converted lead" stages="Closed deal" view={view} />
+        <Picker kind="invalid" label="invalid lead (reporting only)" stages="Not interested, junk" view={view} />
       </div>
     </div>
   )

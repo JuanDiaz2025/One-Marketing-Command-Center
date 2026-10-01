@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo, useState, useTransition } from "react"
-import { ChevronLeft, ChevronRight, Search } from "lucide-react"
+import { ChevronLeft, ChevronRight, RotateCcw, Search, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { setLeadStatusAction } from "@/lib/leads/status-actions"
@@ -33,7 +33,7 @@ export type LeadRow = {
   statusRule?: string
   score?: { value: number; grade: "hot" | "warm" | "cold" | "junk"; reasons: string[] }
   // What Google Ads heard: a conversion sent, waiting to be sent, failed or skipped.
-  google?: { state: "sent" | "pending" | "failed" | "skipped" | "held" | "retracting" | "retracted" | "retract_failed" | "checking" | "accepted" | "rejected"; detail?: string }
+  google?: { state: "sent" | "pending" | "failed" | "skipped" | "held" | "retracting" | "retracted" | "retract_failed" | "checking" | "accepted" | "rejected" | "invalid" | "invalid_pending"; detail?: string }
 }
 
 const PAGE = 25
@@ -133,6 +133,8 @@ const googleLabel = {
   accepted: { text: "Accepted by Google ✓", cls: "bg-emerald-500/15 text-emerald-800" },
   rejected: { text: "Rejected by Google", cls: "bg-destructive/10 text-destructive" },
   retracting: { text: "Taking back from Google", cls: "bg-amber-500/15 text-amber-800" },
+  invalid: { text: "Reported as invalid ✓", cls: "bg-muted text-foreground" },
+  invalid_pending: { text: "Reporting as invalid", cls: "bg-muted text-muted-foreground" },
   retracted: { text: "Taken back from Google ✓", cls: "bg-muted text-foreground" },
   retract_failed: { text: "Couldn't take back", cls: "bg-destructive/10 text-destructive" },
 } as const
@@ -178,9 +180,42 @@ function StatusCell({ id, status, auto, rule }: { id: string; status: string; au
   )
 }
 
+// The ✕ on a lead: marks it Not interested in one click (it moves to the Not interested list,
+// and Google Ads hears about it). In that list, ↺ puts it back as New.
+function QuickStatus({ id, to, label }: { id: string; to: "not_interested" | "new"; label: string }) {
+  const [pending, start] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <div className="flex flex-col items-center gap-1">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label={label}
+        title={label}
+        disabled={pending}
+        onClick={() =>
+          start(async () => {
+            const res = await setLeadStatusAction(id, to)
+            if (res.error) setError(res.error)
+          })
+        }
+        className={to === "not_interested" ? "text-muted-foreground hover:bg-destructive/10 hover:text-destructive" : "text-muted-foreground hover:text-primary"}
+      >
+        {to === "not_interested" ? <X /> : <RotateCcw />}
+      </Button>
+      {error && <span className="text-xs text-destructive">{error}</span>}
+    </div>
+  )
+}
+
 // Leads as a spreadsheet: one row per lead, a column per detail, searchable and filterable.
 export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
   const [query, setQuery] = useState("")
+  // Not interested leads live in their own list, out of the way of the ones you're working.
+  const [list, setList] = useState<"active" | "not_interested">("active")
+  const inList = (r: LeadRow) => (list === "active" ? r.status !== "not_interested" : r.status === "not_interested")
+  const notInterested = rows.filter((r) => r.status === "not_interested").length
   const [channel, setChannel] = useState("")
   const [status, setStatus] = useState("")
   const [grade, setGrade] = useState("")
@@ -205,6 +240,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
     const q = query.trim().toLowerCase()
     return rows.filter(
       (r) =>
+        inList(r) &&
         inRange(r) &&
         (!channel || r.channel === channel) &&
         (!status || r.status === status) &&
@@ -217,7 +253,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
           (q.replace(/\D/g, "").length >= 3 && Boolean(r.phone?.replace(/\D/g, "").includes(q.replace(/\D/g, ""))))),
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, query, channel, status, grade, range, from, to])
+  }, [rows, query, channel, status, grade, range, from, to, list])
 
   const pages = Math.max(1, Math.ceil(shown.length / PAGE))
   const current = Math.min(page, pages - 1)
@@ -229,6 +265,37 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
 
   return (
     <div className="flex flex-col gap-3">
+      <div role="tablist" aria-label="Which leads" className="flex gap-1 border-b">
+        {(
+          [
+            ["active", `Leads (${rows.length - notInterested})`],
+            ["not_interested", `Not interested (${notInterested})`],
+          ] as const
+        ).map(([id, text]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={list === id}
+            onClick={() => {
+              setList(id)
+              setPage(0)
+            }}
+            className={cn(
+              "-mb-px border-b-2 px-4 py-2 text-sm font-medium",
+              list === id ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {text}
+          </button>
+        ))}
+      </div>
+      {list === "not_interested" && (
+        <p className="text-sm text-muted-foreground">
+          Leads you marked Not interested. Anything already sent to Google Ads for them is taken back, and they&apos;re reported as
+          invalid leads (reporting only), so Google&apos;s reports show which ads bring leads like these. ↺ puts a lead back in your list.
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         <label className="relative min-w-0 flex-1 sm:max-w-xs">
           <span className="sr-only">Search leads</span>
@@ -348,9 +415,12 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
       </div>
 
       <div className="max-h-[70vh] overflow-auto rounded-xl border">
-        <table className="w-full min-w-[1750px] border-collapse text-sm tabular-nums">
+        <table className="w-full min-w-[1800px] border-collapse text-sm tabular-nums">
           <thead>
             <tr>
+              <th className={th}>
+                <span className="sr-only">{list === "active" ? "Not interested" : "Put back"}</span>
+              </th>
               <th className={th}>#</th>
               <th className={th}>Received</th>
               <th className={th}>Name</th>
@@ -375,6 +445,13 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
           <tbody>
             {visible.map((r, i) => (
               <tr key={r.id} className="border-b odd:bg-card even:bg-muted/30 hover:bg-primary/5">
+                <td className={`${td} px-1 py-1`}>
+                  {list === "active" ? (
+                    <QuickStatus id={r.id} to="not_interested" label={`Not interested: ${r.name}`} />
+                  ) : (
+                    <QuickStatus id={r.id} to="new" label={`Put back in my leads: ${r.name}`} />
+                  )}
+                </td>
                 <td className={`${td} text-muted-foreground`}>{current * PAGE + i + 1}</td>
                 <td className={td}>{r.received}</td>
                 <td className={`${td} font-medium`}>{r.name}</td>
@@ -462,8 +539,8 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
             ))}
             {!visible.length && (
               <tr>
-                <td colSpan={19} className="px-3 py-6 text-center text-muted-foreground">
-                  No leads match.
+                <td colSpan={20} className="px-3 py-6 text-center text-muted-foreground">
+                  {list === "not_interested" && !notInterested ? "No leads marked Not interested." : "No leads match."}
                 </td>
               </tr>
             )}

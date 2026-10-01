@@ -13,7 +13,7 @@ import { checkSending, retryNow, sendPendingConversions, setConversionTarget, ty
 export async function setConversionTargetAction(kind: string, resourceName: string): Promise<{ error?: string }> {
   const session = await getSession()
   if (!session) return { error: "Sign in first." }
-  if (kind !== "interested" && kind !== "closed") return { error: "Unknown stage." }
+  if (kind !== "interested" && kind !== "closed" && kind !== "invalid") return { error: "Unknown stage." }
   try {
     const active = await activeAccount(session.sub)
     if (!active) return { error: "Connect Google Ads first." }

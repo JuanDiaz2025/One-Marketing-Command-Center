@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { Download, Settings2 } from "lucide-react"
+import { Download } from "lucide-react"
 
 import AppHeader from "@/components/app-header"
 import AssistantLauncher from "@/components/dashboard/assistant-launcher"
@@ -7,12 +7,8 @@ import { assistantProvider } from "@/lib/assistant/shared"
 import { countSince } from "@/components/leads/lead-list"
 import LeadsTable, { type LeadRow } from "@/components/leads/leads-table"
 import LiveRefresh from "@/components/leads/live-refresh"
-import ConversionTargets, { type TargetsView } from "@/components/leads/conversion-targets"
 import PhoneCalls from "@/components/leads/phone-calls"
-import RulesEditor from "@/components/leads/rules-editor"
-import ScoringSettings from "@/components/leads/scoring-settings"
 import SendingCheck from "@/components/leads/sending-check"
-import Disclosure from "@/components/ui/disclosure"
 import WebhookSetup from "@/components/leads/webhook-setup"
 import { formatNumber } from "@/components/dashboard/format"
 import { buttonVariants } from "@/components/ui/button"
@@ -21,12 +17,9 @@ import { cn } from "@/lib/utils"
 import { requireSession } from "@/lib/auth/session"
 import { activeAccount } from "@/lib/google/active-account"
 import { tryGetCalls } from "@/lib/google/calls"
-import { conversionTargets, sendPendingConversions } from "@/lib/google/offline-conversions"
+import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncWordPress } from "@/lib/leads/wordpress"
 import { leadSource } from "@/lib/leads/source"
-import type { LeadRule } from "@/lib/leads/rules"
-import { getRules } from "@/lib/leads/rules-store"
-import { getScoringSettings } from "@/lib/leads/scoring"
 import { listLeads, listQrCodes, scoreUnscored } from "@/lib/leads/store"
 import { leadChannel, pagePath } from "@/lib/leads/tracking"
 import type { Lead } from "@/lib/leads/types"
@@ -69,7 +62,20 @@ function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
 
 // One line on what Google Ads has heard about this lead, for the table.
 function googleState(lead: Lead): LeadRow["google"] {
-  const all = Object.values(lead.conversions ?? {})
+  const main = mainGoogleState(lead)
+  // Reported as an invalid lead (reporting only): say so when nothing else is going on with it.
+  const invalid = lead.conversions?.invalid
+  if (!invalid || invalid.retraction || (main && !["retracted", "retracting", "held"].includes(main.state))) return main
+  const also = main?.state === "retracted" ? "Its earlier conversion was taken back. " : ""
+  if (invalid.state === "sent") return { state: "invalid", detail: `${also}Reporting only: Google won't bid for leads like this, and its reports show which ads bring them.` }
+  if (invalid.state === "pending") return { state: "invalid_pending", detail: `${also}Reporting it to Google as an invalid lead (reporting only).` }
+  return main ?? { state: invalid.state === "failed" ? "failed" : "skipped", detail: invalid.error }
+}
+
+function mainGoogleState(lead: Lead): LeadRow["google"] {
+  const { invalid: _invalid, ...rest } = lead.conversions ?? {}
+  void _invalid
+  const all = Object.values(rest)
   // Taken back (or being taken back) because the lead turned out Not interested.
   const backs = all.map((c) => c?.retraction).filter(Boolean)
   if (backs.length) {
@@ -107,42 +113,6 @@ async function loadCalls(sub: string) {
   }
 }
 
-// One line for the folded automation settings: what's running, in plain words.
-function automationSummary(rules: LeadRule[], targets: TargetsView | null, on: boolean) {
-  if (!on) return "New leads aren't sent to Google Ads automatically. You set every status yourself."
-  const active = rules.filter((r) => r.enabled && r.when.length)
-  const parts = active.slice(0, 3).map((r) => r.name)
-  const more = active.length > 3 ? ` and ${active.length - 3} more` : ""
-  const where = targets?.interested ? ` · sending to “${targets.interested.name}”${targets.closed ? ` and “${targets.closed.name}”` : ""}` : ""
-  return `${active.length ? `${parts.join(" · ")}${more}` : "No rules on"}${where}`
-}
-
-// For the rules editor's "would have set N of your last leads": the last 90 days, at most 300.
-function recentLeads(leads: Lead[]) {
-  const since = Date.now() - 90 * 86_400_000
-  return leads.filter((l) => !l.qrCodeId && Date.parse(l.createdAt) >= since).slice(0, 300)
-}
-
-// Which conversion action each stage goes to, or null when Google Ads isn't connected or answering.
-async function loadTargets(sub: string): Promise<TargetsView | null> {
-  try {
-    const active = await activeAccount(sub)
-    if (!active) return null
-    const t = await conversionTargets(active.connection, active.account)
-    const brief = (o?: { resourceName: string; name: string }) => o && { resourceName: o.resourceName, name: o.name }
-    return {
-      options: t.options.map((o) => ({ resourceName: o.resourceName, name: o.name, importable: o.importable })),
-      interested: brief(t.interested),
-      closed: brief(t.closed),
-      chosen: t.chosen,
-      blocked: t.blocked,
-    }
-  } catch (error) {
-    console.error("Couldn't look up conversion actions:", error)
-    return null
-  }
-}
-
 // Offline conversions waiting to go to Google Ads (new ones, and retries at most hourly).
 async function sendConversions(sub: string) {
   try {
@@ -163,16 +133,7 @@ export default async function LeadsPage() {
     Promise.all([scoreUnscored().then(() => syncWordPress()), sendConversions(user.sub)]),
     new Promise((resolve) => setTimeout(resolve, 3000)),
   ])
-  const [qrCodes, leads, calls, scoring, targets, rules] = await Promise.all([
-    listQrCodes(),
-    listLeads(),
-    loadCalls(user.sub),
-    getScoringSettings(),
-    loadTargets(user.sub),
-    getRules(),
-  ])
-  const recent = recentLeads(leads)
-  const channels = [...new Set(leads.map((l) => leadChannel(l)))].sort()
+  const [qrCodes, leads, calls] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub)])
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0
@@ -282,29 +243,6 @@ export default async function LeadsPage() {
                   <SendingCheck stuck={stuckEntries.length} lastError={lastError} />
                 </div>
               )}
-              {/* The automation runs by itself; its settings stay folded away unless you open them. */}
-              <Disclosure className="group/auto mt-4 rounded-xl border bg-muted/20" initialOpen={false}>
-                <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 px-4 py-3 text-sm">
-                  <Settings2 className="size-4 text-muted-foreground" />
-                  <span className="font-medium">Automation settings</span>
-                  <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", scoring.autoStatus ? "bg-emerald-500/10 text-emerald-700" : "bg-muted text-muted-foreground")}>
-                    {scoring.autoStatus ? "Running automatically" : "Off"}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-muted-foreground">{automationSummary(rules, targets, scoring.autoStatus)}</span>
-                  <span className="text-xs text-primary group-open/auto:hidden">Show</span>
-                  <span className="hidden text-xs text-primary group-open/auto:inline">Hide</span>
-                </summary>
-                <div className="border-t px-4 pb-4">
-                  <ScoringSettings autoStatus={scoring.autoStatus} />
-                  <RulesEditor initial={rules} recent={recent} channels={channels} enabled={scoring.autoStatus} />
-                  {targets && <ConversionTargets view={targets} />}
-                  {!stuckEntries.length && (
-                    <div className="mt-4">
-                      <SendingCheck stuck={0} />
-                    </div>
-                  )}
-                </div>
-              </Disclosure>
               <div className="mt-4">
                 <LeadsTable rows={leads.map((l) => toRow(l, placements))} />
               </div>

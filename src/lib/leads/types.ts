@@ -55,7 +55,10 @@ export const leadStatuses = [
 export type LeadStatus = (typeof leadStatuses)[number]["id"]
 
 // The two moments Google Ads hears about.
-export type ConversionKind = "interested" | "closed"
+// "invalid" reports a lead you don't want more of to a reporting-only (secondary) action: Google
+// never bids for it, but its reports show which campaigns and keywords bring junk.
+export type ConversionKind = "interested" | "closed" | "invalid"
+export const conversionKinds: ConversionKind[] = ["interested", "closed", "invalid"]
 export type ConversionUpload = {
   state: "pending" | "sent" | "failed" | "skipped"
   // When the lead reached this stage (the conversion's time in Google Ads).

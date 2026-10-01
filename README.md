@@ -115,9 +115,13 @@ Every lead is scored from 0 to 100 when it arrives (`src/lib/leads/scoring.ts`):
 
 With **Set the status from the score** on (the default, on the Leads page), a new Hot lead is marked **Interested**, which sends Google Ads an offline conversion, and Junk is marked **Not interested**. That follows Google Ads' advice to send back only qualified leads. A status you set yourself always wins. Only leads received in the last 24 hours get a status from their score, so old leads (from before scoring, or a first sync with the website) aren't reported to Google Ads without you.
 
-## Google Ads rules
+## Google Ads rules and invalid leads
 
-On the Leads page, **Google Ads rules** decide which new leads Google Ads hears about, from top to bottom; the first rule whose conditions all match wins. A rule sends the lead as a **Qualified lead** or a **Converted lead** (which also counts as qualified), worth the value you give it, or holds it back (**Don't send**). Conditions: score at least / below, grade, came from a Google ad click, channel, message mentions any of some words, keyword or campaign mentions any of some words, form name, has / has no phone, email or property address. The starting rules are: never send Junk, and send Hot leads as qualified. Rules don't change a lead's status; setting a status yourself still sends what it means (Interested → qualified, Closed deal → converted), even for a lead a rule held back. Rules run only on leads from the last 24 hours, show how many recent leads they would send, can all be switched off, and are kept in `.data/lead-rules.json`.
+The automation runs by itself and isn't shown on the Leads page. To change it, open **http://localhost:4000/leads/automation** (not linked in the app): lead scoring, the Google Ads rules, where each stage goes in Google Ads, and the sending check.
+
+Rules decide what Google Ads hears about each new lead, top to bottom, first match wins: send it as a **Qualified lead** or **Converted lead** (with a value), **report it as an invalid lead** (to a secondary, reporting-only action worth $0: Google never bids for it, but its reports show which campaigns and keywords bring junk), or don't send it. The starting rules: report Junk as invalid, send Hot leads as qualified.
+
+On the Leads page, the **✕** on a lead marks it Not interested and moves it to the **Not interested** list: anything already sent for it is taken back from Google Ads (a retraction), and it's reported as an invalid lead. **↺** puts it back, taking back the invalid report. Statuses you set yourself always win; rules only run on leads from the last 24 hours and are kept in `.data/lead-rules.json`.
 
 ## Other way: an instant webhook
 

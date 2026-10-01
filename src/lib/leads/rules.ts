@@ -22,11 +22,12 @@ export type RuleCondition =
   | { kind: "missing"; value: "phone" | "email" | "address" }
 
 // What a rule does: send the lead to Google Ads as a qualified lead, as a converted lead (which
-// also counts it as qualified), or not send it.
-export type RuleAction = "qualified" | "converted" | "dont_send"
+// also counts it as qualified), report it as an invalid lead (reporting only), or not send it.
+export type RuleAction = "qualified" | "converted" | "invalid" | "dont_send"
 export const ruleActions: { id: RuleAction; label: string }[] = [
   { id: "qualified", label: "Send to Google Ads as a Qualified lead" },
   { id: "converted", label: "Send to Google Ads as a Converted lead" },
+  { id: "invalid", label: "Report to Google Ads as an invalid lead (reporting only)" },
   { id: "dont_send", label: "Don't send to Google Ads" },
 ]
 
@@ -42,7 +43,7 @@ export type LeadRule = {
 
 // Rules saved before they were about Google Ads named a status; read those as what it sent.
 export function asAction(then: string): RuleAction {
-  if (then === "qualified" || then === "converted" || then === "dont_send") return then
+  if (then === "qualified" || then === "converted" || then === "invalid" || then === "dont_send") return then
   if (then === "closed") return "converted"
   if (then === "interested" || then === "appointment" || then === "offer") return "qualified"
   return "dont_send"
@@ -61,9 +62,10 @@ export const conditionKinds: { kind: RuleCondition["kind"]; label: string }[] = 
   { kind: "missing", label: "Has no" },
 ]
 
-// The rules you start with: Hot leads go to Google Ads as qualified leads, Junk never does.
+// The rules you start with: Junk is reported as invalid (reporting only, never bid for), Hot leads
+// go to Google Ads as qualified leads.
 export const defaultRules = (): LeadRule[] => [
-  { id: "junk", name: "Never send junk", enabled: true, when: [{ kind: "gradeIs", value: "junk" }], then: "dont_send" },
+  { id: "junk", name: "Report junk as invalid", enabled: true, when: [{ kind: "gradeIs", value: "junk" }], then: "invalid" },
   { id: "hot", name: "Hot leads are qualified", enabled: true, when: [{ kind: "gradeIs", value: "hot" }], then: "qualified", value: 1 },
 ]
 

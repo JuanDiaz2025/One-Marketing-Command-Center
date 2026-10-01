@@ -29,7 +29,7 @@ const rules = z
       name: z.string().trim().min(1, "Give every rule a name.").max(80),
       enabled: z.boolean(),
       when: z.array(condition).min(1, "Every rule needs at least one condition.").max(10),
-      then: z.enum(["qualified", "converted", "dont_send"]),
+      then: z.enum(["qualified", "converted", "invalid", "dont_send"]),
       value: z.number().min(0).max(10_000_000).optional(),
     }),
   )
