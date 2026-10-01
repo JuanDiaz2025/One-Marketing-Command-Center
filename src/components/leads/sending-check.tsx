@@ -9,6 +9,23 @@ import { cn } from "@/lib/utils"
 
 type Step = { ok: boolean; title: string; detail: string }
 
+// Google's messages carry links (e.g. straight to the switch for the right project): make them clickable.
+function Linked({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(https?:\/\/[^\s)“”]+)/).map((part, i) =>
+        /^https?:\/\//.test(part) ? (
+          <a key={i} href={part} target="_blank" rel="noreferrer" className="font-medium break-all underline">
+            {part}
+          </a>
+        ) : (
+          part
+        ),
+      )}
+    </>
+  )
+}
+
 // "Check sending to Google Ads" and "Try again now", with what the check found, step by step.
 export default function SendingCheck({ stuck, lastError }: { stuck: number; lastError?: string }) {
   const [steps, setSteps] = useState<Step[] | null>(null)
@@ -23,7 +40,11 @@ export default function SendingCheck({ stuck, lastError }: { stuck: number; last
           <p className="font-semibold text-destructive">
             {stuck} lead{stuck === 1 ? "" : "s"} couldn&apos;t be sent to Google Ads yet
           </p>
-          {lastError && <p className="mt-1 text-destructive/90">Google said: {lastError}</p>}
+          {lastError && (
+            <p className="mt-1 text-destructive/90">
+              Google said: <Linked text={lastError} />
+            </p>
+          )}
         </div>
       )}
       <div className="flex flex-wrap gap-2">
@@ -57,7 +78,9 @@ export default function SendingCheck({ stuck, lastError }: { stuck: number; last
             <li key={i} className="flex items-start gap-2">
               {s.ok ? <CircleCheck className="mt-0.5 size-4 shrink-0 text-emerald-600" /> : <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />}
               <span>
-                <strong>{s.title}:</strong> <span className={cn(!s.ok && "text-destructive")}>{s.detail}</span>
+                <strong>{s.title}:</strong> <span className={cn(!s.ok && "text-destructive")}>
+                  <Linked text={s.detail} />
+                </span>
               </span>
             </li>
           ))}

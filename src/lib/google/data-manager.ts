@@ -22,7 +22,12 @@ type ErrorBody = {
     code?: number
     message?: string
     status?: string
-    details?: { reason?: string; fieldViolations?: { field?: string; description?: string; reason?: string }[] }[]
+    details?: {
+      reason?: string
+      metadata?: Record<string, string>
+      links?: { description?: string; url?: string }[]
+      fieldViolations?: { field?: string; description?: string; reason?: string }[]
+    }[]
   }
 }
 
@@ -62,8 +67,20 @@ export async function ingestEvents(
       "NEEDS_PERMISSION",
     )
   }
-  if (/SERVICE_DISABLED|has not been used|is disabled/i.test(`${reasons} ${message}`)) {
-    throw new AdsApiError(`Turn on the Data Manager API in Google Cloud (${DATA_MANAGER_LIBRARY}), then wait a few minutes.`, "API_OFF")
+  // The API is off for the Google Cloud project that owns the app's sign-in client. Google names
+  // that project and links straight to its switch: show both, since the usual cause is the API
+  // being turned on in a different project.
+  if (/SERVICE_DISABLED|accessNotConfigured/i.test(reasons) || /API has not been used|API .*is disabled|accessNotConfigured/i.test(message)) {
+    const meta = Object.assign({}, ...(e.details ?? []).map((d) => d.metadata ?? {})) as Record<string, string>
+    const link =
+      meta.activationUrl ??
+      (e.details ?? []).flatMap((d) => d.links ?? []).find((l) => l.url?.includes("console"))?.url ??
+      DATA_MANAGER_LIBRARY
+    const project = meta.consumer?.replace(/^projects\//, "") ?? message.match(/project (\d+)/)?.[1]
+    throw new AdsApiError(
+      `Google says the Data Manager API is off${project ? ` in Google Cloud project ${project}` : ""}, the project your app's Google sign-in belongs to. Turn it on here: ${link} . If you already turned it on, it was probably in a different project; it has to be this one. Then wait 5 minutes and click Try again now. (Google's words: “${message}”)`,
+      "API_OFF",
+    )
   }
   if (res.status === 429 || res.status >= 500) throw new AdsApiError(message, "TRANSIENT")
   const violation = e.details?.flatMap((d) => d.fieldViolations ?? [])[0]
