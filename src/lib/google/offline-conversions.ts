@@ -18,9 +18,10 @@ import { applyStatus } from "@/lib/leads/status"
 import { listLeads, updateLead } from "@/lib/leads/store"
 import type { ConversionKind, Lead, LeadStatus } from "@/lib/leads/types"
 
-export const ACTIONS: Record<ConversionKind, { name: string; category: string }> = {
-  interested: { name: "Command Center – Interested lead", category: "QUALIFIED_LEAD" },
-  closed: { name: "Command Center – Deal closed", category: "CONVERTED_LEAD" },
+// The actions the app makes when the account has none that accept imported leads.
+export const ACTIONS: Record<ConversionKind, { name: string; category: string; legacy: string }> = {
+  interested: { name: "Qualified lead (Command Center import)", category: "QUALIFIED_LEAD", legacy: "Command Center – Interested lead" },
+  closed: { name: "Converted lead (Command Center import)", category: "CONVERTED_LEAD", legacy: "Command Center – Deal closed" },
 }
 
 // Per account: the conversion action each stage goes to, and whether you picked it yourself.
@@ -75,13 +76,13 @@ export async function listConversionActions(connection: AdsConnection, account: 
 // Your own action for a stage: by name first ("Qualified lead" / "Converted lead"), then by
 // Google's category; the app's own actions only if there's nothing else.
 const NAMES: Record<ConversionKind, RegExp> = { interested: /qualified\s*lead/i, closed: /convert(ed)?\s*lead|closed?\s*(deal|lead)|deal\s*closed/i }
-const isOurs = (o: ConversionActionOption) => o.name.startsWith("Command Center")
+const isOurs = (o: ConversionActionOption) => o.name.includes("Command Center")
 function pick(options: ConversionActionOption[], kind: ConversionKind) {
   const ok = options.filter((o) => o.importable && !isOurs(o))
   return (
     ok.find((o) => NAMES[kind].test(o.name)) ??
     ok.find((o) => o.category === ACTIONS[kind].category) ??
-    options.find((o) => o.importable && o.name === ACTIONS[kind].name)
+    options.find((o) => o.importable && (o.name === ACTIONS[kind].name || o.name === ACTIONS[kind].legacy))
   )
 }
 
@@ -105,7 +106,10 @@ export async function conversionTargets(connection: AdsConnection, account: AdsA
     })
   }
   const named = (r?: string) => options.find((o) => o.resourceName === r)
+  // Your own action by that name exists but can't receive imported leads (e.g. it counts a website form).
+  const blocked = (kind: ConversionKind) => options.find((o) => !o.importable && !isOurs(o) && NAMES[kind].test(o.name))?.name
   return {
+    blocked: { interested: blocked("interested"), closed: blocked("closed") },
     options,
     interested: named(saved.interested),
     closed: named(saved.closed),

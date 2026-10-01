@@ -11,6 +11,8 @@ export type TargetsView = {
   interested?: { resourceName: string; name: string }
   closed?: { resourceName: string; name: string }
   chosen: { interested?: boolean; closed?: boolean }
+  // Your own action with that name, if it can't receive imported leads.
+  blocked: { interested?: string; closed?: string }
 }
 
 const NEW = "" // nothing picked yet: the app creates its own action the first time
@@ -42,7 +44,7 @@ function Picker({ kind, label, stages, view }: { kind: "interested" | "closed"; 
         }}
         className="h-10 w-full rounded-lg border bg-card px-2 text-sm"
       >
-        {value === NEW && <option value={NEW}>Command Center&apos;s own action (made on first use)</option>}
+        {value === NEW && <option value={NEW}>{`${label[0].toUpperCase()}${label.slice(1)} (Command Center import), made on first use`}</option>}
         {view.options.map((o) => (
           <option key={o.resourceName} value={o.resourceName} disabled={!o.importable}>
             {o.name}
@@ -51,7 +53,14 @@ function Picker({ kind, label, stages, view }: { kind: "interested" | "closed"; 
         ))}
       </select>
       <span className={note ? (note.ok ? "text-xs text-emerald-700" : "text-xs text-destructive") : "text-xs text-muted-foreground"}>
-        {note?.text ?? (view.chosen[kind] ? "Picked by you." : view[kind] ? "Found in your account automatically." : "")}
+        {note?.text ??
+          (view.chosen[kind]
+            ? "Picked by you."
+            : view[kind] && !view[kind]!.name.includes("Command Center")
+              ? "✓ Found in your account and ready to receive leads."
+              : view.blocked[kind]
+                ? `Your “${view.blocked[kind]}” action counts something else (like a website form) and can't receive imported leads, so the app uses its own “${label}” import action instead.`
+                : `No ${label} action that takes imports was found, so the app makes its own the first time a lead reaches this stage.`)}
       </span>
     </label>
   )

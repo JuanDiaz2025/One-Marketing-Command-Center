@@ -93,6 +93,7 @@ async function loadTargets(sub: string): Promise<TargetsView | null> {
       interested: brief(t.interested),
       closed: brief(t.closed),
       chosen: t.chosen,
+      blocked: t.blocked,
     }
   } catch (error) {
     console.error("Couldn't look up conversion actions:", error)
