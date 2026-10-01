@@ -3,7 +3,7 @@
 Your Google Ads results, website leads and phone calls in one place.
 
 - **Sign in with Google.** Only the Google accounts you allow can get in.
-- **Google Ads dashboard.** Connect your Google Ads account to see spend, clicks, conversions and cost per conversion, by day and by campaign, for the last 7, 30 or 90 days, all time, or exact dates picked on the calendar. It reads your real account through the Google Ads API. Nothing is changed in Google Ads.
+- **Google Ads dashboard.** Connect your Google Ads account to see spend, clicks, conversions and cost per conversion, by day and by campaign, for the last 7, 30 or 90 days, all time, or exact dates picked on the calendar. It reads your real account through the Google Ads API. The only changes it ever makes in Google Ads are the lead-quality conversions described under Leads.
 - **Needs attention.** Every time the dashboard opens it checks the account for problems: disapproved or limited ads, campaigns limited by budget or unable to run, active campaigns with no impressions, spend with no conversions (including conversion tracking that looks broken), search campaigns with a low click rate, and keywords with a poor Quality Score. Each problem says how to fix it, and **Ask how to fix** sends it to the chat box for step-by-step help. The checks are in `src/lib/google/health.ts`.
 - **More tabs.** **Keywords** (spend, clicks, cost per click and per lead, Quality Score; poor scores and keywords spending a lead's worth with no lead in red), **Ads** (headlines, approval, Ad Strength, results), **Devices** (phones vs computers vs tablets, with the cheapest and the wasteful one called out), **Best times** (leads and spend by day of the week and hour, for an ad schedule), **Conversion tracking** (what Google counts as a lead, and actions that record nothing), and impression share on **Campaigns** (how often ads showed, and how much was lost to budget or rank).
 - **Locations.** Where each campaign is set to show (included and excluded places, and whether it reaches only people in the area), and which cities the clicks and spend came from, with places outside your target area marked. Needs attention flags campaigns with no location, the "Presence or interest" setting, spend from outside the area, and places that spend without bringing leads.
@@ -11,6 +11,7 @@ Your Google Ads results, website leads and phone calls in one place.
 - **Ask about your ads.** The button in the bottom corner of every page opens a chat: ask a question or ask for a report ("build a report for the last 7 days"), and it looks up your Google Ads data, website leads and calls to answer, with tables you can copy or download. It needs an OpenAI or Anthropic key (see below), and it only reads data; it can't change anything in Google Ads.
 - **Website leads.** Your WordPress forms send each new lead to the app by webhook, and it appears on the **Leads** page marked **Website**, with the form's name, without reloading the page. The Leads page shows the webhook address to paste into WordPress, and the last few times WordPress sent something (and why anything was turned away).
 - **Lead tracking.** Leads show as a spreadsheet (search, filter by channel, 25 per page) with a column for each detail: date, name, phone, email, property, channel (Google Ads, Facebook, organic search, direct mail...), UTM source, medium, campaign, term and content, Google click ID, landing page, referrer and form. The Leads page has the Contact Form 7 hidden fields and a small WordPress snippet (paste it with the free WPCode plugin) that fill these in, and **Export CSV** includes every column.
+- **Lead quality back to Google Ads.** Each lead has a **Status** (New, Interested, Appointment, Offer made, Closed deal, Not interested). Interested and later, and Closed deal, are uploaded to Google Ads as offline conversions to two conversion actions the app creates the first time ("Command Center – Interested lead" and "Command Center – Deal closed", as secondary conversions so bidding doesn't change until you make them primary under Goals → Conversions). Each is matched by the lead's Google click ID (gclid, from the tracking snippet) and, when present, the lead's email and phone hashed with SHA-256 (enhanced conversions for leads: turn them on in Google Ads under Goals → Settings → Enhanced conversions for leads). Google needs a few hours before a new conversion action accepts uploads; the app retries waiting ones hourly while the Leads page is open, and shows each lead's result in the Google Ads column.
 - **Phone calls.** Calls from your Google Ads (call assets, call ads, and your website's number with Google's call tracking) show on the **Leads** page: when, answered or missed, how long, the caller's area code, and the campaign. Missed calls are highlighted, and also show under **Needs attention**.
 
 ## Running it
@@ -114,12 +115,19 @@ Every request must carry the secret key (`?key=…` in the address, or an `X-Web
 
 It needs `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_ADS_DEVELOPER_TOKEN` (and optionally `GOOGLE_ADS_CUSTOMER_ID`), from the environment or `.env.local`. The refresh token has to come from the same Google client as `GOOGLE_CLIENT_ID`: in https://developers.google.com/oauthplayground, click the gear, tick **Use your own OAuth credentials**, enter the client ID and secret, authorize `https://www.googleapis.com/auth/adwords`, and exchange the code for tokens. (Add `https://developers.google.com/oauthplayground` to the client's redirect URIs first.)
 
+## The lead inbox (recommended)
+
+WordPress can only reach the app while it and `go-online.bat` are running, and go-online's address changes on every restart. The lead inbox avoids that: on the Leads page, follow **Set it up** to create a Google Sheet with the generated Apps Script (it saves every submission, is always online, and its address never changes), paste its Web app URL into the app, and put the inbox address the app shows into Contact Form 7's Webhook tab. The app brings new rows in whenever the Leads page or the chat needs leads, at most every 30 seconds, keeping each lead's real arrival time.
+
 ## Where data is kept
 
 Everything is saved in the `.data/` folder next to the app (it's never committed):
 
 - `leads.json`: leads from the website (and any older QR code leads).
 - `webhook-log.json`: the last few times something called the website-leads webhook.
+- `lead-inbox.json`: the Google Sheet inbox's address and how far it has been read.
+- `conversion-actions.json`: the two conversion actions the app created in Google Ads.
+- `chat-problem.log`: why the chat last answered without its tools, if it did.
 - `public-url`: the tunnel address from go-online.bat.
 - `webhook-secret`: the key WordPress sends with each lead, unless `LEADS_WEBHOOK_SECRET` is set.
 - `google-ads.json`: each person's Google Ads connection. The Google token is encrypted.

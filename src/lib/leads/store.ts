@@ -59,3 +59,13 @@ export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?:
     return lead
   })
 }
+
+// Changes one lead in place (status, conversion uploads). Returns the updated lead, or null.
+export async function updateLead(id: string, change: (lead: Lead) => void) {
+  return file.update((db) => {
+    const lead = db.leads.find((l) => l.id === id)
+    if (!lead) return null
+    change(lead)
+    return lead
+  })
+}

@@ -1,9 +1,12 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo, useState, useTransition } from "react"
 import { ChevronLeft, ChevronRight, Search } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { setLeadStatusAction } from "@/lib/leads/status-actions"
+import { leadStatuses } from "@/lib/leads/types"
+import { cn } from "@/lib/utils"
 
 export type LeadRow = {
   id: string
@@ -25,15 +28,71 @@ export type LeadRow = {
   landingPath?: string
   referrer?: string
   notes?: string
+  status: string
+  // What Google Ads heard: a conversion sent, waiting to be sent, failed or skipped.
+  google?: { state: "sent" | "pending" | "failed" | "skipped"; detail?: string }
 }
 
 const PAGE = 25
+
+const statusTone: Record<string, string> = {
+  new: "border-border bg-card",
+  interested: "border-emerald-500/50 bg-emerald-500/10 text-emerald-800",
+  appointment: "border-sky-500/50 bg-sky-500/10 text-sky-800",
+  offer: "border-violet-500/50 bg-violet-500/10 text-violet-800",
+  closed: "border-emerald-700/60 bg-emerald-600 text-white",
+  not_interested: "border-border bg-muted text-muted-foreground",
+}
+
+const googleLabel = {
+  sent: { text: "Sent to Google ✓", cls: "bg-emerald-500/10 text-emerald-700" },
+  pending: { text: "Waiting for Google", cls: "bg-amber-500/15 text-amber-800" },
+  failed: { text: "Not sent", cls: "bg-destructive/10 text-destructive" },
+  skipped: { text: "Can't match", cls: "bg-muted text-muted-foreground" },
+} as const
+
+// The status picker in each row. Interested and later stages tell Google Ads this lead was good.
+function StatusCell({ id, status }: { id: string; status: string }) {
+  const [value, setValue] = useState(status)
+  const [pending, start] = useTransition()
+  const [error, setError] = useState<string | null>(null)
+  return (
+    <div className="flex flex-col gap-1">
+      <select
+        aria-label="Lead status"
+        value={value}
+        disabled={pending}
+        onChange={(e) => {
+          const next = e.target.value
+          setValue(next)
+          setError(null)
+          start(async () => {
+            const res = await setLeadStatusAction(id, next)
+            if (res.error) {
+              setError(res.error)
+              setValue(status)
+            }
+          })
+        }}
+        className={cn("h-8 rounded-lg border px-1.5 text-xs font-semibold", statusTone[value] ?? statusTone.new)}
+      >
+        {leadStatuses.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+      {error && <span className="text-xs text-destructive">{error}</span>}
+    </div>
+  )
+}
 const telHref = (phone: string) => `tel:${phone.replace(/[^\d+]/g, "")}`
 
 // Leads as a spreadsheet: one row per lead, a column per detail, searchable and filterable.
 export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
   const [query, setQuery] = useState("")
   const [channel, setChannel] = useState("")
+  const [status, setStatus] = useState("")
   const [page, setPage] = useState(0)
 
   const channels = useMemo(() => {
@@ -47,12 +106,13 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
     return rows.filter(
       (r) =>
         (!channel || r.channel === channel) &&
+        (!status || r.status === status) &&
         (!q ||
           [r.name, r.phone, r.email, r.address, r.utmCampaign, r.utmTerm, r.utmSource, r.notes, r.form]
             .filter(Boolean)
             .some((v) => v!.toLowerCase().includes(q))),
     )
-  }, [rows, query, channel])
+  }, [rows, query, channel, status])
 
   const pages = Math.max(1, Math.ceil(shown.length / PAGE))
   const current = Math.min(page, pages - 1)
@@ -97,15 +157,35 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
             ))}
           </select>
         </label>
+        <label className="flex items-center gap-2 text-sm">
+          <span className="text-muted-foreground">Status</span>
+          <select
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value)
+              setPage(0)
+            }}
+            className="h-10 rounded-lg border bg-card px-2 text-sm"
+          >
+            <option value="">All</option>
+            {leadStatuses.map((st) => (
+              <option key={st.id} value={st.id}>
+                {st.label} ({rows.filter((r) => r.status === st.id).length})
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <div className="max-h-[70vh] overflow-auto rounded-xl border">
-        <table className="w-full min-w-[1500px] border-collapse text-sm tabular-nums">
+        <table className="w-full min-w-[1750px] border-collapse text-sm tabular-nums">
           <thead>
             <tr>
               <th className={th}>#</th>
               <th className={th}>Received</th>
               <th className={th}>Name</th>
+              <th className={th}>Status</th>
+              <th className={th} title="Interested and closed leads are sent back to Google Ads as conversions">Google Ads</th>
               <th className={th}>Phone</th>
               <th className={th}>Email</th>
               <th className={th}>Property address</th>
@@ -128,6 +208,21 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
                 <td className={`${td} text-muted-foreground`}>{current * PAGE + i + 1}</td>
                 <td className={td}>{r.received}</td>
                 <td className={`${td} font-medium`}>{r.name}</td>
+                <td className={td}>
+                  <StatusCell id={r.id} status={r.status} />
+                </td>
+                <td className={td} title={r.google?.detail}>
+                  {r.google ? (
+                    <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", googleLabel[r.google.state].cls)}>
+                      {googleLabel[r.google.state].text}
+                    </span>
+                  ) : (
+                    empty
+                  )}
+                  {r.google?.state === "failed" && r.google.detail && (
+                    <p className="mt-1 max-w-56 text-xs whitespace-normal text-destructive">{r.google.detail}</p>
+                  )}
+                </td>
                 <td className={td}>
                   {r.phone ? (
                     <a href={telHref(r.phone)} className="text-primary hover:underline">
@@ -194,7 +289,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
             ))}
             {!visible.length && (
               <tr>
-                <td colSpan={17} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={19} className="px-3 py-6 text-center text-muted-foreground">
                   No leads match.
                 </td>
               </tr>

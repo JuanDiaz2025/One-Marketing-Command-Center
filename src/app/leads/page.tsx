@@ -13,10 +13,9 @@ import { formatNumber } from "@/components/dashboard/format"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { requireSession } from "@/lib/auth/session"
-import { adsConfig } from "@/lib/auth/config"
-import { listAccounts } from "@/lib/google/ads"
+import { activeAccount } from "@/lib/google/active-account"
 import { tryGetCalls } from "@/lib/google/calls"
-import { getConnection } from "@/lib/google/connections"
+import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncInbox } from "@/lib/leads/inbox"
 import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
@@ -52,20 +51,38 @@ function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
     landingPath: pagePath(t.landingPage),
     referrer: t.referrer,
     notes: lead.notes,
+    status: lead.status ?? "new",
+    google: googleState(lead),
   }
+}
+
+// One line on what Google Ads has heard about this lead, for the table.
+function googleState(lead: Lead): LeadRow["google"] {
+  const all = Object.values(lead.conversions ?? {})
+  if (!all.length) return undefined
+  const order = ["failed", "pending", "skipped", "sent"] as const
+  const worst = order.find((s) => all.some((c) => c?.state === s))!
+  const entry = all.find((c) => c?.state === worst)!
+  return { state: worst, detail: entry.error ?? (entry.matchedBy ? `Matched by ${entry.matchedBy}` : undefined) }
 }
 
 // Phone calls from Google Ads, or null when Google Ads isn't connected.
 async function loadCalls(sub: string) {
-  if (!adsConfig().developerToken) return null
-  const connection = await getConnection(sub)
-  if (!connection) return null
   try {
-    const accounts = connection.accounts.length ? connection.accounts : await listAccounts(connection)
-    const account = accounts.find((a) => a.customerId === connection.selectedCustomerId) ?? accounts[0]
-    return account ? await tryGetCalls(connection, account) : null
+    const active = await activeAccount(sub)
+    return active ? await tryGetCalls(active.connection, active.account) : null
   } catch {
     return { error: "Couldn't reach Google Ads for calls." }
+  }
+}
+
+// Offline conversions waiting to go to Google Ads (new ones, and retries at most hourly).
+async function sendConversions(sub: string) {
+  try {
+    const active = await activeAccount(sub)
+    if (active) await sendPendingConversions(active.connection, active.account)
+  } catch (error) {
+    console.error("Couldn't send conversions to Google Ads:", error)
   }
 }
 
@@ -75,7 +92,10 @@ export default async function LeadsPage() {
   const user = await requireSession("/leads")
   // Bring in anything new from the Google Sheet inbox first (at most every 30 seconds), waiting up
   // to 3 seconds for it; a slower check shows its leads on the next refresh.
-  await Promise.race([syncInbox(), new Promise((resolve) => setTimeout(resolve, 3000))])
+  await Promise.race([
+    Promise.all([syncInbox(), sendConversions(user.sub)]),
+    new Promise((resolve) => setTimeout(resolve, 3000)),
+  ])
   const [qrCodes, leads, calls] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub)])
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const callCount = calls && "calls" in calls ? calls.calls.length : null
@@ -138,9 +158,17 @@ export default async function LeadsPage() {
             </span>
           </div>
           {leads.length ? (
-            <div className="mt-4">
-              <LeadsTable rows={leads.map((l) => toRow(l, placements))} />
-            </div>
+            <>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Set a lead&apos;s <strong>Status</strong> as you work it. <strong>Interested</strong> (and Appointment, Offer made) and{" "}
+                <strong>Closed deal</strong> are sent back to Google Ads as conversions, so Google learns which clicks bring real
+                sellers. They&apos;re matched by the lead&apos;s Google click ID, or by their email and phone, which are scrambled
+                first. Google never sees them in plain text.
+              </p>
+              <div className="mt-4">
+                <LeadsTable rows={leads.map((l) => toRow(l, placements))} />
+              </div>
+            </>
           ) : (
             <p className="py-6 text-sm text-muted-foreground">
               No leads yet. Connect your website form below.

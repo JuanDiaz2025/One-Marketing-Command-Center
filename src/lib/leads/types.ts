@@ -42,6 +42,31 @@ export type LeadTracking = {
   referrer?: string
 }
 
+// Where a lead stands with the team. "interested" and "closed" are sent back to Google Ads as
+// offline conversions, so Google learns which clicks bring real sellers.
+export const leadStatuses = [
+  { id: "new", label: "New" },
+  { id: "interested", label: "Interested" },
+  { id: "appointment", label: "Appointment" },
+  { id: "offer", label: "Offer made" },
+  { id: "closed", label: "Closed deal" },
+  { id: "not_interested", label: "Not interested" },
+] as const
+export type LeadStatus = (typeof leadStatuses)[number]["id"]
+
+// The two moments Google Ads hears about.
+export type ConversionKind = "interested" | "closed"
+export type ConversionUpload = {
+  state: "pending" | "sent" | "failed" | "skipped"
+  // When the lead reached this stage (the conversion's time in Google Ads).
+  at: string
+  tries?: number
+  lastTry?: string
+  error?: string
+  // How Google can match it: the ad click id, or the lead's email/phone (enhanced conversions).
+  matchedBy?: string
+}
+
 export type Lead = {
   id: string
   // Set for leads from a QR code form. Website leads have `source` instead.
@@ -57,4 +82,7 @@ export type Lead = {
   tracking?: LeadTracking
   // Set for leads brought in from the Google Sheet inbox: its row id, so none is added twice.
   inboxId?: string
+  status?: LeadStatus
+  statusChangedAt?: string
+  conversions?: Partial<Record<ConversionKind, ConversionUpload>>
 }

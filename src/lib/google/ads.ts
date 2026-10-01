@@ -344,3 +344,10 @@ export async function runQuery(connection: AdsConnection, account: AdsAccount, q
   if (!/^\s*select\s/i.test(query)) throw new AdsApiError("Only SELECT queries are allowed.")
   return search<Record<string, unknown>>(connection, account.customerId, query, account.loginCustomerId)
 }
+
+// A change in the account (the only ones this app makes: creating its two conversion actions and
+// uploading offline conversions for leads marked interested or closed). `suffix` follows the
+// customer, e.g. "/conversionActions:mutate" or ":uploadClickConversions".
+export async function postToAds<T>(connection: AdsConnection, account: AdsAccount, suffix: string, body: unknown) {
+  return request<T>(connection, `customers/${account.customerId}${suffix}`, { body, loginCustomerId: account.loginCustomerId })
+}
