@@ -29,7 +29,8 @@ const digitsOf = (s: string) => s.replace(/\D/g, "")
 // not a made-up pattern like 555-0100, 1234567890 or 9999999999.
 export function realPhone(phone?: string) {
   if (!phone) return false
-  let d = digitsOf(phone)
+  // "415.222.3333 x101", "ext. 12": the extension isn't part of the number.
+  let d = digitsOf(phone.replace(/\s*(x|ext\.?|extension)\s*\d+\s*$/i, ""))
   if (d.length === 11 && d.startsWith("1")) d = d.slice(1)
   if (phone.trim().startsWith("+") && !phone.trim().startsWith("+1")) return d.length >= 8 // outside the US
   if (d.length !== 10 || /^[01]/.test(d) || /^[2-9]11/.test(d)) return false
@@ -44,7 +45,9 @@ const SELLER_SEARCH = /\b(sell|selling|sold|cash|buy(ers?)? (my|houses?|homes?)|
 const MOTIVATED =
   /\b(foreclos\w*|behind on (my )?(payments?|mortgage)|late payments?|pre-?foreclosure|inherit\w*|probate|divorc\w*|repairs?|fixer|needs work|vacant|tenants?|evict\w*|relocat\w*|moving|job transfer|downsiz\w*|tax(es)? (lien|owed)|back taxes|code violations?|fire damage|water damage|mold|asap|urgent\w*|quickly|as[- ]is|bankrupt\w*|lost (my )?job)\b/i
 const SPAM_WORDS = /\b(seo|backlinks?|rank(ing)? (your|on google)|guest post|crypto|bitcoin|forex|loan offer|web ?design services|increase (your )?traffic|casino|viagra)\b/i
-const LINKS = /(https?:\/\/|www\.)/gi
+const LINKS = /(https?:\/\/|www\.)\S+/gi
+// A seller pasting their own listing or a map link isn't spam.
+const PROPERTY_LINK = /(zillow|redfin|realtor|trulia|homes|movoto|loopnet|google\.[a-z.]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps|apple\.com\/maps)/i
 const SPAM_FLAG = "Contact Form 7 marked this as spam"
 
 // Scores a lead. `earlier` are the leads that came before it, to spot someone coming back.
@@ -63,6 +66,11 @@ export function scoreLead(lead: Lead, earlier: Lead[] = []): LeadScore {
   const phoneOk = realPhone(lead.phone)
   const email = lead.email?.trim().toLowerCase()
   const emailOk = Boolean(email && EMAIL.test(email) && !THROWAWAY.test(email))
+
+  // Brought in from the website without a recognized name, phone or email: needs a person to look.
+  if (name.startsWith("Website lead (check the notes)")) {
+    return { value: 0, grade: "cold", reasons: ["Its fields weren't recognized, so it can't be scored: check its notes"], unscored: true }
+  }
 
   // Clear junk first.
   if (FAKE_NAME.test(name) || /\btest\b/i.test(name) || /(https?:\/\/|www\.)/i.test(name)) return junk("looks like a test or a fake name")
@@ -86,13 +94,15 @@ export function scoreLead(lead: Lead, earlier: Lead[] = []): LeadScore {
   // Where they came from.
   const t = lead.tracking ?? {}
   if (t.gclid || /^(cpc|ppc|paid|paidsearch|paid_search)$/i.test(t.utmMedium ?? "")) add(10, "Came from a paid ad click")
-  const searched = [t.utmTerm, t.utmCampaign].filter(Boolean).join(" ")
+  // Campaign names often use _ + - for spaces ("Sell_House_Fast").
+  const searched = [t.utmTerm, t.utmCampaign].filter(Boolean).join(" ").replace(/[_+-]+/g, " ")
   if (SELLER_SEARCH.test(searched)) add(10, `Searched like a seller ("${(t.utmTerm || t.utmCampaign || "").slice(0, 40)}")`)
 
   // What they said.
   const motive = message.match(MOTIVATED)
   if (motive) add(15, `Motivated seller: mentions "${motive[0].toLowerCase()}"`)
-  const links = message.match(LINKS)?.length ?? 0
+  const wantsToSell = Boolean(motive) || SELLER_SEARCH.test(searched)
+  const links = (message.match(LINKS) ?? []).filter((l) => !PROPERTY_LINK.test(l)).length
   if (links) add(-30, "Message has links (often spam)")
   if (notes.includes(SPAM_FLAG)) add(-25, "Blocked as spam on the website (check it: it may be a real person)")
 
@@ -104,5 +114,10 @@ export function scoreLead(lead: Lead, earlier: Lead[] = []): LeadScore {
   if (back) add(5, "Came back: sent a form before")
 
   const value = Math.max(0, Math.min(100, points))
+  // Contact details alone don't make a lead Hot: it also needs a sign they want to sell (a seller
+  // search, or their own words), so only real sellers are reported to Google Ads.
+  if (value >= HOT_AT && !wantsToSell) {
+    return { value, grade: "warm", reasons: [...reasons, "Warm, not Hot: no sign yet they want to sell (no seller search or reason in the message)"] }
+  }
   return { value, grade: value >= HOT_AT ? "hot" : value >= WARM_AT ? "warm" : "cold", reasons }
 }

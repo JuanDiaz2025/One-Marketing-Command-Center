@@ -111,9 +111,9 @@ The app picks up new leads every 30 seconds while it's open (and whenever the ch
 
 ## Lead scoring
 
-Every lead is scored from 0 to 100 when it arrives (`src/lib/leads/scoring.ts`): a real phone number, a property address, an email, a full name, a paid ad click, a seller search ("sell my house fast"), a motivated seller in the message (inherited, foreclosure, repairs...) and coming back again add points; a fake-looking number, links in the message or a reCAPTCHA spam block take points away. Tests, fake names, adverts and leads with no real phone or email are Junk. Hot is 70+, Warm 40 to 69.
+Every lead is scored from 0 to 100 when it arrives (`src/lib/leads/scoring.ts`): a real phone number, a property address, an email, a full name, a paid ad click, a seller search ("sell my house fast"), a motivated seller in the message (inherited, foreclosure, repairs...) and coming back again add points; a fake-looking number, links in the message or a reCAPTCHA spam block take points away. Tests, fake names, adverts and leads with no real phone or email are Junk. Hot is 70+ with a sign they want to sell (a seller search or their own words); otherwise 70+ is Warm. Warm is 40 to 69.
 
-With **Set the status from the score** on (the default, on the Leads page), a new Hot lead is marked **Interested**, which sends Google Ads an offline conversion, and Junk is marked **Not interested**. That follows Google Ads' advice to send back only qualified leads. A status you set yourself always wins; leads from before scoring keep their status.
+With **Set the status from the score** on (the default, on the Leads page), a new Hot lead is marked **Interested**, which sends Google Ads an offline conversion, and Junk is marked **Not interested**. That follows Google Ads' advice to send back only qualified leads. A status you set yourself always wins. Only leads received in the last 24 hours get a status from their score, so old leads (from before scoring, or a first sync with the website) aren't reported to Google Ads without you.
 
 ## Other way: an instant webhook
 

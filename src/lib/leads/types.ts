@@ -76,6 +76,8 @@ export type LeadScore = {
   grade: LeadGrade
   // Why, in plain words: "+25 Real phone number", "-30 Message has links (often spam)"...
   reasons: string[]
+  // Couldn't be scored (its fields weren't recognized): never given a status automatically.
+  unscored?: boolean
 }
 
 export type Lead = {

@@ -93,7 +93,7 @@ async function conversionAction(connection: AdsConnection, account: AdsAccount, 
 const RETRY = /TOO_RECENT|CLICK_NOT_FOUND|INTERNAL|TRANSIENT|DEADLINE|UNAVAILABLE|RESOURCE_EXHAUSTED|RATE/i
 const SETUP_RETRY_MS = 5 * 60_000
 // Refused by the old upload Google closed to new apps: send these again the new way.
-const OLD_UPLOAD_CLOSED = /Data Manager API|ConversionUploadService|limited to existing users/i
+const OLD_UPLOAD_CLOSED = /ConversionUploadService|limited to existing users/i
 const MAX_TRIES = 12
 const RETRY_AFTER_MS = 60 * 60_000
 
@@ -130,20 +130,24 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
   }
   const now = new Date().toISOString()
   await updateLead(lead.id, (l) => {
-    const tries = (entry.tries ?? 0) + 1
+    // Work from the lead as saved now: the status may have changed while this was being sent.
+    const current = l.conversions?.[kind]
+    if (!current || current.state !== "pending") return
+    if (current.at !== entry.at) return // set again meanwhile: the next run sends the new one
+    const tries = (current.tries ?? 0) + 1
     // Waiting on a set-up step (a permission, the API turned on): keep it waiting, without
     // counting tries, and check again every few minutes.
     const waitingFor = code === "NEEDS_PERMISSION" ? "permission" : code === "API_OFF" ? "api" : undefined
     l.conversions![kind] = error
       ? {
-          ...entry,
-          tries: waitingFor ? (entry.tries ?? 0) : tries,
+          ...current,
+          tries: waitingFor ? (current.tries ?? 0) : tries,
           lastTry: now,
           error,
           waitingFor,
           state: waitingFor || (RETRY.test(`${code} ${error}`) && tries < MAX_TRIES) ? "pending" : "failed",
         }
-      : { at: entry.at, tries, lastTry: now, state: "sent", matchedBy: [gclid && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
+      : { at: current.at, tries, lastTry: now, state: "sent", matchedBy: [gclid && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
   })
 }
 
@@ -155,8 +159,15 @@ export async function setLeadStatus(id: string, status: LeadStatus) {
 
 // Sends every conversion waiting to go: new ones at once, retries at most hourly.
 let running: Promise<void> | null = null
-export function sendPendingConversions(connection: AdsConnection, account: AdsAccount) {
-  running ??= (async () => {
+let again = false
+export function sendPendingConversions(connection: AdsConnection, account: AdsAccount): Promise<void> {
+  // Asked again while a run is going (e.g. a status was just changed): go once more after it,
+  // so the new conversion isn't left for the next page load.
+  if (running) {
+    again = true
+    return running
+  }
+  running = (async () => {
     const leads = await listLeads()
     for (const lead of leads) {
       for (const kind of ["interested", "closed"] as const) {
@@ -175,6 +186,10 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
     }
   })().finally(() => {
     running = null
+    if (again) {
+      again = false
+      void sendPendingConversions(connection, account).catch((error) => console.error("Couldn't send conversions to Google Ads:", error))
+    }
   })
   return running
 }

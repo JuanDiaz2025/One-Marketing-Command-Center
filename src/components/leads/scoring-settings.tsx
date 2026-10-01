@@ -22,7 +22,8 @@ export default function ScoringSettings({ autoStatus }: { autoStatus: boolean })
         <div className="min-w-0 flex-1">
           <p className="font-semibold">Automatic lead scoring</p>
           <p className="text-muted-foreground">
-            Every lead gets a score from 0 to 100 the moment it arrives: <strong className="text-red-700">Hot</strong> (70+),{" "}
+            Every lead gets a score from 0 to 100 the moment it arrives: <strong className="text-red-700">Hot</strong> (70+ and a sign
+            they want to sell: a seller search or their own words),{" "}
             <strong className="text-amber-700">Warm</strong> (40 to 69), <strong className="text-sky-800">Cold</strong> or{" "}
             <strong>Junk</strong> (tests, fake numbers, spam). Click <strong>why?</strong> in the Score column to see how it was scored.
           </p>
@@ -76,10 +77,14 @@ export default function ScoringSettings({ autoStatus }: { autoStatus: boolean })
           <li>+5 came back: sent a form before</li>
           <li>−15 a phone number that looks fake or incomplete</li>
           <li>−25 blocked as spam on the website (often reCAPTCHA; may be a real person)</li>
-          <li>−30 a message with links (often spam)</li>
+          <li>−30 a message with links, other than Zillow, Redfin, Realtor.com or map links (often spam)</li>
           <li>Junk: a test or fake name, an advert, or no real phone or email</li>
         </ul>
-        <p className="mt-2 text-muted-foreground">Leads from before scoring was added are scored too, but their status is left as it was.</p>
+        <p className="mt-2 text-muted-foreground">
+          Only leads that arrived in the last 24 hours get a status from their score. Older leads (from before scoring, or brought in
+          late from the website) are scored too, but their status is left for you, so nothing old is sent to Google Ads without you.
+          A lead whose form fields weren&apos;t recognized is never given a status automatically.
+        </p>
       </details>
       {error && <p className="text-destructive">{error}</p>}
     </div>

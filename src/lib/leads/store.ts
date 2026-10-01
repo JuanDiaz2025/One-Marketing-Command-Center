@@ -54,6 +54,8 @@ export async function listLeads() {
 
 const digits = (s?: string) => s?.replace(/\D/g, "").slice(-10) || undefined
 const SAME_LEAD_MS = 15 * 60_000
+// How new a lead must be for its score to set its status.
+const FRESH_MS = 24 * 60 * 60_000
 // "wp:www.example.com:12" and "wp:example.com:12" are the same saved lead.
 const sameSource = (a?: string, b?: string) => Boolean(a && b && a.replace(/^wp:www\./, "wp:") === b.replace(/^wp:www\./, "wp:"))
 
@@ -86,7 +88,10 @@ export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?:
     }
     const lead: Lead = { ...input, id: newId(), createdAt: at }
     lead.score = scoreLead(lead, db.leads)
-    if (autoStatus && !lead.status && !lead.qrCodeId) {
+    // Only for leads that just arrived: a first sync with the website can bring in months of old
+    // ones, and those aren't reported to Google Ads without you choosing.
+    const fresh = Date.now() - Date.parse(at) < FRESH_MS
+    if (autoStatus && fresh && !lead.status && !lead.qrCodeId && !lead.score.unscored) {
       if (lead.score.grade === "hot") applyStatus(lead, "interested", "auto")
       else if (lead.score.grade === "junk") applyStatus(lead, "not_interested", "auto")
     }
