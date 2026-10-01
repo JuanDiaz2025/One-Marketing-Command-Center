@@ -55,4 +55,6 @@ export type Lead = {
   propertyAddress?: string
   notes?: string
   tracking?: LeadTracking
+  // Set for leads brought in from the Google Sheet inbox: its row id, so none is added twice.
+  inboxId?: string
 }

@@ -9,6 +9,7 @@ import { getInsights } from "@/lib/google/insights"
 import { tryGetLocations } from "@/lib/google/locations"
 import { resolvePeriod } from "@/lib/google/period"
 import { findWastedSearches } from "@/lib/google/wasted-searches"
+import { syncInbox } from "@/lib/leads/inbox"
 import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 import { leadChannel } from "@/lib/leads/tracking"
@@ -18,6 +19,7 @@ const r2 = (n: number) => Math.round(n * 100) / 100
 const rows = <T>(part: { rows: T[] } | { error: string }, n: number) => ("rows" in part ? part.rows.slice(0, n) : part)
 
 export async function buildSnapshot({ connection, account }: ToolContext) {
+  await syncInbox()
   const [leads, qrCodes] = await Promise.all([listLeads(), listQrCodes()])
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const since = Date.now() - 90 * 86_400_000

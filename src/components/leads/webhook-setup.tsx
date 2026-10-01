@@ -2,7 +2,10 @@ import { headers } from "next/headers"
 import { CircleAlert, CircleCheck, Globe, TriangleAlert } from "lucide-react"
 
 import CopyButton from "@/components/dashboard/copy-button"
+import Disclosure from "@/components/ui/disclosure"
+import InboxForm from "@/components/leads/inbox-form"
 import { timeAgo } from "@/components/leads/lead-list"
+import { getInbox, inboxScript, inboxWebhookAddress } from "@/lib/leads/inbox"
 import { tunnelUrl, webhookSecret } from "@/lib/leads/webhook"
 import { recentAttempts, type WebhookAttempt } from "@/lib/leads/webhook-log"
 import { CF7_HIDDEN_FIELDS, TRACKING_SNIPPET } from "@/lib/leads/wordpress-snippets"
@@ -21,7 +24,8 @@ function describe(a: WebhookAttempt) {
 }
 
 // Where to point the WordPress form webhook, with the key it has to send, and what arrived lately.
-export default async function WebhookSetup({ websiteLeads }: { websiteLeads: number }) {
+// Stays open until the inbox has delivered a lead, so its address is in view while setting it up.
+export default async function WebhookSetup({ websiteLeads, inboxLeads }: { websiteLeads: number; inboxLeads: number }) {
   const h = await headers()
   const configured = process.env.SITE_URL?.replace(/\/$/, "")
   const tunnel = configured ? null : await tunnelUrl()
@@ -30,9 +34,12 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
   const url = `${origin}/api/leads/webhook?key=${encodeURIComponent(await webhookSecret())}`
   const localOnly = !configured && !tunnel && LOCAL.test(host)
   const attempts = await recentAttempts()
+  const inbox = await getInbox()
+  const inboxAddress = await inboxWebhookAddress()
+  const script = inboxScript(await webhookSecret())
 
   return (
-    <details className="group rounded-2xl border bg-card shadow-xs" open={websiteLeads === 0}>
+    <Disclosure className="group rounded-2xl border bg-card shadow-xs" initialOpen={websiteLeads === 0 || inboxLeads === 0}>
       <summary className="flex cursor-pointer list-none items-center gap-3 p-5 sm:px-6">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
           <Globe className="size-5" />
@@ -47,7 +54,74 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
         </span>
       </summary>
       <div className="flex flex-col gap-5 border-t px-5 py-5 text-sm sm:px-6">
-        {localOnly && (
+        <section
+          className={cn(
+            "flex flex-col gap-3 rounded-xl border-2 p-4",
+            inbox.url && !inbox.lastError ? "border-emerald-500/40 bg-emerald-500/5" : "border-primary/40 bg-primary/5",
+          )}
+        >
+          <div>
+            <p className="text-base font-semibold">
+              {inbox.url ? "Lead inbox: on" : "Recommended: the lead inbox, so no lead is ever missed"}
+            </p>
+            <p className="text-muted-foreground">
+              WordPress sends every lead to a Google Sheet that&apos;s always online, with an address that never changes. The app
+              brings them in whenever it&apos;s open, so leads sent while this computer was off or during an update still show up
+              here, with the time they were really sent.
+            </p>
+          </div>
+
+          {inbox.url && inboxAddress && (
+            <div className="flex flex-col gap-2">
+              <p className="font-medium">Put this address in WordPress (Contact Form 7 → your form → Webhook tab). It never changes:</p>
+              <code className="block rounded-lg bg-muted px-3 py-2 font-mono text-xs break-all">{inboxAddress}</code>
+              <div>
+                <CopyButton text={inboxAddress} label="Copy inbox address for WordPress" />
+              </div>
+              <p className={cn(inbox.lastError ? "text-destructive" : "text-muted-foreground")}>
+                {inbox.lastError
+                  ? `Couldn't read the inbox: ${inbox.lastError}`
+                  : inbox.lastSync
+                    ? `Checked for new leads ${timeAgo(inbox.lastSync)}. It checks every 30 seconds while this page is open.`
+                    : "Not checked yet."}
+              </p>
+            </div>
+          )}
+
+          <Disclosure className="rounded-lg border bg-card p-3" initialOpen={!inbox.url}>
+            <summary className="cursor-pointer font-medium">{inbox.url ? "Set-up steps" : "Set it up (about 5 minutes, once)"}</summary>
+            <ol className="mt-2 list-decimal space-y-3 pl-5 text-muted-foreground">
+              <li>
+                Open <a href="https://sheets.new" target="_blank" rel="noreferrer" className="text-primary underline">sheets.new</a>{" "}
+                (signed in with your company Google account) and name the sheet &ldquo;Command Center leads&rdquo;.
+              </li>
+              <li>
+                In the sheet, click <strong>Extensions → Apps Script</strong>. Delete what&apos;s there, paste this script (it already has
+                your key), and click the <strong>Save</strong> icon.
+                <pre className="mt-2 max-h-32 overflow-auto rounded-lg bg-muted px-3 py-2 font-mono text-[11px] text-foreground">{script}</pre>
+                <div className="mt-2">
+                  <CopyButton text={script} label="Copy the script" />
+                </div>
+              </li>
+              <li>
+                Click <strong>Deploy → New deployment</strong>, click the gear and choose <strong>Web app</strong>. Set{" "}
+                <strong>Execute as: Me</strong> and <strong>Who has access: Anyone</strong>, then <strong>Deploy</strong>. Allow the
+                access Google asks for (choose your account, then <strong>Advanced → Go to … (unsafe) → Allow</strong>; it&apos;s your
+                own script). Copy the <strong>Web app URL</strong>.
+              </li>
+              <li>Paste it below and click Save.</li>
+              <li>
+                Copy the inbox address that appears above into Contact Form 7&apos;s <strong>Webhook</strong> tab (replacing any
+                localhost or trycloudflare address), save, and submit a test lead.
+              </li>
+            </ol>
+            <div className="mt-3">
+              <InboxForm current={inbox.url} />
+            </div>
+          </Disclosure>
+        </section>
+
+        {!inbox.url && localOnly && (
           <div className="flex gap-2 rounded-xl border-2 border-amber-500/50 bg-amber-500/10 p-4 text-amber-950">
             <TriangleAlert className="mt-0.5 size-5 shrink-0 text-amber-600" />
             <div className="flex flex-col gap-2">
@@ -85,7 +159,9 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
         )}
 
         <div className="flex flex-col gap-2">
-          <p className="font-medium">Webhook address</p>
+          <p className="font-medium">
+            {inbox.url ? "Other way: send leads straight to this computer (only while the app is running)" : "Webhook address (straight to this computer)"}
+          </p>
           <code className="block rounded-lg bg-muted px-3 py-2 font-mono text-xs break-all">{url}</code>
           <div>
             <CopyButton text={url} label="Copy webhook address" />
@@ -190,6 +266,6 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
           </ol>
         </div>
       </div>
-    </details>
+    </Disclosure>
   )
 }

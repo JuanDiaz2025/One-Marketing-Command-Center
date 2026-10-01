@@ -2,6 +2,7 @@
 // endpoint can't change an account), and leads from this app's own store.
 import { AdsApiError, runQuery } from "@/lib/google/ads"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
+import { syncInbox } from "@/lib/leads/inbox"
 import { leadSource } from "@/lib/leads/source"
 import { leadChannel } from "@/lib/leads/tracking"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
@@ -83,6 +84,8 @@ export async function runTool(
     }
 
     if (name === "list_leads") {
+      // The app brings in inbox leads itself; Claude Code's tool server (OMCC_ROOT set) only reads.
+      if (!process.env.OMCC_ROOT) await syncInbox()
       const raw = (input as { days?: unknown }).days
       const days = Math.min(Math.max(Math.round(Number(raw) || 30), 1), 365)
       const since = Date.now() - days * 86_400_000

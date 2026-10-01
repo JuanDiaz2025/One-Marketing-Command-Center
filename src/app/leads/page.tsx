@@ -17,6 +17,7 @@ import { adsConfig } from "@/lib/auth/config"
 import { listAccounts } from "@/lib/google/ads"
 import { tryGetCalls } from "@/lib/google/calls"
 import { getConnection } from "@/lib/google/connections"
+import { syncInbox } from "@/lib/leads/inbox"
 import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 import { leadChannel, pagePath } from "@/lib/leads/tracking"
@@ -72,6 +73,9 @@ export const metadata: Metadata = { title: "Leads · One Marketing Command Cente
 
 export default async function LeadsPage() {
   const user = await requireSession("/leads")
+  // Bring in anything new from the Google Sheet inbox first (at most every 30 seconds), waiting up
+  // to 3 seconds for it; a slower check shows its leads on the next refresh.
+  await Promise.race([syncInbox(), new Promise((resolve) => setTimeout(resolve, 3000))])
   const [qrCodes, leads, calls] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub)])
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const callCount = calls && "calls" in calls ? calls.calls.length : null
@@ -146,7 +150,7 @@ export default async function LeadsPage() {
 
         <PhoneCalls result={calls} />
 
-        <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} />
+        <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} inboxLeads={leads.filter((l) => l.inboxId).length} />
       </main>
       <LiveRefresh />
       <AssistantLauncher enabled={assistantProvider() !== null} />

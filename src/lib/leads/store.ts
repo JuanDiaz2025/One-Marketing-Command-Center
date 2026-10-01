@@ -50,9 +50,11 @@ export async function listLeads() {
   return [...db.leads].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-export async function addLead(input: Omit<Lead, "id" | "createdAt">) {
+// `createdAt` defaults to now; leads from the inbox keep the time they were really sent.
+export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?: string) {
   return file.update((db) => {
-    const lead: Lead = { ...input, id: newId(), createdAt: new Date().toISOString() }
+    if (input.inboxId && db.leads.some((l) => l.inboxId === input.inboxId)) return db.leads.find((l) => l.inboxId === input.inboxId)!
+    const lead: Lead = { ...input, id: newId(), createdAt: createdAt ? new Date(createdAt).toISOString() : new Date().toISOString() }
     db.leads.push(lead)
     return lead
   })
