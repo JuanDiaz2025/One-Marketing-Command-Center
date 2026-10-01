@@ -67,6 +67,9 @@ export type ConversionUpload = {
   matchedBy?: string
   // Held back until a set-up step is done: a Google permission, or the Data Manager API turned on.
   waitingFor?: "permission" | "api"
+  // The value sent with it (1 when not set), and the Google Ads rule that queued it, if one did.
+  value?: number
+  rule?: string
 }
 
 // How good a lead looks the moment it arrives, scored by the app (scoring.ts).
@@ -99,8 +102,10 @@ export type Lead = {
   statusChangedAt?: string
   // "auto" when the app set the status from the lead's score; anything you set yourself wins.
   statusBy?: "auto" | "you"
-  // The lead rule that set the status, when one did.
+  // Set when an old lead rule set the status (rules now only decide what Google Ads hears).
   statusRule?: string
+  // A Google Ads rule said not to send this lead (setting a status yourself still sends it).
+  googleBlockedBy?: string
   score?: LeadScore
   conversions?: Partial<Record<ConversionKind, ConversionUpload>>
 }

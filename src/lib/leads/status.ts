@@ -23,3 +23,19 @@ export function applyStatus(lead: Lead, status: LeadStatus, by: "auto" | "you", 
     if (!entry || entry.state === "failed" || entry.state === "skipped") lead.conversions[kind] = { state: "pending", at: now }
   }
 }
+
+// Queues what a Google Ads rule decided, without touching the lead's status.
+export function applyRule(lead: Lead, rule: { name: string; then: "qualified" | "converted" | "dont_send"; value?: number }, now = new Date().toISOString()) {
+  if (rule.then === "dont_send") {
+    lead.googleBlockedBy = rule.name
+    return
+  }
+  const kinds: ConversionKind[] = rule.then === "converted" ? ["interested", "closed"] : ["interested"]
+  lead.conversions ??= {}
+  for (const kind of kinds) {
+    // A converted lead also counts as qualified; the value goes with the conversion the rule is
+    // about, so Google doesn't count it twice.
+    const value = rule.then === "converted" && kind === "interested" ? undefined : rule.value
+    if (!lead.conversions[kind]) lead.conversions[kind] = { state: "pending", at: now, value, rule: rule.name }
+  }
+}

@@ -48,20 +48,20 @@ export default function ScoringSettings({ autoStatus }: { autoStatus: boolean })
             }}
             className="size-5 accent-[var(--primary)]"
           />
-          <span className="font-medium">Run my lead rules on new leads</span>
+          <span className="font-medium">Send new leads to Google Ads by my rules</span>
         </label>
       </div>
       <p className={cn("rounded-lg p-3", on ? "bg-emerald-500/10 text-emerald-900" : "bg-card text-muted-foreground")}>
         {on ? (
           <>
-            <strong>On.</strong> Each new lead&apos;s status is set by your <strong>lead rules</strong> (below). To start with, Hot
-            leads are marked <strong>Interested</strong>, which tells Google Ads they were good leads, and Junk is marked{" "}
-            <strong>Not interested</strong>. Google Ads recommends sending back only qualified leads like this, so its bidding finds
-            more real sellers instead of more form-fillers. Change any status yourself and yours stays.
+            <strong>On.</strong> Your <strong>Google Ads rules</strong> (below) decide which new leads Google hears about. To start
+            with, Hot leads go as <strong>Qualified leads</strong> and Junk is never sent. Google Ads recommends sending back only
+            qualified leads like this, so its bidding finds more real sellers instead of more form-fillers. Lead statuses stay yours.
           </>
         ) : (
           <>
-            <strong>Off.</strong> Leads are still scored, but your lead rules don&apos;t run: you set every status yourself.
+            <strong>Off.</strong> Leads are still scored, but Google Ads only hears about a lead when you set its status (Interested,
+            Closed deal…).
           </>
         )}
       </p>
@@ -82,9 +82,9 @@ export default function ScoringSettings({ autoStatus }: { autoStatus: boolean })
           <li>Junk: a test or fake name, an advert, or no real phone or email</li>
         </ul>
         <p className="mt-2 text-muted-foreground">
-          Only leads that arrived in the last 24 hours get a status from the rules. Older leads (from before scoring, or brought in
-          late from the website) are scored too, but their status is left for you, so nothing old is sent to Google Ads without you.
-          A lead whose form fields weren&apos;t recognized is never given a status automatically.
+          Only leads that arrived in the last 24 hours go through the rules. Older leads (from before scoring, or brought in
+          late from the website) are scored too, but nothing old is sent to Google Ads without you.
+          A lead whose form fields weren&apos;t recognized is never sent automatically.
         </p>
       </details>
       {error && <p className="text-destructive">{error}</p>}

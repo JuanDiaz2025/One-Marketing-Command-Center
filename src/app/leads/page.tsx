@@ -67,11 +67,12 @@ function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
 // One line on what Google Ads has heard about this lead, for the table.
 function googleState(lead: Lead): LeadRow["google"] {
   const all = Object.values(lead.conversions ?? {})
-  if (!all.length) return undefined
+  if (!all.length) return lead.googleBlockedBy ? { state: "held", detail: `Not sent: rule “${lead.googleBlockedBy}”` } : undefined
   const order = ["failed", "pending", "skipped", "sent"] as const
   const worst = order.find((s) => all.some((c) => c?.state === s))!
   const entry = all.find((c) => c?.state === worst)!
-  return { state: worst, detail: entry.error ?? (entry.matchedBy ? `Matched by ${entry.matchedBy}` : undefined) }
+  const why = [entry.rule && `Rule “${entry.rule}”`, entry.value !== undefined && entry.value !== 1 && `worth $${entry.value}`].filter(Boolean).join(", ")
+  return { state: worst, detail: entry.error ?? ([why, entry.matchedBy && `matched by ${entry.matchedBy}`].filter(Boolean).join(" · ") || undefined) }
 }
 
 // Phone calls from Google Ads, or null when Google Ads isn't connected.

@@ -6,7 +6,7 @@ import { jsonFileStore } from "@/lib/json-file-store"
 import { getScoringSettings, scoreLead } from "@/lib/leads/scoring"
 import { firstMatch } from "@/lib/leads/rules"
 import { getRules } from "@/lib/leads/rules-store"
-import { applyStatus } from "@/lib/leads/status"
+import { applyRule } from "@/lib/leads/status"
 import type { Lead, QrCode } from "@/lib/leads/types"
 
 type Db = { qrCodes: QrCode[]; leads: Lead[] }
@@ -65,8 +65,8 @@ const sameSource = (a?: string, b?: string) => Boolean(a && b && a.replace(/^wp:
 // The same lead can arrive twice when the website uses both the Lead Saver plugin and a webhook:
 // one with an email or phone in common from within 15 minutes of the other, where only one of
 // them came from the plugin, is taken to be the same lead. A plugin lead is added once (by its id).
-// Every new lead is scored on arrival, then your lead rules (rules.ts) run on it, when they're
-// switched on: the first rule it matches sets its status (and so what Google Ads hears).
+// Every new lead is scored on arrival, then your Google Ads rules (rules.ts) run on it, when
+// they're switched on: the first rule it matches decides what Google Ads hears about it.
 export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?: string) {
   const [{ autoStatus }, rules] = await Promise.all([getScoringSettings(), getRules()])
   return file.update((db) => {
@@ -93,12 +93,9 @@ export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?:
     // Only for leads that just arrived: a first sync with the website can bring in months of old
     // ones, and those aren't reported to Google Ads without you choosing.
     const fresh = Date.now() - Date.parse(at) < FRESH_MS
-    if (autoStatus && fresh && !lead.status && !lead.qrCodeId && !lead.score.unscored) {
+    if (autoStatus && fresh && !lead.qrCodeId && !lead.score.unscored) {
       const rule = firstMatch(lead, rules)
-      if (rule) {
-        applyStatus(lead, rule.then, "auto")
-        lead.statusRule = rule.name
-      }
+      if (rule) applyRule(lead, rule)
     }
     db.leads.push(lead)
     return lead

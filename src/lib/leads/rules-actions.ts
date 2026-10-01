@@ -6,7 +6,6 @@ import { z } from "zod"
 import { getSession } from "@/lib/auth/session"
 import { defaultRules } from "@/lib/leads/rules"
 import { saveRules } from "@/lib/leads/rules-store"
-import { leadStatuses } from "@/lib/leads/types"
 
 const FILL = "Fill in every condition before saving."
 const text = z.string().trim().min(1, FILL).max(300)
@@ -30,12 +29,13 @@ const rules = z
       name: z.string().trim().min(1, "Give every rule a name.").max(80),
       enabled: z.boolean(),
       when: z.array(condition).min(1, "Every rule needs at least one condition.").max(10),
-      then: z.enum(leadStatuses.map((s) => s.id) as [string, ...string[]]),
+      then: z.enum(["qualified", "converted", "dont_send"]),
+      value: z.number().min(0).max(10_000_000).optional(),
     }),
   )
   .max(30)
 
-// Saves the lead rules from the Leads page (or puts the defaults back).
+// Saves the Google Ads rules from the Leads page (or puts the defaults back).
 export async function saveRulesAction(input: unknown, reset = false): Promise<{ error?: string }> {
   if (!(await getSession())) return { error: "Sign in first." }
   if (reset) {

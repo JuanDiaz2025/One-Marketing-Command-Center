@@ -4,19 +4,16 @@ import { useMemo, useState, useTransition } from "react"
 import { ArrowDown, ArrowUp, ListChecks, Plus, Trash2, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { conditionKinds, firstMatch, type LeadRule, type RuleCondition } from "@/lib/leads/rules"
+import { conditionKinds, firstMatch, ruleActions, type LeadRule, type RuleCondition } from "@/lib/leads/rules"
 import { saveRulesAction } from "@/lib/leads/rules-actions"
-import { leadStatuses, type Lead } from "@/lib/leads/types"
+import type { Lead } from "@/lib/leads/types"
 import { cn } from "@/lib/utils"
 
-// What each status means for Google Ads, shown next to the "then" choice.
-const googleMeaning: Record<string, string> = {
-  interested: "sent to Google Ads as a qualified lead",
-  appointment: "sent to Google Ads as a qualified lead",
-  offer: "sent to Google Ads as a qualified lead",
-  closed: "sent to Google Ads as a converted lead",
-  not_interested: "not sent to Google Ads",
-  new: "left for you to decide",
+// Which conversion action in Google Ads each choice goes to.
+const goesTo: Record<LeadRule["then"], string> = {
+  qualified: "goes to your Qualified lead conversion",
+  converted: "goes to your Converted lead conversion (and counts as qualified too)",
+  dont_send: "Google Ads never hears about it, unless you set its status yourself",
 }
 
 const newId = () => Math.random().toString(36).slice(2, 10)
@@ -46,7 +43,7 @@ const input = "h-9 rounded-lg border bg-card px-2 text-sm"
 function ConditionRow({ c, channels, onChange, onRemove }: { c: RuleCondition; channels: string[]; onChange: (c: RuleCondition) => void; onRemove: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <select aria-label="Condition" value={c.kind} onChange={(e) => onChange(blank(e.target.value as RuleCondition["kind"]))} className={input}>
+      <select aria-label="Condition" value={c.kind} onChange={(e) => onChange(blank(e.target.value as RuleCondition["kind"]))} className={cn(input, "max-w-full min-w-0")}>
         {conditionKinds.map((k) => (
           <option key={k.kind} value={k.kind}>
             {k.label}
@@ -105,7 +102,7 @@ function ConditionRow({ c, channels, onChange, onRemove }: { c: RuleCondition; c
   )
 }
 
-// Your lead rules: make, order, switch on/off and save them. Each one shows how many of your
+// Your Google Ads rules: make, order, switch on/off and save them. Each one shows how many of your
 // recent leads it would have matched, so you can see what it does before saving.
 export default function RulesEditor({ initial, recent, channels, enabled }: { initial: LeadRule[]; recent: Lead[]; channels: string[]; enabled: boolean }) {
   const [rules, setRules] = useState(initial)
@@ -139,7 +136,7 @@ export default function RulesEditor({ initial, recent, channels, enabled }: { in
       if (res.error) setNote({ ok: false, text: res.error })
       else {
         if (!reset) setSaved(JSON.stringify(rules))
-        setNote({ ok: true, text: reset ? "Back to the starting rules." : "Saved. New leads follow these rules." })
+        setNote({ ok: true, text: reset ? "Back to the starting rules." : "Saved. New leads are sent to Google Ads by these rules." })
         if (reset) window.location.reload()
       }
     })
@@ -152,10 +149,12 @@ export default function RulesEditor({ initial, recent, channels, enabled }: { in
           <ListChecks className="size-5" />
         </span>
         <div>
-          <p className="font-semibold">Lead rules</p>
+          <p className="font-semibold">Google Ads rules: which leads Google hears about</p>
           <p className="text-muted-foreground">
-            When a new lead arrives, the app checks these rules from top to bottom. The first one whose conditions all match sets the
-            lead&apos;s status, and that decides what Google Ads hears. A status you set yourself always wins.
+            When a new lead arrives, the app checks these rules from top to bottom. The first one whose conditions all match decides
+            whether the lead is sent to Google Ads, as a <strong>Qualified lead</strong> or a <strong>Converted lead</strong>, and what
+            it&apos;s worth. The value helps Google&apos;s bidding go after the leads worth most to you. These rules don&apos;t change the
+            lead&apos;s status; when you set a status yourself, Google still hears it (Interested → qualified, Closed deal → converted).
             {!enabled && <strong className="text-amber-800"> The rules are switched off above, so they don&apos;t run right now.</strong>}
           </p>
         </div>
@@ -181,7 +180,7 @@ export default function RulesEditor({ initial, recent, channels, enabled }: { in
                 <Trash2 />
               </Button>
             </div>
-            <div className="flex flex-col gap-2 pl-8">
+            <div className="flex min-w-0 flex-col gap-2 sm:pl-8">
               <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">When all of these are true</span>
               {rule.when.map((c, k) => (
                 <ConditionRow
@@ -200,18 +199,32 @@ export default function RulesEditor({ initial, recent, channels, enabled }: { in
                 </Button>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Then set the status to</span>
-                <select aria-label="Then set the status to" value={rule.then} onChange={(e) => update(i, { then: e.target.value as LeadRule["then"] })} className={cn(input, "font-medium")}>
-                  {leadStatuses.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.label}
+                <span className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Then</span>
+                <select aria-label="Then" value={rule.then} onChange={(e) => update(i, { then: e.target.value as LeadRule["then"] })} className={cn(input, "max-w-full min-w-0 font-medium")}>
+                  {ruleActions.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.label}
                     </option>
                   ))}
                 </select>
-                <span className="text-xs text-muted-foreground">({googleMeaning[rule.then]})</span>
+                {rule.then !== "dont_send" && (
+                  <label className="flex items-center gap-1.5">
+                    <span className="text-muted-foreground">worth $</span>
+                    <input
+                      aria-label="Conversion value"
+                      type="number"
+                      min={0}
+                      step="any"
+                      value={rule.value ?? 1}
+                      onChange={(e) => update(i, { value: Math.max(0, Number(e.target.value) || 0) })}
+                      className={cn(input, "w-24")}
+                    />
+                  </label>
+                )}
+                <span className="text-xs text-muted-foreground">({goesTo[rule.then]})</span>
               </div>
               <span className="text-xs text-muted-foreground">
-                Would have set {counts[rule.id] ?? 0} of your last {recent.length} leads.
+                Would have {rule.then === "dont_send" ? "held back" : "sent"} {counts[rule.id] ?? 0} of your last {recent.length} leads.
               </span>
             </div>
           </li>
@@ -222,7 +235,7 @@ export default function RulesEditor({ initial, recent, channels, enabled }: { in
         <Button
           type="button"
           variant="outline"
-          onClick={() => setRules([...rules, { id: newId(), name: "New rule", enabled: true, when: [blank("scoreAtLeast")], then: "interested" }])}
+          onClick={() => setRules([...rules, { id: newId(), name: "New rule", enabled: true, when: [blank("scoreAtLeast")], then: "qualified", value: 1 }])}
         >
           <Plus data-icon="inline-start" />
           Add rule

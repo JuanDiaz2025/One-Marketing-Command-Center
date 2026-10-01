@@ -151,7 +151,8 @@ async function conversionAction(connection: AdsConnection, account: AdsAccount, 
           status: "ENABLED",
           countingType: "ONE_PER_CLICK",
           primaryForGoal: false,
-          valueSettings: { defaultValue: 1, alwaysUseDefaultValue: true },
+          // The value comes with each lead (your rules' value, or 1).
+          valueSettings: { defaultValue: 1, alwaysUseDefaultValue: false },
         },
       },
     ],
@@ -196,7 +197,7 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
         eventSource: "WEB",
         ...(gclid ? { adIdentifiers: { gclid } } : {}),
         ...(ids.length ? { userData: { userIdentifiers: ids } } : {}),
-        conversionValue: 1,
+        conversionValue: entry.value ?? 1,
         currency: account.currency || "USD",
       },
     ])
@@ -223,7 +224,7 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
           waitingFor,
           state: waitingFor || (RETRY.test(`${code} ${error}`) && tries < MAX_TRIES) ? "pending" : "failed",
         }
-      : { at: current.at, tries, lastTry: now, state: "sent", matchedBy: [gclid && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
+      : { at: current.at, value: current.value, rule: current.rule, tries, lastTry: now, state: "sent", matchedBy: [gclid && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
   })
 }
 

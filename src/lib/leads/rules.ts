@@ -1,12 +1,13 @@
-// Lead rules: "when a new lead matches all of these, set its status to …". You make them on the
-// Leads page; they run in order on every new lead and the first one that matches wins. The status
-// they set is what Google Ads hears: Interested (and Appointment, Offer made) is sent as a
-// qualified lead, Closed deal as a converted lead, Not interested is never sent.
+// Google Ads rules: "when a new lead matches all of these, send it to Google Ads as …". You make
+// them on the Leads page; they run in order on every new lead and the first one that matches
+// wins. They only decide what Google Ads hears (a qualified lead, a converted lead, or nothing),
+// with the value you give it; the lead's status stays yours to set. Setting a status yourself
+// still sends what it means (Interested → qualified lead, Closed deal → converted lead).
 //
 // Nothing in here touches the disk, so the Leads page can also use it to show which recent leads
 // a rule would have matched.
 import { leadChannel } from "@/lib/leads/tracking"
-import type { Lead, LeadGrade, LeadStatus } from "@/lib/leads/types"
+import type { Lead, LeadGrade } from "@/lib/leads/types"
 
 export type RuleCondition =
   | { kind: "scoreAtLeast"; value: number }
@@ -20,12 +21,31 @@ export type RuleCondition =
   | { kind: "has"; value: "phone" | "email" | "address" }
   | { kind: "missing"; value: "phone" | "email" | "address" }
 
+// What a rule does: send the lead to Google Ads as a qualified lead, as a converted lead (which
+// also counts it as qualified), or not send it.
+export type RuleAction = "qualified" | "converted" | "dont_send"
+export const ruleActions: { id: RuleAction; label: string }[] = [
+  { id: "qualified", label: "Send to Google Ads as a Qualified lead" },
+  { id: "converted", label: "Send to Google Ads as a Converted lead" },
+  { id: "dont_send", label: "Don't send to Google Ads" },
+]
+
 export type LeadRule = {
   id: string
   name: string
   enabled: boolean
   when: RuleCondition[]
-  then: LeadStatus
+  then: RuleAction
+  // The conversion value Google Ads gets, in the account's currency (1 when not set).
+  value?: number
+}
+
+// Rules saved before they were about Google Ads named a status; read those as what it sent.
+export function asAction(then: string): RuleAction {
+  if (then === "qualified" || then === "converted" || then === "dont_send") return then
+  if (then === "closed") return "converted"
+  if (then === "interested" || then === "appointment" || then === "offer") return "qualified"
+  return "dont_send"
 }
 
 export const conditionKinds: { kind: RuleCondition["kind"]; label: string }[] = [
@@ -41,10 +61,10 @@ export const conditionKinds: { kind: RuleCondition["kind"]; label: string }[] = 
   { kind: "missing", label: "Has no" },
 ]
 
-// The rules you start with: the same as the app's old automatic status.
+// The rules you start with: Hot leads go to Google Ads as qualified leads, Junk never does.
 export const defaultRules = (): LeadRule[] => [
-  { id: "hot", name: "Hot leads are qualified", enabled: true, when: [{ kind: "gradeIs", value: "hot" }], then: "interested" },
-  { id: "junk", name: "Junk is not interested", enabled: true, when: [{ kind: "gradeIs", value: "junk" }], then: "not_interested" },
+  { id: "junk", name: "Never send junk", enabled: true, when: [{ kind: "gradeIs", value: "junk" }], then: "dont_send" },
+  { id: "hot", name: "Hot leads are qualified", enabled: true, when: [{ kind: "gradeIs", value: "hot" }], then: "qualified", value: 1 },
 ]
 
 const words = (list: string) =>
