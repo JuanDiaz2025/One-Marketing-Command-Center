@@ -1,5 +1,5 @@
 // Reading a form submission the way WordPress plugins send it: JSON, a regular form post,
-// multipart, or form fields in the address. Shared by the webhook and the Google Sheet inbox.
+// multipart, or form fields in the address. Used by the webhook.
 
 export const MAX_BYTES = 100_000
 

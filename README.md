@@ -93,9 +93,21 @@ Restart the app after saving `.env.local`.
 2. On the **Google Ads** page, click **Connect Google Ads** and sign in with the Google account you use at ads.google.com. It can be a different account from the one you signed in with. Tick the box that lets the app see your Google Ads.
 3. If you can open more than one Google Ads account, pick one from the **Account** list. Accounts under a manager account are included.
 
-## Website leads from WordPress
+## Website leads from WordPress (Contact Form 7)
 
-1. Open the **Leads** page and expand **Website leads (WordPress)**. Copy the webhook address.
+The **Lead Saver** plugin keeps every Contact Form 7 submission in WordPress itself, so leads sent while the app or your computer is off are never lost, and nothing needs a public address. On the Leads page, open **Website leads (WordPress)**:
+
+1. Click **Download the Lead Saver plugin**. The file has your private key inside, so don't share it.
+2. In WordPress, open **Plugins → Add New Plugin → Upload Plugin**, choose `omcc-lead-saver.zip`, click **Install Now**, then **Activate**.
+3. Type your website's address in the app and click **Connect**.
+
+The app picks up new leads every 30 seconds while it's open (and whenever the chat needs leads), keeping the time each one was really sent. In WordPress, **Contact → Command Center leads** shows what's been saved and when the app last picked leads up. The app reads them from `/wp-json/omcc/v1/leads` (or `?rest_route=/omcc/v1/leads` on sites without pretty permalinks), sending the key. If a security plugin or firewall blocks the WordPress REST API, allow `/wp-json/omcc/`. CF7 to Webhook isn't needed with it; if both are on, a lead still shows up only once.
+
+## Other way: an instant webhook
+
+Not needed with the Lead Saver plugin; useful for other form plugins. It only works while the app is running and reachable from the internet.
+
+1. Open the **Leads** page, expand **Website leads (WordPress)** and then **Other way (advanced)**. Copy the webhook address.
 2. In WordPress, open your form's webhook setting and paste the address, method **POST**:
    - **Contact Form 7:** install the free **CF7 to Webhook** plugin, edit the form, open its **Webhook** tab, tick the box, and paste the address.
    - **Elementor:** Actions After Submit → Webhook. **WPForms, Gravity Forms:** their webhook add-on.
@@ -115,17 +127,13 @@ Every request must carry the secret key (`?key=…` in the address, or an `X-Web
 
 It needs `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_ADS_DEVELOPER_TOKEN` (and optionally `GOOGLE_ADS_CUSTOMER_ID`), from the environment or `.env.local`. The refresh token has to come from the same Google client as `GOOGLE_CLIENT_ID`: in https://developers.google.com/oauthplayground, click the gear, tick **Use your own OAuth credentials**, enter the client ID and secret, authorize `https://www.googleapis.com/auth/adwords`, and exchange the code for tokens. (Add `https://developers.google.com/oauthplayground` to the client's redirect URIs first.)
 
-## The lead inbox (recommended)
-
-WordPress can only reach the app while it and `go-online.bat` are running, and go-online's address changes on every restart. The lead inbox avoids that: on the Leads page, follow **Set it up** to create a Google Sheet with the generated Apps Script (it saves every submission, is always online, and its address never changes), paste its Web app URL into the app, and put the inbox address the app shows into Contact Form 7's Webhook tab. The app brings new rows in whenever the Leads page or the chat needs leads, at most every 30 seconds, keeping each lead's real arrival time.
-
 ## Where data is kept
 
 Everything is saved in the `.data/` folder next to the app (it's never committed):
 
 - `leads.json`: leads from the website (and any older QR code leads).
 - `webhook-log.json`: the last few times something called the website-leads webhook.
-- `lead-inbox.json`: the Google Sheet inbox's address and how far it has been read.
+- `wordpress.json`: your website's address and how far its saved leads have been picked up.
 - `conversion-actions.json`: the two conversion actions the app created in Google Ads.
 - `chat-problem.log`: why the chat last answered without its tools, if it did.
 - `public-url`: the tunnel address from go-online.bat.

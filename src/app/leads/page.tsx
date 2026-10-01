@@ -16,7 +16,7 @@ import { requireSession } from "@/lib/auth/session"
 import { activeAccount } from "@/lib/google/active-account"
 import { tryGetCalls } from "@/lib/google/calls"
 import { sendPendingConversions } from "@/lib/google/offline-conversions"
-import { syncInbox } from "@/lib/leads/inbox"
+import { syncWordPress } from "@/lib/leads/wordpress"
 import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 import { leadChannel, pagePath } from "@/lib/leads/tracking"
@@ -90,10 +90,10 @@ export const metadata: Metadata = { title: "Leads · One Marketing Command Cente
 
 export default async function LeadsPage() {
   const user = await requireSession("/leads")
-  // Bring in anything new from the Google Sheet inbox first (at most every 30 seconds), waiting up
+  // Pick up anything new saved on the WordPress site first (at most every 30 seconds), waiting up
   // to 3 seconds for it; a slower check shows its leads on the next refresh.
   await Promise.race([
-    Promise.all([syncInbox(), sendConversions(user.sub)]),
+    Promise.all([syncWordPress(), sendConversions(user.sub)]),
     new Promise((resolve) => setTimeout(resolve, 3000)),
   ])
   const [qrCodes, leads, calls] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub)])
@@ -178,7 +178,7 @@ export default async function LeadsPage() {
 
         <PhoneCalls result={calls} />
 
-        <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} inboxLeads={leads.filter((l) => l.inboxId).length} />
+        <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} />
       </main>
       <LiveRefresh />
       <AssistantLauncher enabled={assistantProvider() !== null} />

@@ -80,7 +80,7 @@ export type Lead = {
   propertyAddress?: string
   notes?: string
   tracking?: LeadTracking
-  // Set for leads brought in from the Google Sheet inbox: its row id, so none is added twice.
+  // Set for leads picked up from the WordPress Lead Saver plugin ("wp:<site>:<id>"), so none is added twice.
   inboxId?: string
   status?: LeadStatus
   statusChangedAt?: string

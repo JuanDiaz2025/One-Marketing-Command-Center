@@ -50,11 +50,33 @@ export async function listLeads() {
   return [...db.leads].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
-// `createdAt` defaults to now; leads from the inbox keep the time they were really sent.
+const digits = (s?: string) => s?.replace(/\D/g, "").slice(-10) || undefined
+const SAME_LEAD_MS = 15 * 60_000
+
+// `createdAt` defaults to now; leads picked up from WordPress keep the time they were really sent.
+// A WordPress lead is added once (by its id), and not again if the webhook already brought it in:
+// a webhook lead with the same email or phone from within 15 minutes is taken to be the same one.
 export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?: string) {
   return file.update((db) => {
-    if (input.inboxId && db.leads.some((l) => l.inboxId === input.inboxId)) return db.leads.find((l) => l.inboxId === input.inboxId)!
-    const lead: Lead = { ...input, id: newId(), createdAt: createdAt ? new Date(createdAt).toISOString() : new Date().toISOString() }
+    const at = createdAt ? new Date(createdAt).toISOString() : new Date().toISOString()
+    if (input.inboxId) {
+      const known = db.leads.find((l) => l.inboxId === input.inboxId)
+      if (known) return known
+      const email = input.email?.toLowerCase()
+      const phone = digits(input.phone)
+      const same = db.leads.find(
+        (l) =>
+          !l.inboxId &&
+          !l.qrCodeId &&
+          Math.abs(Date.parse(l.createdAt) - Date.parse(at)) < SAME_LEAD_MS &&
+          ((email && l.email?.toLowerCase() === email) || (phone && digits(l.phone) === phone)),
+      )
+      if (same) {
+        same.inboxId = input.inboxId
+        return same
+      }
+    }
+    const lead: Lead = { ...input, id: newId(), createdAt: at }
     db.leads.push(lead)
     return lead
   })
