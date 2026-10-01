@@ -115,6 +115,10 @@ Every lead is scored from 0 to 100 when it arrives (`src/lib/leads/scoring.ts`):
 
 With **Set the status from the score** on (the default, on the Leads page), a new Hot lead is marked **Interested**, which sends Google Ads an offline conversion, and Junk is marked **Not interested**. That follows Google Ads' advice to send back only qualified leads. A status you set yourself always wins. Only leads received in the last 24 hours get a status from their score, so old leads (from before scoring, or a first sync with the website) aren't reported to Google Ads without you.
 
+## Lead rules
+
+On the Leads page, **Lead rules** decide each new lead's status, from top to bottom; the first rule whose conditions all match wins. Conditions: score at least / below, grade, came from a Google ad click, channel, message mentions any of some words, keyword or campaign mentions any of some words, form name, has / has no phone, email or property address. The status a rule sets is what Google Ads hears (Interested, Appointment and Offer made as a qualified lead, Closed deal as a converted lead, Not interested never). The starting rules are Hot → Interested and Junk → Not interested; each rule shows how many recent leads it would have set. Rules run only on leads from the last 24 hours, never change a status you set yourself, and can all be switched off. They're kept in `.data/lead-rules.json`.
+
 ## Other way: an instant webhook
 
 Not needed with the Lead Saver plugin; useful for other form plugins. It only works while the app is running and reachable from the internet.

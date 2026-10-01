@@ -15,6 +15,7 @@ export function applyStatus(lead: Lead, status: LeadStatus, by: "auto" | "you", 
   lead.status = status
   lead.statusChangedAt = now
   lead.statusBy = by
+  if (by === "you") delete lead.statusRule
   for (const kind of KINDS[status] ?? []) {
     lead.conversions ??= {}
     // Once sent, a conversion stays sent; a failed one is tried again when set again.

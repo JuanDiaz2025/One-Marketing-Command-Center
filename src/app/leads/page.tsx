@@ -9,6 +9,7 @@ import LeadsTable, { type LeadRow } from "@/components/leads/leads-table"
 import LiveRefresh from "@/components/leads/live-refresh"
 import ConversionTargets, { type TargetsView } from "@/components/leads/conversion-targets"
 import PhoneCalls from "@/components/leads/phone-calls"
+import RulesEditor from "@/components/leads/rules-editor"
 import ScoringSettings from "@/components/leads/scoring-settings"
 import WebhookSetup from "@/components/leads/webhook-setup"
 import { formatNumber } from "@/components/dashboard/format"
@@ -21,6 +22,7 @@ import { tryGetCalls } from "@/lib/google/calls"
 import { conversionTargets, sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncWordPress } from "@/lib/leads/wordpress"
 import { leadSource } from "@/lib/leads/source"
+import { getRules } from "@/lib/leads/rules-store"
 import { getScoringSettings } from "@/lib/leads/scoring"
 import { listLeads, listQrCodes, scoreUnscored } from "@/lib/leads/store"
 import { leadChannel, pagePath } from "@/lib/leads/tracking"
@@ -56,6 +58,7 @@ function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
     notes: lead.notes,
     status: lead.status ?? "new",
     statusBy: lead.statusBy,
+    statusRule: lead.statusRule,
     score: lead.score,
     google: googleState(lead),
   }
@@ -79,6 +82,12 @@ async function loadCalls(sub: string) {
   } catch {
     return { error: "Couldn't reach Google Ads for calls." }
   }
+}
+
+// For the rules editor's "would have set N of your last leads": the last 90 days, at most 300.
+function recentLeads(leads: Lead[]) {
+  const since = Date.now() - 90 * 86_400_000
+  return leads.filter((l) => !l.qrCodeId && Date.parse(l.createdAt) >= since).slice(0, 300)
 }
 
 // Which conversion action each stage goes to, or null when Google Ads isn't connected or answering.
@@ -121,13 +130,16 @@ export default async function LeadsPage() {
     Promise.all([scoreUnscored().then(() => syncWordPress()), sendConversions(user.sub)]),
     new Promise((resolve) => setTimeout(resolve, 3000)),
   ])
-  const [qrCodes, leads, calls, scoring, targets] = await Promise.all([
+  const [qrCodes, leads, calls, scoring, targets, rules] = await Promise.all([
     listQrCodes(),
     listLeads(),
     loadCalls(user.sub),
     getScoringSettings(),
     loadTargets(user.sub),
+    getRules(),
   ])
+  const recent = recentLeads(leads)
+  const channels = [...new Set(leads.map((l) => leadChannel(l)))].sort()
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0
@@ -229,6 +241,7 @@ export default async function LeadsPage() {
                 first. Google never sees them in plain text.
               </p>
               <ScoringSettings autoStatus={scoring.autoStatus} />
+              <RulesEditor initial={rules} recent={recent} channels={channels} enabled={scoring.autoStatus} />
               {targets && <ConversionTargets view={targets} />}
               <div className="mt-4">
                 <LeadsTable rows={leads.map((l) => toRow(l, placements))} />

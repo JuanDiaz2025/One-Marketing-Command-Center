@@ -4,6 +4,8 @@ import { randomBytes } from "node:crypto"
 
 import { jsonFileStore } from "@/lib/json-file-store"
 import { getScoringSettings, scoreLead } from "@/lib/leads/scoring"
+import { firstMatch } from "@/lib/leads/rules"
+import { getRules } from "@/lib/leads/rules-store"
 import { applyStatus } from "@/lib/leads/status"
 import type { Lead, QrCode } from "@/lib/leads/types"
 
@@ -63,10 +65,10 @@ const sameSource = (a?: string, b?: string) => Boolean(a && b && a.replace(/^wp:
 // The same lead can arrive twice when the website uses both the Lead Saver plugin and a webhook:
 // one with an email or phone in common from within 15 minutes of the other, where only one of
 // them came from the plugin, is taken to be the same lead. A plugin lead is added once (by its id).
-// Every new lead is scored on arrival; with automatic status on (the default), a Hot lead is
-// marked Interested (Google Ads hears about it) and a Junk one Not interested.
+// Every new lead is scored on arrival, then your lead rules (rules.ts) run on it, when they're
+// switched on: the first rule it matches sets its status (and so what Google Ads hears).
 export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?: string) {
-  const { autoStatus } = await getScoringSettings()
+  const [{ autoStatus }, rules] = await Promise.all([getScoringSettings(), getRules()])
   return file.update((db) => {
     const at = createdAt ? new Date(createdAt).toISOString() : new Date().toISOString()
     if (input.inboxId) {
@@ -92,8 +94,11 @@ export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?:
     // ones, and those aren't reported to Google Ads without you choosing.
     const fresh = Date.now() - Date.parse(at) < FRESH_MS
     if (autoStatus && fresh && !lead.status && !lead.qrCodeId && !lead.score.unscored) {
-      if (lead.score.grade === "hot") applyStatus(lead, "interested", "auto")
-      else if (lead.score.grade === "junk") applyStatus(lead, "not_interested", "auto")
+      const rule = firstMatch(lead, rules)
+      if (rule) {
+        applyStatus(lead, rule.then, "auto")
+        lead.statusRule = rule.name
+      }
     }
     db.leads.push(lead)
     return lead

@@ -99,6 +99,8 @@ export type Lead = {
   statusChangedAt?: string
   // "auto" when the app set the status from the lead's score; anything you set yourself wins.
   statusBy?: "auto" | "you"
+  // The lead rule that set the status, when one did.
+  statusRule?: string
   score?: LeadScore
   conversions?: Partial<Record<ConversionKind, ConversionUpload>>
 }
