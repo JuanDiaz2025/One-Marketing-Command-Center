@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="260" viewBox="0 0 1200 260" fill="none" stroke="#2f2547" stroke-linecap="round" stroke-linejoin="round">
+  <!-- A pencil-style street of homes, drawn twice with a slight offset so the lines look sketched. -->
+  <g id="street" stroke-width="2">
+    <!-- ground -->
+    <path d="M0 246 C 200 243, 400 249, 600 245 S 1000 243, 1200 247"/>
+
+    <!-- 1: small cottage -->
+    <path d="M40 246 V 170 L 105 122 L 170 170 V 246"/>
+    <path d="M30 177 L 105 118 L 180 177"/>
+    <path d="M132 141 V 112 H 148 V 153"/>
+    <rect x="92" y="196" width="28" height="50"/>
+    <path d="M114 222 h 2"/>
+    <rect x="52" y="186" width="26" height="24"/><path d="M65 186 v 24 M52 198 h 26"/>
+    <rect x="134" y="186" width="26" height="24"/><path d="M147 186 v 24 M134 198 h 26"/>
+
+    <!-- tree -->
+    <path d="M215 246 V 200"/>
+    <path d="M215 205 C 185 205, 182 170, 200 162 C 196 138, 232 132, 236 156 C 256 162, 250 202, 215 205 Z"/>
+
+    <!-- 2: two-storey house with porch -->
+    <path d="M270 246 V 140 L 350 86 L 430 140 V 246"/>
+    <path d="M258 148 L 350 80 L 442 148"/>
+    <path d="M384 105 V 74 H 402 V 118"/>
+    <rect x="292" y="152" width="30" height="28"/><path d="M307 152 v 28 M292 166 h 30"/>
+    <rect x="378" y="152" width="30" height="28"/><path d="M393 152 v 28 M378 166 h 30"/>
+    <path d="M262 206 H 438 M270 206 L 280 196 H 420 L 430 206"/>
+    <path d="M284 206 V 246 M416 206 V 246"/>
+    <rect x="336" y="206" width="28" height="40"/>
+    <rect x="292" y="214" width="26" height="22"/>
+    <rect x="382" y="214" width="26" height="22"/>
+    <path d="M326 246 h 48"/>
+
+    <!-- bushes -->
+    <path d="M440 246 C 440 230, 462 226, 470 236 C 478 224, 500 228, 498 246"/>
+
+    <!-- 3: wide ranch home -->
+    <path d="M520 246 V 178 H 720 V 246"/>
+    <path d="M505 182 L 560 136 H 680 L 735 182"/>
+    <path d="M560 136 L 548 182 M680 136 L 692 182"/>
+    <rect x="608" y="196" width="26" height="50"/>
+    <rect x="538" y="194" width="44" height="26"/><path d="M560 194 v 26"/>
+    <rect x="656" y="194" width="44" height="26"/><path d="M678 194 v 26"/>
+    <path d="M598 246 h 46"/>
+
+    <!-- SOLD sign -->
+    <path d="M760 246 V 196 M760 200 H 800 V 222 H 760"/>
+    <path d="M770 206 h 20 M770 214 h 14"/>
+
+    <!-- 4: tall narrow townhouse -->
+    <path d="M830 246 V 120 L 880 82 L 930 120 V 246"/>
+    <path d="M822 126 L 880 76 L 938 126"/>
+    <circle cx="880" cy="112" r="10"/>
+    <rect x="848" y="140" width="22" height="26"/><rect x="890" y="140" width="22" height="26"/>
+    <rect x="848" y="180" width="22" height="26"/><rect x="890" y="180" width="22" height="26"/>
+    <rect x="866" y="216" width="28" height="30"/>
+
+    <!-- tree -->
+    <path d="M975 246 V 196"/>
+    <path d="M975 200 C 948 200, 944 168, 962 160 C 960 136, 992 132, 996 154 C 1014 162, 1008 198, 975 200 Z"/>
+
+    <!-- 5: house with garage -->
+    <path d="M1030 246 V 170 L 1090 128 L 1150 170 V 246"/>
+    <path d="M1020 176 L 1090 122 L 1160 176"/>
+    <path d="M1150 246 V 196 H 1200"/>
+    <path d="M1150 196 L 1175 178 H 1200"/>
+    <rect x="1158" y="206" width="38" height="40"/><path d="M1158 218 h 38 M1158 230 h 38"/>
+    <rect x="1076" y="200" width="26" height="46"/>
+    <rect x="1042" y="186" width="24" height="22"/>
+    <rect x="1114" y="186" width="24" height="22"/>
+  </g>
+  <!-- the same drawing, slightly shifted and lighter, for a hand-sketched look -->
+  <use href="#street" transform="translate(1.6 -1.2) rotate(0.15 600 130)" opacity="0.45" stroke-width="1.2"/>
+</svg>
