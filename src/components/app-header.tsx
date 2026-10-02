@@ -8,6 +8,7 @@ import type { Session } from "@/lib/auth/session"
 import { signOutAction } from "@/lib/google/actions"
 import BrandLogo from "@/components/brand-logo"
 import LinkPending from "@/components/link-pending"
+import ThemeToggle from "@/components/theme-toggle"
 import GoogleAdsMark from "@/components/google-ads-mark"
 import { Button } from "@/components/ui/button"
 
@@ -66,6 +67,7 @@ export default function AppHeader({ current, user }: { current: Current; user: S
             {user.email}
           </span>
           {appVersion() && <span className="hidden text-xs text-muted-foreground/70 lg:inline">Version {appVersion()}</span>}
+          <ThemeToggle />
           <form action={signOutAction}>
             <Button type="submit" variant="ghost" size="lg">
               <LogOut data-icon="inline-start" />
