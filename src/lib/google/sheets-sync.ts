@@ -257,6 +257,7 @@ export async function syncSheet(connection: AdsConnection, account: AdsAccount) 
     })
     await format(connection, id, sum.length)
     await file.update((s) => {
+      if (s.spreadsheetId !== id) return // another sheet was linked meanwhile
       s.title = meta.properties?.title
       s.lastSync = new Date().toISOString()
       s.deals = deals.length
@@ -267,6 +268,7 @@ export async function syncSheet(connection: AdsConnection, account: AdsAccount) 
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
     await file.update((s) => {
+      if (s.spreadsheetId !== id) return
       s.lastError = message.slice(0, 400)
       s.lastSync = new Date().toISOString()
     })

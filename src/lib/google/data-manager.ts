@@ -61,8 +61,10 @@ function destinations(account: AdsAccount, conversionActionId: string, owner?: s
 const g = globalThis as typeof globalThis & { __omccDestination?: Map<string, string> }
 const worked = (g.__omccDestination ??= new Map<string, string>())
 
-// Google couldn't find the account or the conversion action from that way of naming them.
-const NOT_FOUND = /not found|NOT_FOUND|PERMISSION_DENIED|does not have permission|not authorized|INVALID_OPERATING_ACCOUNT|INVALID_LOGIN_ACCOUNT|PRODUCT_DESTINATION/i
+// Google couldn't find the account or the conversion action from that way of naming them, or
+// refused that way in (a wrong manager account): worth trying the other ways.
+const NOT_FOUND = /not found|NOT_FOUND|INVALID_OPERATING_ACCOUNT|INVALID_LOGIN_ACCOUNT|PRODUCT_DESTINATION/i
+const DENIED = /PERMISSION_DENIED|does not have permission|not authorized|caller does not have/i
 
 // Sends events for one conversion action. Throws AdsApiError with a code saying what to do:
 // NEEDS_PERMISSION (connect Google Ads again), API_OFF (turn on the API), TRANSIENT, or none.
@@ -80,19 +82,28 @@ export async function ingestEvents(
   let options = destinations(account, conversionActionId, owner)
   const known = worked.get(key)
   if (known) options = [...options.filter((d) => JSON.stringify(d) === known), ...options.filter((d) => JSON.stringify(d) !== known)]
-  let lastError: AdsApiError | undefined
+  const errors: AdsApiError[] = []
   for (const destination of options) {
     try {
       const result = await sendOnce(connection, destination, events, validateOnly)
       worked.set(key, JSON.stringify(destination))
       return result
     } catch (e) {
-      if (!(e instanceof AdsApiError) || !e.notFound) throw e
-      lastError = e
+      if (!(e instanceof AdsApiError) || !(e.notFound || e.denied)) throw e
+      errors.push(e)
     }
   }
+  // The first answer is about the best way in (the account itself), so it's the one to show.
+  const first = errors[0]?.message ?? "Resource not found"
+  if (errors.length && errors.every((e) => e.denied)) {
+    // Not retried: nothing changes until someone with access connects, or another account is picked.
+    throw new AdsApiError(
+      `The Google account you connected can't use that Google Ads account (${account.name}, ${account.customerId}) for conversions. On the Google Ads page, pick your main account, or connect Google Ads again with a Google account that has access to it. (Google's words: “${first}”)`,
+      "NO_ACCESS",
+    )
+  }
   throw new AdsApiError(
-    `Google can't find the conversion action (id ${conversionActionId}) in your Google Ads account${owner && owner !== account.customerId ? ` or in ${owner}, which owns it` : ""}. The app looks up your conversion actions again and retries on its own; if this stays, check that the Google account you connected can open the account that owns your conversion actions (a manager account, if you use one). (Google's words: “${lastError?.message ?? "Resource not found"}”)`,
+    `Google can't find the conversion action (id ${conversionActionId}) in your Google Ads account ${account.name} (${account.customerId})${owner && owner !== account.customerId ? ` or in ${owner}, which owns it` : ""}. If this isn't your main account, pick your main one on the Google Ads page. The app looks up your conversion actions again and retries on its own. (Google's words: “${first}”)`,
     "NOT_FOUND",
   )
 }
@@ -136,7 +147,9 @@ async function sendOnce(connection: AdsConnection, destination: Destination, eve
   const violations = e.details?.flatMap((d) => d.fieldViolations ?? []) ?? []
   const text = [message, ...violations.map((v) => [v.description, v.field && `(${v.field})`].filter(Boolean).join(" "))].join(" ")
   const err = new AdsApiError(text, e.status)
-  err.notFound = res.status === 404 || res.status === 403 || NOT_FOUND.test(`${text} ${reasons} ${violations.map((v) => v.reason).join(" ")}`)
+  const all = `${text} ${reasons} ${e.status ?? ""} ${violations.map((v) => v.reason).join(" ")}`
+  err.denied = res.status === 403 || DENIED.test(all)
+  err.notFound = !err.denied && (res.status === 404 || NOT_FOUND.test(all))
   throw err
 }
 

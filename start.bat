@@ -5,6 +5,13 @@ cd /d "%~dp0"
 REM Helper mode: started below in a minimized window. Waits until the app answers, then opens the browser.
 if "%~1"=="open-browser" goto open_browser
 
+REM An older copy still running would keep port 4000, and the browser would show the old version:
+REM close it first, before updating (its files are in use while it runs).
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":4000 .*LISTENING"') do (
+  echo Closing the copy of the app that is already running...
+  taskkill /pid %%p /t /f >nul 2>nul
+)
+
 REM Get the latest version first. This whole block is read before it runs, so it is safe even
 REM when the update replaces this file; after an update, start again with the new version.
 if not "%~1"=="updated" (
@@ -56,13 +63,6 @@ if not exist .env.local (
   start "" notepad .env.local
   pause
   exit /b 0
-)
-
-REM An older copy still running would keep port 4000, and the browser would show the old version:
-REM close it first.
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":4000 .*LISTENING"') do (
-  echo Closing the copy of the app that is already running...
-  taskkill /pid %%p /t /f >nul 2>nul
 )
 
 echo Starting One Marketing Command Center. Your browser will open at http://localhost:4000 when it's ready.

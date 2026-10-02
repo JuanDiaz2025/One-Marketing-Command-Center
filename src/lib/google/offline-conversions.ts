@@ -29,8 +29,6 @@ export const ACTIONS: Record<ConversionKind, { name: string; category: string; l
 // Per account: the conversion action each stage goes to, and whether you picked it yourself.
 type Targets = { interested?: string; closed?: string; invalid?: string; chosen?: Partial<Record<ConversionKind, boolean>>; checkedAt?: string; v?: 2 }
 const actionsFile = jsonFileStore<Record<string, Targets>>("conversion-actions.json", () => ({}))
-// The account conversions were last sent to.
-const lastAccount = jsonFileStore<{ customerId?: string }>("conversion-account.json", () => ({}))
 const RECHECK_MS = 24 * 60 * 60_000
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex")
@@ -224,8 +222,12 @@ const RETRY = /NOT_FOUND|TOO_RECENT|CLICK_NOT_FOUND|INTERNAL|TRANSIENT|DEADLINE|
 const SETUP_RETRY_MS = 5 * 60_000
 // Refused by the old upload Google closed to new apps: send these again the new way.
 const OLD_UPLOAD_CLOSED = /ConversionUploadService|limited to existing users/i
-const NOT_FOUND_BEFORE = /Resource not found|can't find the conversion action/i
+// The old "not found" refusal, from before the app sent to the account that owns the action.
+const NOT_FOUND_BEFORE = /^(?!Google can't find)[\s\S]*Resource not found/i
+// Refusals that depend on which account the lead went to.
+const ACCOUNT_RELATED = /Resource not found|can't find the conversion action|terms for enhanced conversions|customer data terms|PERMISSION_DENIED|can't use that Google Ads account/i
 const MAX_TRIES = 12
+let lastRelookup = 0
 const RETRY_AFTER_MS = 60 * 60_000
 
 async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead, kind: ConversionKind) {
@@ -262,7 +264,8 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
     error = e instanceof Error ? e.message : String(e)
     code = e instanceof AdsApiError ? (e.code ?? "") : ""
     // The conversion action may have been removed or replaced in Google Ads: look them up again next time.
-    if (code === "NOT_FOUND") {
+    if (code === "NOT_FOUND" && Date.now() - lastRelookup > 10 * 60_000) {
+      lastRelookup = Date.now()
       owners.clear()
       await actionsFile.update((db) => {
         if (db[account.customerId]) delete db[account.customerId].checkedAt
@@ -286,6 +289,7 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
           lastTry: now,
           error,
           waitingFor,
+          accountId: account.customerId,
           state: waitingFor || (RETRY.test(`${code} ${error}`) && tries < MAX_TRIES) ? "pending" : "failed",
         }
       : { at: current.at, value: current.value, rule: current.rule, transactionId: current.transactionId ?? `${l.id}-${kind}`, action, requestId, tries, lastTry: now, state: "sent", matchedBy: [gclid && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
@@ -399,23 +403,23 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
     return running
   }
   running = (async () => {
-    // Sending to a different Google Ads account than before (you picked another one, or the app
-    // now opens on your main account): what failed in the other account gets another go here.
-    const last = await lastAccount.read()
-    if (last.customerId !== account.customerId) {
-      // (Also once when this is first recorded, since failures may come from another account.)
-      for (const lead of await listLeads()) {
-        for (const kind of conversionKinds) {
-          if (lead.conversions?.[kind]?.state !== "failed") continue
-          await updateLead(lead.id, (l) => {
-            const e = l.conversions?.[kind]
-            if (e?.state === "failed") l.conversions![kind] = { state: "pending", at: e.at, value: e.value, rule: e.rule }
-          })
-        }
+    // Failed in another Google Ads account (you picked another one, or the app now opens on your
+    // main account): give it another go in this one, at most a few times, so switching back and
+    // forth can't resend the same failures without end. Lead statuses are respected below.
+    for (const lead of await listLeads()) {
+      for (const kind of conversionKinds) {
+        const e = lead.conversions?.[kind]
+        if (e?.state !== "failed" || e.accountId === account.customerId || (e.accountResets ?? 0) >= 3) continue
+        // No account recorded (failed before this was kept): only account-related refusals.
+        if (!e.accountId && !ACCOUNT_RELATED.test(e.error ?? "")) continue
+        if (kind !== "invalid" && lead.status === "not_interested") continue
+        await updateLead(lead.id, (l) => {
+          const c = l.conversions?.[kind]
+          if (c?.state === "failed" && c.accountId === e.accountId) {
+            l.conversions![kind] = { ...c, state: "pending", tries: 0, lastTry: undefined, error: undefined, accountResets: (c.accountResets ?? 0) + 1 }
+          }
+        })
       }
-      await lastAccount.update((s) => {
-        s.customerId = account.customerId
-      })
     }
     const leads = await listLeads()
     for (const lead of leads) {
@@ -423,7 +427,7 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
         let entry = lead.conversions?.[kind]
         // Refused as "not found" before the app learned to send to the account that owns the
         // conversion action: try those once more.
-        if (entry?.state === "failed" && !entry.fixRetry && NOT_FOUND_BEFORE.test(entry.error ?? "")) {
+        if (entry?.state === "failed" && !entry.fixRetry && NOT_FOUND_BEFORE.test(entry.error ?? "") && !(kind !== "invalid" && lead.status === "not_interested")) {
           const again = { ...entry, state: "pending" as const, tries: 0, error: undefined, lastTry: undefined, fixRetry: true }
           await updateLead(lead.id, (l) => {
             l.conversions![kind] = again

@@ -8,6 +8,8 @@ import type { Period } from "@/lib/google/period"
 export class AdsApiError extends Error {
   // Set when Google couldn't find the account or item asked for (worth trying another way).
   notFound = false
+  // Set when Google refused that way in (no permission): also worth trying another way.
+  denied = false
   constructor(
     message: string,
     readonly code?: string,
