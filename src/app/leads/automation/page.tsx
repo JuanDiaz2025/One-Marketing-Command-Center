@@ -2,15 +2,11 @@ import type { Metadata } from "next"
 
 import AppHeader from "@/components/app-header"
 import ConversionTargets from "@/components/leads/conversion-targets"
-import RulesEditor from "@/components/leads/rules-editor"
 import ScoringSettings from "@/components/leads/scoring-settings"
 import SendingCheck from "@/components/leads/sending-check"
 import { requireSession } from "@/lib/auth/session"
-import { loadTargets, recentLeads } from "@/lib/leads/automation-data"
-import { getRules } from "@/lib/leads/rules-store"
+import { loadTargets } from "@/lib/leads/automation-data"
 import { getScoringSettings } from "@/lib/leads/scoring"
-import { listLeads } from "@/lib/leads/store"
-import { leadChannel } from "@/lib/leads/tracking"
 
 export const metadata: Metadata = { title: "Automation · One Marketing Command Center" }
 
@@ -19,8 +15,8 @@ export const metadata: Metadata = { title: "Automation · One Marketing Command 
 // http://localhost:4000/leads/automation to change it. Everything here runs whether it's open or not.
 export default async function AutomationPage() {
   const user = await requireSession("/leads/automation")
-  const [leads, scoring, rules, targets] = await Promise.all([listLeads(), getScoringSettings(), getRules(), loadTargets(user.sub)])
-  const channels = [...new Set(leads.map((l) => leadChannel(l)))].sort()
+  // The Google Ads rules run in the background (rules-store.ts) and aren't shown in the app.
+  const [scoring, targets] = await Promise.all([getScoringSettings(), loadTargets(user.sub)])
   return (
     <div className="flex flex-1 flex-col">
       <AppHeader current="/leads" user={user} />
@@ -33,7 +29,6 @@ export default async function AutomationPage() {
           </a>
         </p>
         <ScoringSettings autoStatus={scoring.autoStatus} />
-        <RulesEditor initial={rules} recent={recentLeads(leads)} channels={channels} enabled={scoring.autoStatus} />
         {targets && <ConversionTargets view={targets} />}
         <div className="mt-4">
           <SendingCheck stuck={0} />

@@ -117,7 +117,7 @@ With **Set the status from the score** on (the default, on the Leads page), a ne
 
 ## Google Ads rules and invalid leads
 
-The automation runs by itself and isn't shown on the Leads page. To change it, open **http://localhost:4000/leads/automation** (not linked in the app): lead scoring, the Google Ads rules, where each stage goes in Google Ads, and the sending check.
+The automation runs by itself and isn't shown on the Leads page. The Google Ads rules run in the background and aren't shown anywhere in the app (they're kept in `.data/lead-rules.json`). **http://localhost:4000/leads/automation** (not linked in the app) has the on/off switch, where each stage goes in Google Ads, and the sending check.
 
 Rules decide what Google Ads hears about each new lead, top to bottom, first match wins: send it as a **Qualified lead** or **Converted lead** (with a value), **report it as an invalid lead** (to a secondary, reporting-only action worth $0: Google never bids for it, but its reports show which campaigns and keywords bring junk), or don't send it. The starting rules: report Junk as invalid, send Hot leads as qualified.
 
