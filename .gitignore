@@ -46,3 +46,4 @@ next-env.d.ts
 
 # tunnel tool downloaded by go-online.bat
 /.tools/
+.data-before-restore/

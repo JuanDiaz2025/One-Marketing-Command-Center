@@ -46,6 +46,9 @@ if defined NEED_INSTALL (
   copy /y package-lock.json node_modules\.omcc-installed-lock.json >nul
 )
 
+REM Unzipped into a new folder? Bring over the data (leads, connections) from the earlier copy.
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\restore-data.ps1"
+
 if not exist .env.local (
   copy /y .env.example .env.local >nul
   echo Created .env.local. Open it in Notepad and fill in your Google settings,

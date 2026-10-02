@@ -141,6 +141,10 @@ Not needed with the Lead Saver plugin; useful for other form plugins. It only wo
 
 Every request must carry the secret key (`?key=…` in the address, or an `X-Webhook-Secret` header). A test request with GET to the same address answers `{"ok": true}` without adding a lead.
 
+## Unzipped into a new folder?
+
+start.bat brings your data over by itself: when the copy it runs from has no connections yet, it looks for an earlier copy of the app (Desktop, Downloads, Documents, OneDrive) and copies its `.data` folder (leads, chats, the WordPress connection and key, the Google Ads sign-in). The earlier copy isn't changed; what the new copy had is kept in `.data-before-restore`.
+
 ## Google Sheet: Google Ads data and 2024–2026 deals
 
 The **Google Sheet** tab at the top shows the combined deals (filter by year) and the summary by year and by campaign, read live from the sheet, and links your spreadsheet (paste its link, click **Connect and sync**). The app adds and keeps up to date two tabs, and never changes any other tab:
