@@ -5,6 +5,9 @@
 const g = globalThis as typeof globalThis & { __omccShared?: Map<string, unknown> }
 const all = (g.__omccShared ??= new Map<string, unknown>())
 
+// The Google Ads page's recent reports (dashboard/page.tsx), emptied by "Refresh account list".
+export const dashboardCache = () => shared("dashboard-cache", () => new Map<string, unknown>())
+
 export function shared<T extends object>(key: string, init: () => T): T {
   if (!all.has(key)) all.set(key, init())
   return all.get(key) as T

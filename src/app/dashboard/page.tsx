@@ -52,6 +52,7 @@ import { tryGetCalls } from "@/lib/google/calls"
 import { getInsights, type Insights } from "@/lib/google/insights"
 import { tryGetLocations, type LocationReport } from "@/lib/google/locations"
 import { findWastedSearches, searchKey, type WastedSummary } from "@/lib/google/wasted-searches"
+import { dashboardCache } from "@/lib/shared-state"
 import { cn } from "@/lib/utils"
 
 export const metadata: Metadata = { title: "Google Ads · One Marketing Command Center" }
@@ -200,11 +201,11 @@ const toneOf = (issues: Issue[]) =>
 // Google Ads numbers change slowly (Google itself updates them every few hours), so the same
 // report is reused for a few minutes: moving between pages and back doesn't ask Google again.
 const RECENT_MS = 3 * 60_000
-const recent = ((globalThis as typeof globalThis & { __omccDashboard?: Map<string, { at: number; result: Promise<Loaded> }> }).__omccDashboard ??= new Map())
+const recent = dashboardCache() as Map<string, { at: number; result: Promise<Loaded> }>
 async function loadRecent(user: Session, period: Period) {
   const connection = await getConnection(user.sub)
-  // (accountsFetchedAt: "Refresh account list" clears it, so that asks Google again.)
-  const key = JSON.stringify([user.sub, connection?.refreshToken.slice(-8), connection?.selectedCustomerId, connection?.accountsFetchedAt, period])
+  // ("Refresh account list" empties this cache, so it asks Google again.)
+  const key = JSON.stringify([user.sub, connection?.refreshToken.slice(-8), connection?.selectedCustomerId, period])
   const hit = recent.get(key)
   if (hit && Date.now() - hit.at < RECENT_MS) return hit.result
   const result = load(user, period)

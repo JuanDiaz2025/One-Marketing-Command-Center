@@ -7,6 +7,7 @@ import { requireSession, SESSION_COOKIE } from "@/lib/auth/session"
 import { deleteConnection, getConnection, updateConnection } from "@/lib/google/connections"
 import { revokeToken } from "@/lib/google/oauth"
 import { periodQuery, resolvePeriod } from "@/lib/google/period"
+import { dashboardCache } from "@/lib/shared-state"
 
 export async function signOutAction() {
   ;(await cookies()).delete(SESSION_COOKIE)
@@ -42,5 +43,6 @@ export async function selectAccountAction(formData: FormData) {
 export async function refreshAccountsAction() {
   const session = await requireSession()
   await updateConnection(session.sub, { accounts: [], accountsFetchedAt: undefined })
+  dashboardCache().clear()
   redirect("/dashboard")
 }

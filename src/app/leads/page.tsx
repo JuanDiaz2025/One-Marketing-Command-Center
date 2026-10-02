@@ -75,7 +75,8 @@ function googleState(lead: Lead): LeadRow["google"] {
 function mainGoogleState(lead: Lead): LeadRow["google"] {
   const { invalid: _invalid, ...rest } = lead.conversions ?? {}
   void _invalid
-  const all = Object.values(rest)
+  // (A parked entry only keeps a resend id; there's nothing to show for it.)
+  const all = Object.values(rest).filter((c) => !c?.parked)
   // Taken back (or being taken back) because the lead turned out Not interested.
   const backs = all.map((c) => c?.retraction).filter(Boolean)
   if (backs.length) {
@@ -98,7 +99,7 @@ function mainGoogleState(lead: Lead): LeadRow["google"] {
   }
   // Google is asked for 3 days; after that it's simply sent (Google took it in and never objected).
   if (worst === "sent" && all.some((c) => c?.requestId && Date.now() - Date.parse(c.lastTry ?? c.at) < 3 * 86_400_000)) {
-    const asked = all.map((c) => c?.google).filter(Boolean).sort((a, b) => b!.checkedAt.localeCompare(a!.checkedAt))[0]
+    const asked = all.map((c) => c?.google).filter((g) => g?.status === "processing").sort((a, b) => b!.checkedAt.localeCompare(a!.checkedAt))[0]
     const at = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
     const sentAt = all.map((c) => c?.lastTry ?? c?.at).filter(Boolean).sort().at(-1)
     const progress = asked

@@ -27,7 +27,7 @@ export function applyStatus(lead: Lead, status: LeadStatus, by: "auto" | "you", 
       // Not sent yet: never send it. Its resend id is kept if it has one (an earlier send under the
       // usual id was taken back, so that id can't be used again).
       if (entry.state !== "sent") {
-        if (entry.transactionId) lead.conversions[kind] = { state: "skipped", at: entry.at, transactionId: entry.transactionId, error: "Marked Not interested before it was sent." }
+        if (entry.transactionId) lead.conversions[kind] = { state: "skipped", parked: true, at: entry.at, transactionId: entry.transactionId }
         else delete lead.conversions[kind]
       }
       // Google refused it anyway: nothing to take back.

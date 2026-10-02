@@ -36,7 +36,9 @@ export function safeNext(next: string | null | undefined, fallback = "/dashboard
   if (!next || !next.startsWith("/") || /[\x00-\x1f\\]/.test(next)) return fallback
   try {
     const url = new URL(next, "http://app.invalid")
-    return url.origin === "http://app.invalid" ? `${url.pathname}${url.search}${url.hash}` : fallback
+    const out = `${url.pathname}${url.search}${url.hash}`
+    // "/..//evil.com" resolves to "//evil.com", which a browser reads as another website.
+    return url.origin === "http://app.invalid" && !out.startsWith("//") ? out : fallback
   } catch {
     return fallback
   }
