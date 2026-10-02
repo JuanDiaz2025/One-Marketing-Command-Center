@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs"
+import path from "node:path"
 import Link from "next/link"
 import { LogOut } from "lucide-react"
 
@@ -15,6 +17,15 @@ const links = [
 ] as const
 
 type Current = (typeof links)[number]["href"]
+
+// Which version is running (set by the updater), so it's easy to tell whether an update arrived.
+function appVersion() {
+  try {
+    return readFileSync(path.join(process.cwd(), ".data", "app-version"), "utf8").trim().slice(0, 7)
+  } catch {
+    return ""
+  }
+}
 
 export default function AppHeader({ current, user }: { current: Current; user: Session }) {
   return (
@@ -52,6 +63,7 @@ export default function AppHeader({ current, user }: { current: Current; user: S
           <span className="hidden truncate text-sm text-muted-foreground md:inline" title={user.email}>
             {user.email}
           </span>
+          {appVersion() && <span className="hidden text-xs text-muted-foreground/70 lg:inline">Version {appVersion()}</span>}
           <form action={signOutAction}>
             <Button type="submit" variant="ghost" size="lg">
               <LogOut data-icon="inline-start" />

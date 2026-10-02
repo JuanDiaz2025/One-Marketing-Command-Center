@@ -55,6 +55,13 @@ if not exist .env.local (
   exit /b 0
 )
 
+REM An older copy still running would keep port 4000, and the browser would show the old version:
+REM close it first.
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":4000 .*LISTENING"') do (
+  echo Closing the copy of the app that is already running...
+  taskkill /pid %%p /t /f >nul 2>nul
+)
+
 echo Starting One Marketing Command Center. Your browser will open at http://localhost:4000 when it's ready.
 echo Keep this window open while you use the app. Close it to stop.
 start "" /min "%~f0" open-browser
