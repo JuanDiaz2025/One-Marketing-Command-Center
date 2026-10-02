@@ -24,6 +24,8 @@ Your Google Ads results, website leads and phone calls in one place.
 2. Fill in the settings (see [One-time Google setup](#one-time-google-setup)), save, and run `start.bat` again.
 3. Your browser opens at http://localhost:4000. Keep the black window open while you use the app.
 
+After an update, start.bat first builds the fast version of the app (a minute or two, once), then starts it; if building fails it starts the slower developer version instead.
+
 **Mac or Linux:**
 
 ```bash

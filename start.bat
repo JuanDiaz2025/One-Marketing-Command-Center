@@ -65,10 +65,34 @@ if not exist .env.local (
   exit /b 0
 )
 
+REM Runs on this computer only (lets the app know it isn't on the internet).
+set "OMCC_LOCAL=1"
+
+REM The fast version of the app: built once after each update (a minute or two), then every page
+REM opens quickly. If building fails, the app still starts, just slower.
+set "NEED_BUILD="
+if not exist .next\BUILD_ID set "NEED_BUILD=1"
+if not exist .next\omcc-built-version set "NEED_BUILD=1"
+if not defined NEED_BUILD if exist .data\app-version (
+  fc /b .data\app-version .next\omcc-built-version >nul 2>nul
+  if errorlevel 1 set "NEED_BUILD=1"
+)
+set "MODE=start"
+if defined NEED_BUILD (
+  echo Getting the app ready. This takes a minute or two after an update...
+  call npm run build
+  if errorlevel 1 (
+    echo The fast version couldn't be built, so the app starts in the slower mode.
+    set "MODE=dev"
+  ) else (
+    if exist .data\app-version (copy /y .data\app-version .next\omcc-built-version >nul) else (echo built> .next\omcc-built-version)
+  )
+)
+
 echo Starting One Marketing Command Center. Your browser will open at http://localhost:4000 when it's ready.
 echo Keep this window open while you use the app. Close it to stop.
 start "" /min "%~f0" open-browser
-call npm run dev
+call npm run %MODE%
 echo.
 echo The app stopped. If you see "address already in use" above, another copy is already running:
 echo close its window or restart your computer, then run this file again.

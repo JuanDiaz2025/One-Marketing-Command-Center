@@ -196,13 +196,33 @@ const LOCATION_ISSUES = new Set(["no-location-targets", "presence-or-interest", 
 const toneOf = (issues: Issue[]) =>
   issues.some((i) => i.severity === "high") ? ("bad" as const) : issues.length ? ("warn" as const) : undefined
 
+// Google Ads numbers change slowly (Google itself updates them every few hours), so the same
+// report is reused for a few minutes: moving between pages and back doesn't ask Google again.
+const RECENT_MS = 3 * 60_000
+const recent = ((globalThis as typeof globalThis & { __omccDashboard?: Map<string, { at: number; result: Promise<Loaded> }> }).__omccDashboard ??= new Map())
+async function loadRecent(user: Session, period: Period) {
+  const connection = await getConnection(user.sub)
+  const key = JSON.stringify([user.sub, connection?.refreshToken.slice(-8), connection?.selectedCustomerId, period])
+  const hit = recent.get(key)
+  if (hit && Date.now() - hit.at < RECENT_MS) return hit.result
+  const result = load(user, period)
+  recent.set(key, { at: Date.now(), result })
+  // Only keep full reports; anything else (an error, a setup step) is asked again next time.
+  result.then(
+    (r) => r.kind !== "report" && recent.delete(key),
+    () => recent.delete(key),
+  )
+  for (const [k, v] of recent) if (Date.now() - v.at > RECENT_MS) recent.delete(k)
+  return result
+}
+
 const statusLabel: Record<string, string> = { ENABLED: "Active", PAUSED: "Paused" }
 
 export default async function Dashboard({ searchParams }: PageProps<"/dashboard">) {
   const user = await requireSession("/dashboard")
   const q = await searchParams
   const period = resolvePeriod(q)
-  const loaded = await load(user, period)
+  const loaded = await loadRecent(user, period)
 
   const assistantEnabled = assistantProvider() !== null
   const noticeKey =

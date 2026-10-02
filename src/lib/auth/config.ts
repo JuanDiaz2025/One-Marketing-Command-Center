@@ -27,7 +27,7 @@ export function isEmailAllowed(email: string) {
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean)
-  if (!entries.length) return process.env.NODE_ENV !== "production"
+  if (!entries.length) return process.env.NODE_ENV !== "production" || process.env.OMCC_LOCAL === "1"
   const address = email.toLowerCase()
   return entries.some((entry) =>
     entry.startsWith("@") ? address.endsWith(entry) : address === entry,

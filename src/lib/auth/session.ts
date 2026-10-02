@@ -20,7 +20,8 @@ const MAX_AGE_S = 30 * 24 * 60 * 60
 export const cookieOptions = {
   httpOnly: true,
   sameSite: "lax",
-  secure: process.env.NODE_ENV === "production",
+  // Only over https: the app on this computer (or a phone on the same Wi-Fi) uses plain http.
+  secure: process.env.NODE_ENV === "production" && Boolean(process.env.SITE_URL?.startsWith("https://")),
   path: "/",
 } as const
 

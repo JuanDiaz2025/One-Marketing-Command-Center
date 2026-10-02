@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { after } from "next/server"
 import { Download } from "lucide-react"
 
 import AppHeader from "@/components/app-header"
@@ -17,11 +18,9 @@ import { cn } from "@/lib/utils"
 import { requireSession } from "@/lib/auth/session"
 import { activeAccount } from "@/lib/google/active-account"
 import { tryGetCalls } from "@/lib/google/calls"
-import { sendPendingConversions } from "@/lib/google/offline-conversions"
-import { syncSheetIfDue } from "@/lib/google/sheets-sync"
-import { syncWordPress } from "@/lib/leads/wordpress"
+import { catchUp, leadsVersion } from "@/lib/leads/background"
 import { leadSource } from "@/lib/leads/source"
-import { listLeads, listQrCodes, scoreUnscored } from "@/lib/leads/store"
+import { listLeads, listQrCodes } from "@/lib/leads/store"
 import { leadChannel, pagePath } from "@/lib/leads/tracking"
 import type { Lead } from "@/lib/leads/types"
 
@@ -114,31 +113,15 @@ async function loadCalls(sub: string) {
   }
 }
 
-// Offline conversions waiting to go to Google Ads (new ones, and retries at most hourly).
-async function sendConversions(sub: string) {
-  try {
-    const active = await activeAccount(sub)
-    if (active) {
-      // The Google Sheet catches up in the background (at most every 6 hours).
-      void syncSheetIfDue(active.connection, active.account)
-      await sendPendingConversions(active.connection, active.account)
-    }
-  } catch (error) {
-    console.error("Couldn't send conversions to Google Ads:", error)
-  }
-}
-
 export const metadata: Metadata = { title: "Leads · One Marketing Command Center" }
 
 export default async function LeadsPage() {
   const user = await requireSession("/leads")
-  // Pick up anything new saved on the WordPress site first (at most every 30 seconds), waiting up
-  // to 3 seconds for it; a slower check shows its leads on the next refresh.
-  await Promise.race([
-    Promise.all([scoreUnscored().then(() => syncWordPress()), sendConversions(user.sub)]),
-    new Promise((resolve) => setTimeout(resolve, 3000)),
-  ])
-  const [qrCodes, leads, calls] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub)])
+  // New leads from the WordPress site (checked at most every 30 seconds) and conversions for Google
+  // Ads are handled after the page is sent, so it never waits on them; the page updates itself
+  // when they change anything (LiveRefresh).
+  after(() => catchUp(user.sub))
+  const [qrCodes, leads, calls, version] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub), leadsVersion()])
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0
@@ -263,7 +246,7 @@ export default async function LeadsPage() {
 
         <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} />
       </main>
-      <LiveRefresh />
+      <LiveRefresh version={version} />
       <AssistantLauncher enabled={assistantProvider() !== null} />
     </div>
   )
