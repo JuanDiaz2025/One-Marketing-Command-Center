@@ -274,6 +274,33 @@ export async function syncSheet(connection: AdsConnection, account: AdsAccount) 
   }
 }
 
+// What the "2024–2026 Combined" tab holds now, as shown in the sheet (dollars formatted), for the
+// Google Sheet page: the deals (A–O) and the summary tables beside them (from R1).
+export type CombinedView = { deals: string[][]; header: string[]; tables: { header: string[]; rows: string[][] }[]; notes: string[] }
+export async function readCombined(connection: AdsConnection): Promise<CombinedView | null> {
+  const id = (await file.read()).spreadsheetId
+  if (!id) return null
+  const ranges = [`${quote(COMBINED_TAB)}!A1:O5000`, `${quote(COMBINED_TAB)}!R1:Y300`].map((r) => `ranges=${encodeURIComponent(r)}`).join("&")
+  const data = await sheets<Values>(connection, `${id}/values:batchGet?${ranges}&valueRenderOption=FORMATTED_VALUE`)
+  const text = (rows?: unknown[][]) => (rows ?? []).map((r) => r.map((c) => String(c ?? "")))
+  const [header = [], ...deals] = text(data.valueRanges?.[0]?.values)
+  // The summary is blocks of rows split by an empty row; a block of one-cell rows is the notes.
+  const tables: CombinedView["tables"] = []
+  const notes: string[] = []
+  let block: string[][] = []
+  const flush = () => {
+    if (block.length && block.every((r) => r.filter(Boolean).length <= 1) && block.length <= 3) notes.push(...block.map((r) => r[0]).filter(Boolean))
+    else if (block.length) tables.push({ header: block[0], rows: block.slice(1) })
+    block = []
+  }
+  for (const r of text(data.valueRanges?.[1]?.values)) {
+    if (!r.some(Boolean)) flush()
+    else block.push(r)
+  }
+  flush()
+  return { header, deals: deals.filter((r) => r.some(Boolean)), tables, notes }
+}
+
 // Keeps the sheet fresh: at most every 6 hours, when the app is used.
 let running: Promise<unknown> | null = null
 export function syncSheetIfDue(connection: AdsConnection, account: AdsAccount) {

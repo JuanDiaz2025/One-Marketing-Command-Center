@@ -8,16 +8,16 @@ import Disclosure from "@/components/ui/disclosure"
 import { sheetAction } from "@/lib/google/sheets-actions"
 import { cn } from "@/lib/utils"
 
-type Props = { spreadsheetId?: string; title?: string; lastSync?: string; lastError?: string; deals?: number; months?: number }
+type Props = { open?: boolean; spreadsheetId?: string; title?: string; lastSync?: string; lastError?: string; deals?: number; months?: number }
 
 // Linking your Google Sheet: the app keeps a "Google Ads data" tab and a "2024–2026 Combined"
 // tab up to date in it.
-export default function SheetSync({ spreadsheetId, title, lastSync, lastError, deals, months }: Props) {
+export default function SheetSync({ open, spreadsheetId, title, lastSync, lastError, deals, months }: Props) {
   const [state, action, pending] = useActionState(sheetAction, undefined)
   const link = spreadsheetId ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit` : undefined
   return (
     // Stays open or shut the way you leave it, even when the page refreshes after a sync.
-    <Disclosure className="group rounded-2xl border bg-card shadow-xs" initialOpen={!spreadsheetId || Boolean(lastError)}>
+    <Disclosure className="group rounded-2xl border bg-card shadow-xs" initialOpen={open ?? (!spreadsheetId || Boolean(lastError))}>
       <summary className="flex cursor-pointer list-none items-center gap-3 p-5 sm:px-6">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700">
           <FileSpreadsheet className="size-5" />

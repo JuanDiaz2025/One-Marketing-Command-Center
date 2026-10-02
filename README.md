@@ -143,7 +143,7 @@ Every request must carry the secret key (`?key=…` in the address, or an `X-Web
 
 ## Google Sheet: Google Ads data and 2024–2026 deals
 
-On the Leads page, **Google Sheet** links your spreadsheet (paste its link, click **Connect and sync**). The app adds and keeps up to date two tabs, and never changes any other tab:
+The **Google Sheet** tab at the top shows the combined deals (filter by year) and the summary by year and by campaign, read live from the sheet, and links your spreadsheet (paste its link, click **Connect and sync**). The app adds and keeps up to date two tabs, and never changes any other tab:
 
 - **Google Ads data**: spend, clicks, impressions and conversions per campaign per month since January 2024.
 - **2024–2026 Combined**: every deal from the year tabs (any tab with a year in its name whose first row has Address and Marketing Fee columns, e.g. 2026, 2025, PENDING 2024), one row each with the year from the tab's name, plus a summary by year and by Google Ads campaign: deals, marketing fees, ad spend, ad spend per (PPC) deal and return on ad spend, as formulas over the two tabs.
