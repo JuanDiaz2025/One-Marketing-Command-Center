@@ -96,7 +96,8 @@ function mainGoogleState(lead: Lead): LeadRow["google"] {
   if (worst === "sent" && decided.length && decided.every((g) => g!.status === "accepted")) {
     return { state: "accepted", detail: decided.map((g) => g!.reason).filter(Boolean).join("; ") || "Google counts it. It shows in Google Ads under the date of the ad click." }
   }
-  if (worst === "sent" && all.some((c) => c?.requestId)) {
+  // Google is asked for 3 days; after that it's simply sent (Google took it in and never objected).
+  if (worst === "sent" && all.some((c) => c?.requestId && Date.now() - Date.parse(c.lastTry ?? c.at) < 3 * 86_400_000)) {
     return { state: "checking", detail: "Google has it and is checking it (30 minutes to 24 hours)." }
   }
   const why = [entry.rule && `Rule “${entry.rule}”`, entry.value !== undefined && entry.value !== 1 && `worth $${entry.value}`].filter(Boolean).join(", ")
