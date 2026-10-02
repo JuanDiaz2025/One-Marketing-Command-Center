@@ -338,8 +338,9 @@ async function checkDecision(connection: AdsConnection, lead: Lead, kind: Conver
     if (!states.length || states.some((st) => st === "PROCESSING" || st === "REQUEST_STATUS_UNKNOWN")) decided = { status: "processing", checkedAt: now }
     else if (states.every((st) => st === "SUCCESS") && !errors.length) decided = { status: "accepted", reason: warnings.map(humanize).join("; ") || undefined, checkedAt: now }
     else decided = { status: "rejected", reason: [...errors, ...warnings].map(humanize).join("; ") || "Google turned it down", checkedAt: now }
-  } catch {
-    decided = { status: "processing", checkedAt: now } // try again later
+  } catch (e) {
+    // Try again later, but keep why it didn't work, so the Leads page can say so.
+    decided = { status: "processing", reason: `Couldn't ask Google: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300), checkedAt: now }
   }
   await updateLead(lead.id, (l) => {
     const e = l.conversions?.[kind]

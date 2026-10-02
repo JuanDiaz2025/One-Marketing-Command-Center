@@ -98,7 +98,17 @@ function mainGoogleState(lead: Lead): LeadRow["google"] {
   }
   // Google is asked for 3 days; after that it's simply sent (Google took it in and never objected).
   if (worst === "sent" && all.some((c) => c?.requestId && Date.now() - Date.parse(c.lastTry ?? c.at) < 3 * 86_400_000)) {
-    return { state: "checking", detail: "Google has it and is checking it (30 minutes to 24 hours)." }
+    const asked = all.map((c) => c?.google).filter(Boolean).sort((a, b) => b!.checkedAt.localeCompare(a!.checkedAt))[0]
+    const at = (iso: string) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+    const sentAt = all.map((c) => c?.lastTry ?? c?.at).filter(Boolean).sort().at(-1)
+    const progress = asked
+      ? asked.reason
+        ? ` Last asked ${at(asked.checkedAt)}: ${asked.reason}. The app tries again every 30 minutes.`
+        : ` Last asked ${at(asked.checkedAt)}: still checking. The app asks again every 30 minutes.`
+      : sentAt
+        ? ` Sent ${at(sentAt)}. The app first asks Google 30 minutes after sending.`
+        : ""
+    return { state: "checking", detail: `Google has it and is checking it (30 minutes to 24 hours). This is normal.${progress}` }
   }
   const why = [entry.rule && `Rule “${entry.rule}”`, entry.value !== undefined && entry.value !== 1 && `worth $${entry.value}`].filter(Boolean).join(", ")
   return { state: worst, detail: entry.error ?? ([why, entry.matchedBy && `matched by ${entry.matchedBy}`].filter(Boolean).join(" · ") || undefined) }
