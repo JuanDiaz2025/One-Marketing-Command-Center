@@ -59,20 +59,55 @@ function identifiers(lead: Lead) {
   return ids
 }
 
-export type ConversionActionOption = { resourceName: string; name: string; category: string; type: string; importable: boolean; primary: boolean }
+export type ConversionActionOption = {
+  resourceName: string
+  name: string
+  category: string
+  type: string
+  importable: boolean
+  primary: boolean
+  // The account that owns it, when that's another one (a manager account's action shared with this one).
+  owner?: string
+}
 
 // The account's enabled conversion actions. Only "import from clicks" ones can receive leads.
 export async function listConversionActions(connection: AdsConnection, account: AdsAccount): Promise<ConversionActionOption[]> {
   const rows = (await runQuery(
     connection,
     account,
-    "SELECT conversion_action.resource_name, conversion_action.name, conversion_action.category, conversion_action.type, conversion_action.primary_for_goal FROM conversion_action WHERE conversion_action.status = 'ENABLED'",
-  )) as { conversionAction?: { resourceName?: string; name?: string; category?: string; type?: string; primaryForGoal?: boolean } }[]
+    "SELECT conversion_action.resource_name, conversion_action.name, conversion_action.category, conversion_action.type, conversion_action.primary_for_goal, conversion_action.owner_customer FROM conversion_action WHERE conversion_action.status = 'ENABLED'",
+  )) as { conversionAction?: { resourceName?: string; name?: string; category?: string; type?: string; primaryForGoal?: boolean; ownerCustomer?: string } }[]
   return rows
     .map((r) => r.conversionAction ?? {})
     .filter((a): a is Required<typeof a> => Boolean(a.resourceName && a.name))
-    .map((a) => ({ resourceName: a.resourceName, name: a.name, category: a.category ?? "", type: a.type ?? "", importable: a.type === "UPLOAD_CLICKS", primary: Boolean(a.primaryForGoal) }))
+    .map((a) => {
+      const owner = a.ownerCustomer?.match(/customers\/(\d+)/)?.[1]
+      return {
+        resourceName: a.resourceName,
+        name: a.name,
+        category: a.category ?? "",
+        type: a.type ?? "",
+        importable: a.type === "UPLOAD_CLICKS",
+        primary: Boolean(a.primaryForGoal),
+        ...(owner && owner !== account.customerId ? { owner } : {}),
+      }
+    })
     .sort((x, y) => x.name.localeCompare(y.name))
+}
+
+// The account that owns a conversion action, when it isn't this one (looked up once per run of the app).
+const owners = ((globalThis as typeof globalThis & { __omccOwners?: Map<string, string | null> }).__omccOwners ??= new Map())
+async function ownerOf(connection: AdsConnection, account: AdsAccount, resource: string) {
+  const key = `${account.customerId}:${resource}`
+  if (!owners.has(key)) {
+    try {
+      const found = (await listConversionActions(connection, account)).find((o) => o.resourceName === resource)
+      owners.set(key, found?.owner ?? null)
+    } catch {
+      return undefined // not known this time: send as before
+    }
+  }
+  return owners.get(key) ?? undefined
 }
 
 // Your own action for a stage: by name first ("Qualified lead" / "Converted lead"), then by
@@ -183,10 +218,11 @@ async function conversionAction(connection: AdsConnection, account: AdsAccount, 
 
 // Errors worth trying again later: a just-created conversion action, or a click Google hasn't
 // processed yet. Anything else is reported and not retried.
-const RETRY = /TOO_RECENT|CLICK_NOT_FOUND|INTERNAL|TRANSIENT|DEADLINE|UNAVAILABLE|RESOURCE_EXHAUSTED|RATE/i
+const RETRY = /NOT_FOUND|TOO_RECENT|CLICK_NOT_FOUND|INTERNAL|TRANSIENT|DEADLINE|UNAVAILABLE|RESOURCE_EXHAUSTED|RATE/i
 const SETUP_RETRY_MS = 5 * 60_000
 // Refused by the old upload Google closed to new apps: send these again the new way.
 const OLD_UPLOAD_CLOSED = /ConversionUploadService|limited to existing users/i
+const NOT_FOUND_BEFORE = /Resource not found|can't find the conversion action/i
 const MAX_TRIES = 12
 const RETRY_AFTER_MS = 60 * 60_000
 
@@ -207,6 +243,7 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
   let requestId: string | undefined
   try {
     action = await conversionAction(connection, account, kind)
+    const owner = await ownerOf(connection, account, action)
     ;({ requestId } = await ingestEvents(connection, account, action.split("/").pop()!, [
       {
         eventTimestamp: new Date(entry.at).toISOString(),
@@ -218,10 +255,17 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
         conversionValue: entry.value ?? (kind === "invalid" ? 0 : 1),
         currency: account.currency || "USD",
       },
-    ]))
+    ], false, owner))
   } catch (e) {
     error = e instanceof Error ? e.message : String(e)
     code = e instanceof AdsApiError ? (e.code ?? "") : ""
+    // The conversion action may have been removed or replaced in Google Ads: look them up again next time.
+    if (code === "NOT_FOUND") {
+      owners.clear()
+      await actionsFile.update((db) => {
+        if (db[account.customerId]) delete db[account.customerId].checkedAt
+      })
+    }
   }
   const now = new Date().toISOString()
   await updateLead(lead.id, (l) => {
@@ -357,6 +401,15 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
     for (const lead of leads) {
       for (const kind of conversionKinds) {
         let entry = lead.conversions?.[kind]
+        // Refused as "not found" before the app learned to send to the account that owns the
+        // conversion action: try those once more.
+        if (entry?.state === "failed" && !entry.fixRetry && NOT_FOUND_BEFORE.test(entry.error ?? "")) {
+          const again = { ...entry, state: "pending" as const, tries: 0, error: undefined, lastTry: undefined, fixRetry: true }
+          await updateLead(lead.id, (l) => {
+            l.conversions![kind] = again
+          })
+          lead.conversions![kind] = entry = again
+        }
         if (entry?.state === "failed" && OLD_UPLOAD_CLOSED.test(entry.error ?? "")) {
           await updateLead(lead.id, (l) => {
             l.conversions![kind] = { state: "pending", at: entry!.at }
@@ -437,6 +490,7 @@ export async function checkSending(connection: AdsConnection, account: AdsAccoun
   } else steps.push({ ok: true, title: "Permission to send conversions", detail: "Granted." })
 
   let actionId: string | undefined
+  let actionOwner: string | undefined
   try {
     const t = await conversionTargets(connection, account)
     const q = t.interested
@@ -446,6 +500,7 @@ export async function checkSending(connection: AdsConnection, account: AdsAccoun
         : { ok: true, title: "Conversion action for qualified leads", detail: "None that accepts imports yet: the app makes “Qualified lead (Command Center import)” with the first lead." },
     )
     actionId = q?.resourceName.split("/").pop()
+    actionOwner = q?.owner
   } catch (e) {
     steps.push({ ok: false, title: "Conversion actions", detail: `Couldn't read them from Google Ads: ${e instanceof Error ? e.message : String(e)}` })
     return steps
@@ -470,6 +525,7 @@ export async function checkSending(connection: AdsConnection, account: AdsAccoun
         },
       ],
       true,
+      actionOwner,
     )
     steps.push({ ok: true, title: "Test send to Google (not counted)", detail: "Google accepted it. Sending works." })
   } catch (e) {

@@ -82,6 +82,8 @@ export type ConversionUpload = {
   google?: { status: "processing" | "accepted" | "rejected"; reason?: string; checkedAt: string }
   // Taking it back from Google Ads (a retraction), when the lead turned out Not interested.
   retraction?: { state: "pending" | "sent" | "failed"; at: string; tries?: number; lastTry?: string; error?: string }
+  // Sent once more after a "not found" refusal, when the app learned to send to the owning account.
+  fixRetry?: boolean
 }
 
 // How good a lead looks the moment it arrives, scored by the app (scoring.ts).

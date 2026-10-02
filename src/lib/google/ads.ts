@@ -6,6 +6,8 @@ import { OAuthError, refreshAccessToken } from "@/lib/google/oauth"
 import type { Period } from "@/lib/google/period"
 
 export class AdsApiError extends Error {
+  // Set when Google couldn't find the account or item asked for (worth trying another way).
+  notFound = false
   constructor(
     message: string,
     readonly code?: string,
