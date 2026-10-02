@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 const links = [
   { href: "/dashboard", label: "Google Ads" },
   { href: "/leads", label: "Leads" },
-  { href: "/sheet", label: "Google Sheet" },
+  { href: "/deals", label: "Deal History" },
 ] as const
 
 type Current = (typeof links)[number]["href"]

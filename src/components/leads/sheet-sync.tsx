@@ -23,7 +23,7 @@ export default function SheetSync({ open, spreadsheetId, title, lastSync, lastEr
           <FileSpreadsheet className="size-5" />
         </span>
         <span className="flex flex-col">
-          <span className="text-lg font-semibold">Google Sheet</span>
+          <span className="text-lg font-semibold">Spreadsheet connection</span>
           <span className={cn("text-sm", lastError ? "font-medium text-destructive" : "text-muted-foreground")}>
             {lastError
               ? "Couldn't update your sheet. Click to see why."
