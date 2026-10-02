@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import type { Session } from "@/lib/auth/session"
 import { signOutAction } from "@/lib/google/actions"
 import BrandLogo from "@/components/brand-logo"
+import LinkPending from "@/components/link-pending"
 import GoogleAdsMark from "@/components/google-ads-mark"
 import { Button } from "@/components/ui/button"
 
@@ -46,6 +47,7 @@ export default function AppHeader({ current, user }: { current: Current; user: S
               >
                 {l.href === "/dashboard" && <GoogleAdsMark className="size-4" />}
                 {l.label}
+                <LinkPending />
               </Link>
             ))}
           </nav>
@@ -83,6 +85,7 @@ export default function AppHeader({ current, user }: { current: Current; user: S
           >
             {l.href === "/dashboard" && <GoogleAdsMark className="size-4" />}
             {l.label}
+            <LinkPending />
           </Link>
         ))}
       </nav>

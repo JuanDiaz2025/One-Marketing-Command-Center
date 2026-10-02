@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { CalendarDays } from "lucide-react"
 
+import LinkPending from "@/components/link-pending"
 import { Button } from "@/components/ui/button"
 import { presets, type Period } from "@/lib/google/period"
 import { cn } from "@/lib/utils"
@@ -10,7 +11,7 @@ import { cn } from "@/lib/utils"
 export default function PeriodPicker({ period }: { period: Period }) {
   const pill = (active: boolean) =>
     cn(
-      "rounded-full border px-3 py-1",
+      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1",
       active
         ? "border-primary bg-primary text-primary-foreground"
         : "bg-card text-muted-foreground hover:text-foreground",
@@ -27,6 +28,7 @@ export default function PeriodPicker({ period }: { period: Period }) {
             className={pill(period.preset === p.id)}
           >
             {p.label}
+            <LinkPending />
           </Link>
         ))}
       </nav>
