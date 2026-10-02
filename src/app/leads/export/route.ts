@@ -40,7 +40,7 @@ export async function GET() {
       l.tracking?.utmCampaign,
       l.tracking?.utmTerm,
       l.tracking?.utmContent,
-      l.tracking?.gclid,
+      l.tracking?.gclid || l.tracking?.gbraid || l.tracking?.wbraid,
       l.tracking?.fbclid,
       l.tracking?.msclkid,
       l.tracking?.landingPage,

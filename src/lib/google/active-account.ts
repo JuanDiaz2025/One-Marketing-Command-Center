@@ -8,7 +8,9 @@ export async function activeAccount(sub: string) {
   if (!adsConfig().developerToken) return null
   const connection = await getConnection(sub)
   if (!connection) return null
-  if (!connection.accounts.length) {
+  // No accounts yet: ask Google, but at most every 10 minutes (an open page checks every few seconds).
+  const askedRecently = connection.accountsFetchedAt && Date.now() - Date.parse(connection.accountsFetchedAt) < 10 * 60_000
+  if (!connection.accounts.length && !askedRecently) {
     connection.accounts = await listAccounts(connection)
     await updateConnection(sub, { accounts: connection.accounts, accountsFetchedAt: new Date().toISOString() })
   }

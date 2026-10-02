@@ -33,8 +33,11 @@ export type LeadTracking = {
   utmCampaign?: string
   utmTerm?: string
   utmContent?: string
-  // Google Ads click id (gclid, or gbraid/wbraid on iPhones).
+  // Google Ads click id. On iPhones Google sends gbraid or wbraid instead (older website
+  // scripts also copied those into gclid; see googleClick in tracking.ts).
   gclid?: string
+  gbraid?: string
+  wbraid?: string
   fbclid?: string
   msclkid?: string
   // The page the visitor first landed on, and the site that sent them there.

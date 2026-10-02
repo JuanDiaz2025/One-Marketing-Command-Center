@@ -57,9 +57,12 @@ const leadSchema = z
       .max(30)
       .refine((v) => v === "" || v.replace(/\D/g, "").length >= 10, "Check your phone number.")
       .transform((v) => v || undefined),
+    // Trimmed before checking: phone keyboards often add a space after the address.
     email: z
-      .union([z.literal(""), z.email("Check your email address.")])
-      .transform((v) => v.trim().toLowerCase() || undefined),
+      .string()
+      .trim()
+      .pipe(z.union([z.literal(""), z.email("Check your email address.")]))
+      .transform((v) => v.toLowerCase() || undefined),
     propertyAddress: optional(200),
     notes: optional(1000),
   })

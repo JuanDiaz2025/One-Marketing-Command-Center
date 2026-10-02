@@ -11,7 +11,7 @@ export type DataManagerEvent = {
   eventTimestamp: string // ISO 8601
   transactionId?: string
   eventSource: "WEB" | "CALL"
-  adIdentifiers?: { gclid: string }
+  adIdentifiers?: { gclid?: string; gbraid?: string; wbraid?: string }
   userData?: { userIdentifiers: ({ emailAddress: string } | { phoneNumber: string })[] }
   conversionValue?: number
   currency?: string

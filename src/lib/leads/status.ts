@@ -23,7 +23,10 @@ export function applyStatus(lead: Lead, status: LeadStatus, by: "auto" | "you", 
   if (status === "not_interested") {
     for (const kind of ["interested", "closed"] as const) {
       const entry = lead.conversions[kind]
-      if (entry?.state === "sent" && !entry.retraction) entry.retraction = { state: "pending", at: now }
+      if (!entry) continue
+      if (entry.state !== "sent") delete lead.conversions[kind] // not sent yet: never send it
+      // Google refused it anyway: nothing to take back.
+      else if (!entry.retraction && entry.google?.status !== "rejected") entry.retraction = { state: "pending", at: now }
     }
     reportInvalid(lead, now)
     return
@@ -71,6 +74,7 @@ export function applyRule(lead: Lead, rule: { name: string; then: "qualified" | 
     return
   }
   const kinds: ConversionKind[] = rule.then === "converted" ? ["interested", "closed"] : ["interested"]
+  if (lead.status === "not_interested") return
   lead.conversions ??= {}
   for (const kind of kinds) {
     // A converted lead also counts as qualified; the value goes with the conversion the rule is

@@ -47,7 +47,7 @@ function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
     utmMedium: t.utmMedium,
     utmCampaign: t.utmCampaign,
     utmTerm: t.utmTerm,
-    gclid: t.gclid,
+    gclid: t.gclid || t.gbraid || t.wbraid,
     landingPage: t.landingPage && /^https?:\/\//.test(t.landingPage) ? t.landingPage : undefined,
     landingPath: pagePath(t.landingPage),
     referrer: t.referrer,

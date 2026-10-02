@@ -130,7 +130,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
         }),
       ),
       tryGetLocations(connection, account, period),
-      tryGetCalls(connection, account, callDays),
+      tryGetCalls(connection, account, callDays, period.preset === "all" ? undefined : { start: period.start, end: period.end }),
       getInsights(connection, account, period),
       before ? getReport(connection, account, before).catch(() => null) : Promise.resolve(null),
     ])

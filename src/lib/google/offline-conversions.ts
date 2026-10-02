@@ -18,6 +18,7 @@ import { jsonFileStore } from "@/lib/json-file-store"
 import { applyStatus } from "@/lib/leads/status"
 import { listLeads, updateLead } from "@/lib/leads/store"
 import { conversionKinds, type ConversionKind, type Lead, type LeadStatus } from "@/lib/leads/types"
+import { googleClick } from "@/lib/leads/tracking"
 
 // The actions the app makes when the account has none that accept imported leads.
 export const ACTIONS: Record<ConversionKind, { name: string; category: string; legacy: string }> = {
@@ -233,9 +234,16 @@ const RETRY_AFTER_MS = 60 * 60_000
 async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead, kind: ConversionKind) {
   const entry = lead.conversions?.[kind]
   if (!entry) return
-  const gclid = lead.tracking?.gclid
+  // Marked Not interested: only its invalid-lead report goes to Google.
+  if (kind !== "invalid" && lead.status === "not_interested") {
+    await updateLead(lead.id, (l) => {
+      if (l.conversions?.[kind]?.state !== "sent") delete l.conversions?.[kind]
+    })
+    return
+  }
+  const click = googleClick(lead.tracking)
   const ids = identifiers(lead)
-  if (!gclid && !ids.length) {
+  if (!click && !ids.length) {
     await updateLead(lead.id, (l) => {
       l.conversions![kind] = { ...entry, state: "skipped", error: "No Google click ID, email or phone to match it with." }
     })
@@ -254,7 +262,7 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
         // The same lead and stage is only ever counted once, even if sent again.
         transactionId: entry.transactionId ?? `${lead.id}-${kind}`,
         eventSource: "WEB",
-        ...(gclid ? { adIdentifiers: { gclid } } : {}),
+        ...(click ? { adIdentifiers: click } : {}),
         ...(ids.length ? { userData: { userIdentifiers: ids } } : {}),
         conversionValue: entry.value ?? (kind === "invalid" ? 0 : 1),
         currency: account.currency || "USD",
@@ -292,7 +300,7 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
           accountId: account.customerId,
           state: waitingFor || (RETRY.test(`${code} ${error}`) && tries < MAX_TRIES) ? "pending" : "failed",
         }
-      : { at: current.at, value: current.value, rule: current.rule, transactionId: current.transactionId ?? `${l.id}-${kind}`, action, requestId, tries, lastTry: now, state: "sent", matchedBy: [gclid && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
+      : { at: current.at, value: current.value, rule: current.rule, transactionId: current.transactionId ?? `${l.id}-${kind}`, action, requestId, tries, lastTry: now, state: "sent", matchedBy: [click && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
   })
 }
 
@@ -353,8 +361,12 @@ async function retract(connection: AdsConnection, account: AdsAccount, lead: Lea
   if (!sentTo) error = "Couldn't find which conversion action it was sent to."
   else {
     const base = { conversionAction: sentTo, adjustmentType: "RETRACTION", adjustmentDateTime: adsTime(r.at) }
+    // Taken back in the account that owns the conversion action (a manager account, with
+    // cross-account conversion tracking), where it was counted.
+    const owner = sentTo.match(/^customers\/(\d+)\//)?.[1]
+    const target = owner && owner !== account.customerId ? { ...account, customerId: owner, loginCustomerId: account.loginCustomerId ?? owner } : account
     const attempt = async (id: Record<string, unknown>) => {
-      const res = await postToAds<AdjustResult>(connection, account, ":uploadConversionAdjustments", {
+      const res = await postToAds<AdjustResult>(connection, target, ":uploadConversionAdjustments", {
         conversionAdjustments: [{ ...base, ...id }],
         partialFailure: true,
       })
@@ -365,7 +377,8 @@ async function retract(connection: AdsConnection, account: AdsAccount, lead: Lea
     }
     try {
       let failed = await attempt({ orderId: entry.transactionId ?? `${lead.id}-${kind}` })
-      const gclid = lead.tracking?.gclid
+      // (Only a gclid works here; iPhone click ids can't be matched this way.)
+      const gclid = googleClick(lead.tracking)?.gclid
       if (failed && /NOT_FOUND|ORDER_ID/i.test(`${failed.code} ${failed.error}`) && gclid) {
         failed = await attempt({ gclidDateTimePair: { gclid, conversionDateTime: adsTime(entry.at) } })
       }
@@ -394,12 +407,13 @@ export async function setLeadStatus(id: string, status: LeadStatus) {
 
 // Sends every conversion waiting to go: new ones at once, retries at most hourly.
 let running: Promise<void> | null = null
-let again = false
+// Asked again during a run: go once more after it, with the latest account (it may have changed).
+let again: { connection: AdsConnection; account: AdsAccount } | null = null
 export function sendPendingConversions(connection: AdsConnection, account: AdsAccount): Promise<void> {
   // Asked again while a run is going (e.g. a status was just changed): go once more after it,
   // so the new conversion isn't left for the next page load.
   if (running) {
-    again = true
+    again = { connection, account }
     return running
   }
   running = (async () => {
@@ -435,14 +449,15 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
           lead.conversions![kind] = entry = again
         }
         if (entry?.state === "failed" && OLD_UPLOAD_CLOSED.test(entry.error ?? "")) {
+          const again = { state: "pending" as const, at: entry.at, value: entry.value, rule: entry.rule, transactionId: entry.transactionId }
           await updateLead(lead.id, (l) => {
-            l.conversions![kind] = { state: "pending", at: entry!.at }
+            l.conversions![kind] = again
           })
-          lead.conversions![kind] = entry = { state: "pending", at: entry.at }
+          lead.conversions![kind] = entry = again
         }
         // Sent earlier but no longer true (Not interested now, or an invalid report on a lead that's
         // good again): take it back.
-        if (entry?.state === "sent" && !entry.retraction && (kind === "invalid" ? lead.status !== "not_interested" && !lead.googleBlockedBy && !entry.rule : lead.status === "not_interested")) {
+        if (entry?.state === "sent" && !entry.retraction && entry.google?.status !== "rejected" && (kind === "invalid" ? lead.status !== "not_interested" && !lead.googleBlockedBy && !entry.rule : lead.status === "not_interested")) {
           const at = new Date().toISOString()
           await updateLead(lead.id, (l) => {
             const e = l.conversions?.[kind]
@@ -472,8 +487,9 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
   })().finally(() => {
     running = null
     if (again) {
-      again = false
-      void sendPendingConversions(connection, account).catch((error) => console.error("Couldn't send conversions to Google Ads:", error))
+      const next = again
+      again = null
+      void sendPendingConversions(next.connection, next.account).catch((error) => console.error("Couldn't send conversions to Google Ads:", error))
     }
   })
   return running
@@ -486,9 +502,10 @@ export async function retryNow(connection: AdsConnection, account: AdsAccount) {
     for (const kind of conversionKinds) {
       const entry = lead.conversions?.[kind]
       if (entry?.state !== "pending" && entry?.state !== "failed") continue
+      if (kind !== "invalid" && lead.status === "not_interested") continue
       await updateLead(lead.id, (l) => {
         const e = l.conversions?.[kind]
-        if (e && (e.state === "pending" || e.state === "failed")) l.conversions![kind] = { state: "pending", at: e.at, value: e.value, rule: e.rule }
+        if (e && (e.state === "pending" || e.state === "failed")) l.conversions![kind] = { state: "pending", at: e.at, value: e.value, rule: e.rule, transactionId: e.transactionId }
       })
     }
   }

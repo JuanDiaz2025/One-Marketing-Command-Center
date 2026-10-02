@@ -20,6 +20,9 @@ export const ALL_TIME_START = "2000-01-01"
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10)
 
+const localDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+
 function shift(iso: string, days: number) {
   const d = new Date(`${iso}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() + days)
@@ -34,7 +37,9 @@ export function resolvePeriod(
   q: { range?: string | string[]; from?: string | string[]; to?: string | string[] },
   now = new Date(),
 ): Period {
-  const today = isoDay(now)
+  // Today on this computer's clock (the business's own day), not in UTC, which is already
+  // tomorrow from late afternoon in California.
+  const today = localDay(now)
   const yesterday = shift(today, -1)
   const from = Array.isArray(q.from) ? q.from[0] : q.from
   const to = Array.isArray(q.to) ? q.to[0] : q.to

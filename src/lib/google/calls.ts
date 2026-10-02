@@ -23,11 +23,19 @@ const days = (n: number, now = new Date()) => {
   return `${d.toISOString().slice(0, 10)} 00:00:00`
 }
 
-export async function getCalls(connection: AdsConnection, account: AdsAccount, sinceDays = 30): Promise<Call[]> {
+// The last `sinceDays` days, or exactly the dates picked on the dashboard (`range`, YYYY-MM-DD).
+type Range = { start: string; end: string }
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+const when = (sinceDays: number, range?: Range) =>
+  range && DAY.test(range.start) && DAY.test(range.end)
+    ? `call_view.start_call_date_time BETWEEN '${range.start} 00:00:00' AND '${range.end} 23:59:59'`
+    : `call_view.start_call_date_time >= '${days(sinceDays)}'`
+
+export async function getCalls(connection: AdsConnection, account: AdsAccount, sinceDays = 30, range?: Range): Promise<Call[]> {
   const rows = (await runQuery(
     connection,
     account,
-    `SELECT call_view.start_call_date_time, call_view.call_duration_seconds, call_view.call_status, call_view.caller_area_code, call_view.call_tracking_display_location, campaign.name FROM call_view WHERE call_view.start_call_date_time >= '${days(sinceDays)}' ORDER BY call_view.start_call_date_time DESC LIMIT 500`,
+    `SELECT call_view.start_call_date_time, call_view.call_duration_seconds, call_view.call_status, call_view.caller_area_code, call_view.call_tracking_display_location, campaign.name FROM call_view WHERE ${when(sinceDays, range)} ORDER BY call_view.start_call_date_time DESC LIMIT 500`,
   )) as Row[]
   return rows.map((r) => ({
     start: String(r.callView?.startCallDateTime ?? ""),
@@ -44,13 +52,13 @@ const cache = new Map<string, { at: number; result: { calls: Call[] } | { error:
 const FRESH_MS = 60_000
 
 // Keeps a Google Ads problem from hiding the rest of the page.
-export async function tryGetCalls(connection: AdsConnection, account: AdsAccount, sinceDays = 30) {
-  const key = `${account.customerId}:${sinceDays}`
+export async function tryGetCalls(connection: AdsConnection, account: AdsAccount, sinceDays = 30, range?: Range) {
+  const key = `${account.customerId}:${sinceDays}:${range ? `${range.start}:${range.end}` : ""}`
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < FRESH_MS) return hit.result
   let result: { calls: Call[] } | { error: string }
   try {
-    result = { calls: await getCalls(connection, account, sinceDays) }
+    result = { calls: await getCalls(connection, account, sinceDays, range) }
   } catch (error) {
     result = { error: error instanceof AdsApiError ? error.message : "Google Ads didn't return calls." }
   }
