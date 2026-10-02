@@ -83,6 +83,10 @@ const COLUMNS: { key: string; title: string; match: RegExp }[] = [
 const norm = (v: unknown) => String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ")
 
 // The deals from every year tab, as rows of the combined tab: [Year, ...COLUMNS, From tab].
+// Written back with USER_ENTERED, Sheets would read text like "+we +buy +houses" or "=..." as a
+// formula (#ERROR!): a leading ' keeps it text (the ' isn't shown).
+const asText = (v: unknown) => (typeof v === "string" && /^[=+\-@]/.test(v) && Number.isNaN(Number(v)) ? `'${v}` : v)
+
 async function readDeals(connection: AdsConnection, id: string, tabs: string[]) {
   const yearTabs = tabs.filter((t) => /\b20\d\d\b/.test(t) && t !== COMBINED_TAB && t !== ADS_TAB)
   if (!yearTabs.length) return { rows: [] as unknown[][], used: [] as string[] }
@@ -102,7 +106,7 @@ async function readDeals(connection: AdsConnection, id: string, tabs: string[]) 
     for (const r of body) {
       const cell = (k: string) => (at[k] >= 0 ? (r[at[k]] ?? "") : "")
       if (!String(cell("address")).trim() && !String(cell("name")).trim()) continue
-      rows.push([year, ...COLUMNS.map((c) => cell(c.key)), tab])
+      rows.push([year, ...COLUMNS.map((c) => asText(cell(c.key))), tab])
     }
   })
   return { rows, used }
@@ -172,7 +176,7 @@ function summary(years: number[], campaigns: string[], dealRows: number) {
   campaigns.forEach((c, i) => {
     const r = start + 1 + i
     out.push([
-      c,
+      asText(c),
       `=COUNTIFS(${d("G")},$R${r})`,
       `=SUMIFS(${d("K")},${d("G")},$R${r})`,
       `=SUMIFS(${ads("D")},${ads("C")},$R${r})`,
@@ -237,7 +241,7 @@ export async function syncSheet(connection: AdsConnection, account: AdsAccount) 
     const [{ rows: deals, used }, adsRows] = await Promise.all([readDeals(connection, id, tabs), readAds(connection, account)])
     const stamp = `Updated by One Marketing Command Center on ${new Date().toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}`
 
-    const adsValues = [["Month", "Year", "Campaign", "Spend", "Clicks", "Impressions", "Conversions", "", stamp], ...adsRows]
+    const adsValues = [["Month", "Year", "Campaign", "Spend", "Clicks", "Impressions", "Conversions", "", stamp], ...adsRows.map((r) => r.map(asText))]
     const years = [...new Set([...deals.map((r) => Number(r[0])), ...adsRows.map((r) => Number(r[1]))])].filter(Boolean).sort((a, b) => b - a)
     const campaigns = [...new Set(adsRows.map((r) => String(r[2])))].filter(Boolean).sort()
     const dealValues = [["Year", ...COLUMNS.map((c) => c.title), "From tab"], ...deals]

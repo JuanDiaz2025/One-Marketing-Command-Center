@@ -84,12 +84,17 @@ async function main() {
   if (!account) throw new AdsApiError("This Google account can't open any Google Ads accounts.")
   const connection = { ...base, accounts, selectedCustomerId: account.customerId }
 
-  const previousFile = path.join(out, "previous-p30.json")
-  const seenBefore = new Set<string>(
-    existsSync(previousFile)
-      ? (JSON.parse(readFileSync(previousFile, "utf8")).wasted ?? []).map((w: { term: string }) => w.term.toLowerCase())
-      : [],
-  )
+  // Yesterday's wasted searches, per period: the full list this script saved last time
+  // (seen-p7.json ...), or for 30 days the previous-p30.json handed in.
+  const seenBeforeFor = (id: string) => {
+    const seenFile = path.join(out, `seen-${id}.json`)
+    if (existsSync(seenFile)) return new Set<string>(JSON.parse(readFileSync(seenFile, "utf8")) as string[])
+    const previousFile = path.join(out, "previous-p30.json")
+    if (id === "p30" && existsSync(previousFile)) {
+      return new Set<string>((JSON.parse(readFileSync(previousFile, "utf8")).wasted ?? []).map((w: { term: string }) => w.term.toLowerCase()))
+    }
+    return new Set<string>()
+  }
 
   const periods = [
     ["p7", "7", "day"],
@@ -106,12 +111,14 @@ async function main() {
       getReport(connection, account, period),
       getSearchTerms(connection, account, period).catch(() => []),
       tryGetLocations(connection, account, period),
-      tryGetCalls(connection, account, callDays),
+      tryGetCalls(connection, account, callDays, range === "all" ? undefined : { start: period.start, end: period.end }),
     ])
     const { totals } = report
     const costPerConversion = totals.conversions ? totals.cost / totals.conversions : 0
     const wasted = findWastedSearches(terms, costPerConversion)
+    const seenBefore = seenBeforeFor(id)
     for (const w of wasted.wasted) w.isNew = seenBefore.size > 0 && !seenBefore.has(w.term.toLowerCase())
+    writeFileSync(path.join(out, `seen-${id}.json`), JSON.stringify(wasted.wasted.map((w) => w.term.toLowerCase())))
 
     const issues = await collectIssues(connection, account, report, period, { wasted, costPerConversion, locations, calls, callDays })
 

@@ -136,7 +136,8 @@ export async function getInsights(connection: AdsConnection, account: AdsAccount
         q(
           "SELECT conversion_action.name, conversion_action.status, conversion_action.category, conversion_action.primary_for_goal FROM conversion_action WHERE conversion_action.status != 'REMOVED'",
         ),
-        q(`SELECT segments.conversion_action_name, metrics.all_conversions FROM customer WHERE ${during}`).catch(() => [] as Row[]),
+        // If this fails the tab shows an error, rather than every action at 0 ("broken").
+        q(`SELECT segments.conversion_action_name, metrics.all_conversions FROM customer WHERE ${during}`),
       ])
       const byName = new Map<string, number>()
       for (const r of counts) {

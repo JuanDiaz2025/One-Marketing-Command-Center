@@ -35,6 +35,7 @@ export default function TrendChart({
   const last = data.length - 1
   const shown = active ?? last
   const point = data[shown]
+  if (!point) return null // no days with data
 
   function onMove(e: React.PointerEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect()

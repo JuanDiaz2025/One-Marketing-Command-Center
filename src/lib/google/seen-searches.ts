@@ -11,7 +11,13 @@ const KEEP_MS = 180 * 86_400_000
 
 // Records the keys and returns when each was first seen. On the first look at an account nothing
 // is new yet (every search would be), so those come back without a date.
-export async function firstSeen(sub: string, customerId: string, keys: string[], now = Date.now()) {
+// `record` is false for periods other than the last 30 days: an older or longer range brings up
+// searches that aren't new, so those are only looked up, never stamped (or pruned).
+export async function firstSeen(sub: string, customerId: string, keys: string[], now = Date.now(), record = true) {
+  if (!record) {
+    const seen = (await file.read())[`${sub}:${customerId}`] ?? {}
+    return new Map(keys.map((key) => [key, seen[key]]))
+  }
   return file.update((db) => {
     const id = `${sub}:${customerId}`
     const firstLook = !db[id]

@@ -67,7 +67,8 @@ export async function tryGetCalls(connection: AdsConnection, account: AdsAccount
 }
 
 // Missed calls from ads, as a dashboard problem: each one may be a seller who didn't get through.
-export function missedCallIssue(calls: Call[], sinceDays: number): Issue | null {
+// `when` describes the calls' dates: "in the last 30 days", "from Aug 1 to Aug 31"...
+export function missedCallIssue(calls: Call[], when: string): Issue | null {
   const missed = calls.filter((c) => c.missed)
   if (!missed.length) return null
   const campaigns = [...new Set(missed.map((c) => c.campaign).filter(Boolean))]
@@ -75,8 +76,8 @@ export function missedCallIssue(calls: Call[], sinceDays: number): Issue | null 
     id: "missed-calls",
     severity: missed.length >= 3 ? "high" : "medium",
     title: `${missed.length} call${missed.length === 1 ? "" : "s"} from your ads went unanswered`,
-    detail: `In the last ${sinceDays} days, out of ${calls.length} calls${campaigns.length ? `, from ${campaigns.slice(0, 3).map((c) => `"${c}"`).join(", ")}` : ""}. The Leads page lists them with the caller's area code.`,
+    detail: `${when.charAt(0).toUpperCase()}${when.slice(1)}, out of ${calls.length} calls${campaigns.length ? `, from ${campaigns.slice(0, 3).map((c) => `"${c}"`).join(", ")}` : ""}. The Leads page lists them with the caller's area code.`,
     fix: "Call them back from Google Ads → Campaigns → Insights and reports → Call details, forward the number to someone who can answer, and use an ad schedule so call ads only run when someone is there.",
-    question: `${missed.length} of our ${calls.length} Google Ads calls in the last ${sinceDays} days were missed. How do we find those callers in Google Ads, and what should we change so fewer calls are missed?`,
+    question: `${missed.length} of our ${calls.length} Google Ads calls ${when} were missed. How do we find those callers in Google Ads, and what should we change so fewer calls are missed?`,
   }
 }

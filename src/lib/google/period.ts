@@ -51,6 +51,7 @@ export function resolvePeriod(
     if (end > today) end = today
     if (start > end) start = end
     if (start < ALL_TIME_START) start = ALL_TIME_START
+    if (end < start) end = start
     return { preset: "custom", start, end, today }
   }
 

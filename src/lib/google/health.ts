@@ -91,6 +91,18 @@ export async function getHealthIssues(
     ),
   ])
 
+  // Google didn't answer the checks: say so, rather than "No problems found".
+  if (!statusRows && !adRows && !keywordRows) {
+    issues.push({
+      id: "checks-failed",
+      severity: "medium",
+      title: "Couldn't check your campaigns, ads and keywords",
+      detail: "Google Ads didn't answer the checks this time, so problems may be hidden.",
+      fix: "Refresh the page in a few minutes. If it stays, connect Google Ads again on this page.",
+      question: "The Google Ads health checks couldn't run (Google didn't answer). What could cause that?",
+    })
+  }
+
   // Ads Google won't show, or shows less.
   if (adRows?.length) {
     const disapproved = adRows.filter((r) => r.adGroupAd?.policySummary && (r.adGroupAd.policySummary as { approvalStatus?: string }).approvalStatus === "DISAPPROVED")
@@ -157,7 +169,7 @@ export async function getHealthIssues(
     const withImpressions = new Set(report.campaigns.filter((c) => c.impressions > 0).map((c) => c.id))
     const silent = statusRows
       .map((r) => r.campaign as { id?: string; name?: string; primaryStatus?: string } | undefined)
-      .filter((c) => c?.id && c.name && !withImpressions.has(String(c.id)) && c.primaryStatus !== "NOT_ELIGIBLE" && c.primaryStatus !== "MISCONFIGURED")
+      .filter((c) => c?.id && c.name && !withImpressions.has(String(c.id)) && !["NOT_ELIGIBLE", "MISCONFIGURED", "ENDED", "PENDING", "PAUSED", "REMOVED"].includes(c.primaryStatus ?? ""))
       .map((c) => c!.name!)
     if (silent.length) {
       issues.push({
@@ -268,5 +280,5 @@ export async function collectIssues(
   if (!("error" in found.locations)) {
     issues = addIssues(issues, locationIssues(found.locations, report, account.currency, period))
   }
-  return addIssues(issues, ["calls" in found.calls ? missedCallIssue(found.calls.calls, found.callDays) : null])
+  return addIssues(issues, ["calls" in found.calls ? missedCallIssue(found.calls.calls, period.preset === "all" ? `in the last ${found.callDays} days` : describePeriod(period)) : null])
 }
