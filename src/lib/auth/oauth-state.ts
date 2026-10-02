@@ -30,8 +30,14 @@ export async function takeOAuthState() {
 }
 
 // Only same-site paths, so a crafted ?next= can't send people to another website.
+// Browsers drop tabs and newlines in addresses ("/\t/evil.com" becomes "//evil.com"), so the
+// final check is where the address really leads.
 export function safeNext(next: string | null | undefined, fallback = "/dashboard") {
-  return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\")
-    ? next
-    : fallback
+  if (!next || !next.startsWith("/") || /[\x00-\x1f\\]/.test(next)) return fallback
+  try {
+    const url = new URL(next, "http://app.invalid")
+    return url.origin === "http://app.invalid" ? `${url.pathname}${url.search}${url.hash}` : fallback
+  } catch {
+    return fallback
+  }
 }

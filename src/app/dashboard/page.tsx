@@ -203,7 +203,8 @@ const RECENT_MS = 3 * 60_000
 const recent = ((globalThis as typeof globalThis & { __omccDashboard?: Map<string, { at: number; result: Promise<Loaded> }> }).__omccDashboard ??= new Map())
 async function loadRecent(user: Session, period: Period) {
   const connection = await getConnection(user.sub)
-  const key = JSON.stringify([user.sub, connection?.refreshToken.slice(-8), connection?.selectedCustomerId, period])
+  // (accountsFetchedAt: "Refresh account list" clears it, so that asks Google again.)
+  const key = JSON.stringify([user.sub, connection?.refreshToken.slice(-8), connection?.selectedCustomerId, connection?.accountsFetchedAt, period])
   const hit = recent.get(key)
   if (hit && Date.now() - hit.at < RECENT_MS) return hit.result
   const result = load(user, period)

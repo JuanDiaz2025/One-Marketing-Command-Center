@@ -121,7 +121,9 @@ export default async function LeadsPage() {
   // Ads are handled after the page is sent, so it never waits on them; the page updates itself
   // when they change anything (LiveRefresh).
   after(() => catchUp(user.sub))
-  const [qrCodes, leads, calls, version] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub), leadsVersion()])
+  // The version first: a change saved while the leads are read then still shows on the next check.
+  const version = await leadsVersion()
+  const [qrCodes, leads, calls] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub)])
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0

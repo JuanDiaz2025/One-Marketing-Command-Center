@@ -77,7 +77,7 @@ export default async function QrCodePage({ params }: PageProps<"/leads/qr/[id]">
             )}
             <section className="flex flex-col gap-3">
               <h2 className="font-semibold">Download and print</h2>
-              <QrDownloads qrCodeId={id} url={url} name={code.placement} message={code.headline} />
+              <QrDownloads qrCodeId={id} url={url} name={code.placement} businessName={code.businessName} message={code.headline} />
             </section>
 
             <section className="rounded-2xl border bg-card p-5 text-sm">

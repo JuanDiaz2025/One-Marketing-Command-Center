@@ -27,11 +27,14 @@ export default function QrDownloads({
   qrCodeId,
   url,
   name,
+  businessName,
   message,
 }: {
   qrCodeId: string
   url: string
+  // The placement ("Yard sign, 123 Main St") names the files; the poster shows the business name.
   name: string
+  businessName?: string
   message: string
 }) {
   const [copied, setCopied] = useState(false)
@@ -46,7 +49,7 @@ export default function QrDownloads({
   }
 
   function downloadPdf() {
-    const href = URL.createObjectURL(buildPosterPdf({ url, title: name, message }))
+    const href = URL.createObjectURL(buildPosterPdf({ url, title: businessName || name, message }))
     download(href, `${slug(name)}-poster.pdf`)
     setTimeout(() => URL.revokeObjectURL(href), 1000)
   }

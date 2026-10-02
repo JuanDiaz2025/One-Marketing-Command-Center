@@ -11,6 +11,7 @@ import { accessToken, AdsApiError, runQuery } from "@/lib/google/ads"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
 import { SHEETS_SCOPE } from "@/lib/google/oauth"
 import { jsonFileStore } from "@/lib/json-file-store"
+import { shared } from "@/lib/shared-state"
 
 export const ADS_TAB = "Google Ads data"
 export const COMBINED_TAB = "2024–2026 Combined"
@@ -308,15 +309,16 @@ export async function readCombined(connection: AdsConnection): Promise<CombinedV
 }
 
 // Keeps the sheet fresh: at most every 6 hours, when the app is used.
-let running: Promise<unknown> | null = null
+// One for the whole app (pages and API routes alike), see shared-state.ts.
+const sheetRun = shared("sheet-sync-run", () => ({ running: null as Promise<unknown> | null }))
 export function syncSheetIfDue(connection: AdsConnection, account: AdsAccount) {
-  if (running) return running
-  running = (async () => {
+  if (sheetRun.running) return sheetRun.running
+  sheetRun.running = (async () => {
     const s = await file.read()
     if (!s.spreadsheetId || (s.lastSync && Date.now() - Date.parse(s.lastSync) < SYNC_EVERY_MS)) return
     await syncSheet(connection, account).catch(() => {})
   })().finally(() => {
-    running = null
+    sheetRun.running = null
   })
-  return running
+  return sheetRun.running
 }

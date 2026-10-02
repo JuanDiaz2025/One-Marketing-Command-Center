@@ -50,12 +50,17 @@ export default function QrLanding({ content, qrCodeId }: QrLandingProps) {
       return
     }
     startTransition(async () => {
-      const result = await submitLeadAction(qrCodeId, lead)
-      if (result.ok) {
-        setSent(true)
-        window.scrollTo({ top: 0 })
-      } else {
-        setErrors(result.errors)
+      try {
+        const result = await submitLeadAction(qrCodeId, lead)
+        if (result.ok) {
+          setSent(true)
+          window.scrollTo({ top: 0 })
+        } else {
+          setErrors(result.errors)
+        }
+      } catch {
+        // Weak signal, or the app restarting: keep what they typed and let them try again.
+        setErrors({ form: "Couldn't send. Check your connection and press Send again." })
       }
     })
   }

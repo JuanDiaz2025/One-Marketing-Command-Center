@@ -3,13 +3,19 @@ import { headers } from "next/headers"
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"])
 
+// This computer's address on the Wi-Fi or office network, skipping virtual adapters (WSL, Hyper-V,
+// VirtualBox, VMware, Docker, VPNs) that phones can't reach, and private ranges first.
 function lanAddress() {
-  for (const list of Object.values(networkInterfaces())) {
+  const VIRTUAL = /vethernet|virtualbox|vmware|wsl|hyper-v|docker|loopback|vpn|tailscale|zerotier|tap|tun/i
+  const PRIVATE = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/
+  const found: string[] = []
+  for (const [name, list] of Object.entries(networkInterfaces())) {
+    if (VIRTUAL.test(name)) continue
     for (const net of list ?? []) {
-      if (net.family === "IPv4" && !net.internal) return net.address
+      if (net.family === "IPv4" && !net.internal && !net.address.startsWith("169.254.")) found.push(net.address)
     }
   }
-  return null
+  return found.find((a) => PRIVATE.test(a)) ?? found[0] ?? null
 }
 
 // The public link a customer's phone opens when scanning the QR code.

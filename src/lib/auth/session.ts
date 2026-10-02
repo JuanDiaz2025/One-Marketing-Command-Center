@@ -21,7 +21,7 @@ export const cookieOptions = {
   httpOnly: true,
   sameSite: "lax",
   // Only over https: the app on this computer (or a phone on the same Wi-Fi) uses plain http.
-  secure: process.env.NODE_ENV === "production" && Boolean(process.env.SITE_URL?.startsWith("https://")),
+  secure: process.env.NODE_ENV === "production" && process.env.OMCC_LOCAL !== "1" && Boolean(process.env.SITE_URL?.startsWith("https://")),
   path: "/",
 } as const
 

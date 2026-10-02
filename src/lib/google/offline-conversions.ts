@@ -15,6 +15,7 @@ import { ingestEvents, requestStatus } from "@/lib/google/data-manager"
 import type { AdsAccount, AdsConnection } from "@/lib/google/connections"
 import { DATA_MANAGER_SCOPE } from "@/lib/google/oauth"
 import { jsonFileStore } from "@/lib/json-file-store"
+import { shared } from "@/lib/shared-state"
 import { applyStatus } from "@/lib/leads/status"
 import { listLeads, updateLead } from "@/lib/leads/store"
 import { conversionKinds, type ConversionKind, type Lead, type LeadStatus } from "@/lib/leads/types"
@@ -228,7 +229,13 @@ const NOT_FOUND_BEFORE = /^(?!Google can't find)[\s\S]*Resource not found/i
 // Refusals that depend on which account the lead went to.
 const ACCOUNT_RELATED = /Resource not found|can't find the conversion action|terms for enhanced conversions|customer data terms|PERMISSION_DENIED|can't use that Google Ads account/i
 const MAX_TRIES = 12
-let lastRelookup = 0
+// One for the whole app (pages and API routes alike), see shared-state.ts.
+const run = shared("conversions-run", () => ({
+  lastRelookup: 0,
+  running: null as Promise<void> | null,
+  // Asked again during a run: go once more after it, with the latest account (it may have changed).
+  again: null as { connection: AdsConnection; account: AdsAccount } | null,
+}))
 const RETRY_AFTER_MS = 60 * 60_000
 
 async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead, kind: ConversionKind) {
@@ -272,8 +279,8 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
     error = e instanceof Error ? e.message : String(e)
     code = e instanceof AdsApiError ? (e.code ?? "") : ""
     // The conversion action may have been removed or replaced in Google Ads: look them up again next time.
-    if (code === "NOT_FOUND" && Date.now() - lastRelookup > 10 * 60_000) {
-      lastRelookup = Date.now()
+    if (code === "NOT_FOUND" && Date.now() - run.lastRelookup > 10 * 60_000) {
+      run.lastRelookup = Date.now()
       owners.clear()
       await actionsFile.update((db) => {
         if (db[account.customerId]) delete db[account.customerId].checkedAt
@@ -406,17 +413,14 @@ export async function setLeadStatus(id: string, status: LeadStatus) {
 }
 
 // Sends every conversion waiting to go: new ones at once, retries at most hourly.
-let running: Promise<void> | null = null
-// Asked again during a run: go once more after it, with the latest account (it may have changed).
-let again: { connection: AdsConnection; account: AdsAccount } | null = null
 export function sendPendingConversions(connection: AdsConnection, account: AdsAccount): Promise<void> {
   // Asked again while a run is going (e.g. a status was just changed): go once more after it,
   // so the new conversion isn't left for the next page load.
-  if (running) {
-    again = { connection, account }
-    return running
+  if (run.running) {
+    run.again = { connection, account }
+    return run.running
   }
-  running = (async () => {
+  run.running = (async () => {
     // Failed in another Google Ads account (you picked another one, or the app now opens on your
     // main account): give it another go in this one, at most a few times, so switching back and
     // forth can't resend the same failures without end. Lead statuses are respected below.
@@ -485,14 +489,14 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
       }
     }
   })().finally(() => {
-    running = null
-    if (again) {
-      const next = again
-      again = null
+    run.running = null
+    if (run.again) {
+      const next = run.again
+      run.again = null
       void sendPendingConversions(next.connection, next.account).catch((error) => console.error("Couldn't send conversions to Google Ads:", error))
     }
   })
-  return running
+  return run.running
 }
 
 // Sends every waiting or failed conversion again now, without the hourly wait (the Leads page's
