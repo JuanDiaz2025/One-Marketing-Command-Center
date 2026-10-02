@@ -141,6 +141,15 @@ Not needed with the Lead Saver plugin; useful for other form plugins. It only wo
 
 Every request must carry the secret key (`?key=…` in the address, or an `X-Webhook-Secret` header). A test request with GET to the same address answers `{"ok": true}` without adding a lead.
 
+## Google Sheet: Google Ads data and 2024–2026 deals
+
+On the Leads page, **Google Sheet** links your spreadsheet (paste its link, click **Connect and sync**). The app adds and keeps up to date two tabs, and never changes any other tab:
+
+- **Google Ads data**: spend, clicks, impressions and conversions per campaign per month since January 2024.
+- **2024–2026 Combined**: every deal from the year tabs (any tab with a year in its name whose first row has Address and Marketing Fee columns, e.g. 2026, 2025, PENDING 2024), one row each with the year from the tab's name, plus a summary by year and by Google Ads campaign: deals, marketing fees, ad spend, ad spend per (PPC) deal and return on ad spend, as formulas over the two tabs.
+
+It refreshes at most every 6 hours while the app is used, or with **Sync now**. It needs the Google Sheets API turned on in the Google Cloud project of the app's sign-in client, and Google Ads connected again so Google grants the spreadsheets permission.
+
 ## Daily Google Ads check
 
 `npm run daily-check -- <folder>` pulls the dashboard's numbers and problems (including locations) for the last 7, 30 and 90 days and all time, and writes them to that folder as JSON, plus `summary.md`: what's wrong in the last 30 days, most serious first, with how to fix each one. A scheduled Claude session runs it every morning, loads the results into the live Command Center page, and sends the summary.
@@ -156,6 +165,7 @@ Everything is saved in the `.data/` folder next to the app (it's never committed
 - `wordpress.json`: your website's address and how far its saved leads have been picked up.
 - `conversion-actions.json`: which Google Ads conversion action each lead stage goes to (your own "Qualified lead" / "Converted lead", found automatically, or one you picked on the Leads page).
 - `lead-scoring.json`: whether the status is set from each lead's score (on unless you turn it off).
+- `sheet-sync.json`: the linked Google Sheet and when it was last updated.
 - `chats.json`: your chat conversations (the latest 50 per person), so they're still there after a refresh or a restart. **Past chats** in the chat lists them; **New chat** starts a fresh one.
 - `chat-problem.log`: why the chat last answered without its tools, if it did.
 - `public-url`: the tunnel address from go-online.bat.

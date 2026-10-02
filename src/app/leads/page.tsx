@@ -9,6 +9,7 @@ import LeadsTable, { type LeadRow } from "@/components/leads/leads-table"
 import LiveRefresh from "@/components/leads/live-refresh"
 import PhoneCalls from "@/components/leads/phone-calls"
 import SendingCheck from "@/components/leads/sending-check"
+import SheetSync from "@/components/leads/sheet-sync"
 import WebhookSetup from "@/components/leads/webhook-setup"
 import { formatNumber } from "@/components/dashboard/format"
 import { buttonVariants } from "@/components/ui/button"
@@ -18,6 +19,7 @@ import { requireSession } from "@/lib/auth/session"
 import { activeAccount } from "@/lib/google/active-account"
 import { tryGetCalls } from "@/lib/google/calls"
 import { sendPendingConversions } from "@/lib/google/offline-conversions"
+import { getSheetSync, syncSheetIfDue } from "@/lib/google/sheets-sync"
 import { syncWordPress } from "@/lib/leads/wordpress"
 import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes, scoreUnscored } from "@/lib/leads/store"
@@ -117,7 +119,11 @@ async function loadCalls(sub: string) {
 async function sendConversions(sub: string) {
   try {
     const active = await activeAccount(sub)
-    if (active) await sendPendingConversions(active.connection, active.account)
+    if (active) {
+      // The Google Sheet catches up in the background (at most every 6 hours).
+      void syncSheetIfDue(active.connection, active.account)
+      await sendPendingConversions(active.connection, active.account)
+    }
   } catch (error) {
     console.error("Couldn't send conversions to Google Ads:", error)
   }
@@ -133,7 +139,7 @@ export default async function LeadsPage() {
     Promise.all([scoreUnscored().then(() => syncWordPress()), sendConversions(user.sub)]),
     new Promise((resolve) => setTimeout(resolve, 3000)),
   ])
-  const [qrCodes, leads, calls] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub)])
+  const [qrCodes, leads, calls, sheet] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub), getSheetSync()])
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0
@@ -255,6 +261,8 @@ export default async function LeadsPage() {
         </section>
 
         <PhoneCalls result={calls} />
+
+        <SheetSync {...sheet} />
 
         <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} />
       </main>

@@ -8,6 +8,8 @@ export const ADS_SCOPE = "https://www.googleapis.com/auth/adwords"
 // Sending offline conversions (interested / closed leads) back to Google Ads goes through
 // Google's Data Manager API, which needs its own permission.
 export const DATA_MANAGER_SCOPE = "https://www.googleapis.com/auth/datamanager"
+// Writing Google Ads results and the combined deals tab into your Google Sheet.
+export const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets"
 
 // "signin" asks only for the Google account; "ads" also asks to manage Google Ads, and for a
 // refresh token so the dashboard keeps working after the person leaves.
@@ -27,7 +29,7 @@ export function authorizationUrl(options: {
   loginHint?: string
 }) {
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth")
-  const scopes = options.intent === "ads" ? [...SIGN_IN_SCOPES, ADS_SCOPE, DATA_MANAGER_SCOPE] : SIGN_IN_SCOPES
+  const scopes = options.intent === "ads" ? [...SIGN_IN_SCOPES, ADS_SCOPE, DATA_MANAGER_SCOPE, SHEETS_SCOPE] : SIGN_IN_SCOPES
   url.search = new URLSearchParams({
     client_id: googleConfig().clientId,
     redirect_uri: options.redirectUri,
