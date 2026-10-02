@@ -29,6 +29,8 @@ export const ACTIONS: Record<ConversionKind, { name: string; category: string; l
 // Per account: the conversion action each stage goes to, and whether you picked it yourself.
 type Targets = { interested?: string; closed?: string; invalid?: string; chosen?: Partial<Record<ConversionKind, boolean>>; checkedAt?: string; v?: 2 }
 const actionsFile = jsonFileStore<Record<string, Targets>>("conversion-actions.json", () => ({}))
+// The account conversions were last sent to.
+const lastAccount = jsonFileStore<{ customerId?: string }>("conversion-account.json", () => ({}))
 const RECHECK_MS = 24 * 60 * 60_000
 
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex")
@@ -397,6 +399,24 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
     return running
   }
   running = (async () => {
+    // Sending to a different Google Ads account than before (you picked another one, or the app
+    // now opens on your main account): what failed in the other account gets another go here.
+    const last = await lastAccount.read()
+    if (last.customerId !== account.customerId) {
+      // (Also once when this is first recorded, since failures may come from another account.)
+      for (const lead of await listLeads()) {
+        for (const kind of conversionKinds) {
+          if (lead.conversions?.[kind]?.state !== "failed") continue
+          await updateLead(lead.id, (l) => {
+            const e = l.conversions?.[kind]
+            if (e?.state === "failed") l.conversions![kind] = { state: "pending", at: e.at, value: e.value, rule: e.rule }
+          })
+        }
+      }
+      await lastAccount.update((s) => {
+        s.customerId = account.customerId
+      })
+    }
     const leads = await listLeads()
     for (const lead of leads) {
       for (const kind of conversionKinds) {

@@ -36,6 +36,7 @@ import { requireSession, type Session } from "@/lib/auth/session"
 import { refreshAccountsAction, selectAccountAction } from "@/lib/google/actions"
 import {
   AdsApiError,
+  chosenAccount,
   formatCustomerId,
   getReport,
   getSearchTerms,
@@ -111,8 +112,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
       })
     }
     const account =
-      connection.accounts.find((a) => a.customerId === connection.selectedCustomerId) ??
-      connection.accounts[0]
+      chosenAccount(connection.accounts, connection.selectedCustomerId)
     if (!account) return { kind: "no-accounts", connection }
     // Calls cover the same stretch as the period (all time: the last year).
     const callDays = Math.min(365, Math.round((Date.parse(period.end) - Date.parse(period.start)) / 86_400_000) + 1)

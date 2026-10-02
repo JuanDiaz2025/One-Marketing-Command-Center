@@ -6,7 +6,7 @@ import { dropQuestion, saveQuestion, saveReply } from "@/lib/assistant/history"
 import { askOpenAI } from "@/lib/assistant/openai"
 import { AssistantError, assistantProvider } from "@/lib/assistant/shared"
 import { getSession } from "@/lib/auth/session"
-import { formatCustomerId, listAccounts } from "@/lib/google/ads"
+import { chosenAccount, formatCustomerId, listAccounts } from "@/lib/google/ads"
 import { getConnection, updateConnection } from "@/lib/google/connections"
 
 const requestSchema = z.object({
@@ -51,9 +51,7 @@ export async function POST(request: Request) {
     }
   }
   const account =
-    connection?.accounts.find((a) => a.customerId === connection.selectedCustomerId) ??
-    connection?.accounts[0] ??
-    null
+    (connection && chosenAccount(connection.accounts, connection.selectedCustomerId)) ?? null
 
   const today = new Date().toISOString().slice(0, 10)
   const situation =

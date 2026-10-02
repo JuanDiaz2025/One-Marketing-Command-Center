@@ -170,13 +170,22 @@ export async function listAccounts(connection: AdsConnection): Promise<AdsAccoun
   }
 
   if (!accounts.size && failures.length) throw failures[0]
-  // Real accounts before test accounts, so the dashboard opens on real numbers.
-  return [...accounts.values()].sort(
-    (a, b) => Number(a.test) - Number(b.test) || a.name.localeCompare(b.name),
-  )
+  return [...accounts.values()].sort(byPreference)
 }
 
 export const formatCustomerId = (id: string) => id.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3")
+
+// Real accounts before test accounts, and accounts with a name (like "Twin Home Buyer") before
+// unnamed ones that only show their number, so the app opens on the business's main account.
+const unnamed = (a: AdsAccount) => a.name === formatCustomerId(a.customerId) || /^\d[\d-]*$/.test(a.name)
+function byPreference(a: AdsAccount, b: AdsAccount) {
+  return Number(a.test) - Number(b.test) || Number(unnamed(a)) - Number(unnamed(b)) || a.name.localeCompare(b.name)
+}
+
+// The account you picked on the Google Ads page, or else the best guess at your main one.
+export function chosenAccount(accounts: AdsAccount[], selectedCustomerId?: string) {
+  return accounts.find((a) => a.customerId === selectedCustomerId) ?? [...accounts].sort(byPreference)[0]
+}
 
 export type Metrics = {
   cost: number
