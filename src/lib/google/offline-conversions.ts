@@ -329,6 +329,15 @@ const humanize = (reason: string) => {
   const code = reason.replace(/^PROCESSING_(ERROR|WARNING)_REASON_/, "")
   return REASONS[code] ?? REASONS[reason] ?? code.toLowerCase().replace(/_/g, " ")
 }
+// Whether a conversion should still reach Google: a qualified/closed one while the lead is good
+// (set Interested or further, or queued by a Google Ads rule), an invalid-lead report while it's
+// Not interested (or one a rule queued).
+function wanted(lead: Lead, kind: ConversionKind, entry: { rule?: string }) {
+  const status = lead.status ?? "new"
+  if (kind === "invalid") return status === "not_interested" || Boolean(entry.rule)
+  return status !== "not_interested" && (Boolean(entry.rule) || status !== "new")
+}
+
 // Google refused the click ID itself (a typed-in test, or a click from another account).
 const BAD_CLICK = /INVALID_(GCLID|GBRAID|WBRAID|CLICK_ID)|CLICK_NOT_FOUND/i
 
@@ -357,7 +366,7 @@ async function checkDecision(connection: AdsConnection, lead: Lead, kind: Conver
   // Refused only because of the click ID: send it again matched by the lead's email/phone (once),
   // if it still stands (the lead wasn't moved back since).
   const rawReasons = decided.status === "rejected" ? lastReasons : ""
-  const stillWanted = kind === "invalid" ? lead.status === "not_interested" : !["new", "not_interested"].includes(lead.status ?? "new")
+  const stillWanted = wanted(lead, kind, entry)
   if (decided.status === "rejected" && BAD_CLICK.test(rawReasons) && !entry.noClick && identifiers(lead).length && stillWanted) {
     await updateLead(lead.id, (l) => {
       const e = l.conversions?.[kind]
@@ -496,14 +505,14 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
         // nothing to show or take back; on a good lead refused only for its click ID, send it again
         // matched by email/phone (once).
         if (kind !== "invalid" && entry?.state === "sent" && entry.google?.status === "rejected" && !entry.retraction) {
-          if (lead.status === "new" || lead.status === "not_interested") {
+          if (!wanted(lead, kind, entry)) {
             await updateLead(lead.id, (l) => {
               if (l.conversions?.[kind]?.google?.status === "rejected") delete l.conversions[kind]
             })
             delete lead.conversions![kind]
             continue
           }
-          if (!entry.noClick && /click id|gclid|gbraid|wbraid/i.test(entry.google.reason ?? "") && identifiers(lead).length) {
+          if (!entry.noClick && /click id|gclid|gbraid|wbraid|ad click/i.test(entry.google.reason ?? "") && identifiers(lead).length) {
             const again = { state: "pending" as const, at: entry.at, value: entry.value, rule: entry.rule, transactionId: `${entry.transactionId ?? `${lead.id}-${kind}`}-p`, noClick: true }
             await updateLead(lead.id, (l) => {
               if (l.conversions?.[kind]?.google?.status === "rejected") l.conversions[kind] = again
@@ -561,7 +570,7 @@ export async function retryNow(connection: AdsConnection, account: AdsAccount) {
       if (kind !== "invalid" && lead.status === "not_interested") continue
       await updateLead(lead.id, (l) => {
         const e = l.conversions?.[kind]
-        if (e && (e.state === "pending" || e.state === "failed")) l.conversions![kind] = { state: "pending", at: e.at, value: e.value, rule: e.rule, transactionId: e.transactionId }
+        if (e && (e.state === "pending" || e.state === "failed")) l.conversions![kind] = { state: "pending", at: e.at, value: e.value, rule: e.rule, transactionId: e.transactionId, noClick: e.noClick }
       })
     }
   }

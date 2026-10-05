@@ -41,7 +41,8 @@ export function applyStatus(lead: Lead, status: LeadStatus, by: "auto" | "you", 
   if (status === "new") {
     for (const kind of ["interested", "closed"] as const) {
       const entry = lead.conversions[kind]
-      if (!entry) continue
+      // A Google Ads rule's decision doesn't depend on the status: leave it.
+      if (!entry || entry.rule) continue
       if (entry.state === "sent" && entry.google?.status !== "rejected") {
         if (!entry.retraction) entry.retraction = { state: "pending", at: now }
       } else if (entry.state !== "sent" && entry.transactionId) {

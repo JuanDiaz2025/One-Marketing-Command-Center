@@ -2,21 +2,29 @@
 // house) and suggests the negative keyword that would block each one.
 import type { SearchTerm } from "@/lib/google/ads"
 
-// Searches from people who want to sell a house: never flagged, whatever they cost (they're the
-// ones the ads are for). Checked before the "not a seller" words, so "behind on my mortgage, sell
-// house" or "sell my rental property" stay.
-const SELLER =
-  /\b(sell|selling|sale by owner|fsbo|we buy|buy my|buys? (houses?|homes?|propert(y|ies)|land)|cash (for|offer|buyers?|home|house|homes|houses)|(house|home|property) buyers? (near|in|for|company|companies)|companies that buy|investors? (who )?(buy|buying)|foreclos\w*|behind on (my )?(mortgage|payments)|inherit\w*|probate|as[- ]is|fixer|distressed|divorce|relocat\w*|tired landlord|code violations?|condemned|fire damage|ugly (house|home)|unwanted (house|home|property)|get rid of (my |a )?(house|home|property)|offer (on|for) my|what is my (house|home) worth|how much (is|can i get for) my (house|home))\b/i
+// About a house or property at all (a seller always is). "Real estate", not "estate" ("estate
+// sale", "estate attorney"); "land", not "lot".
+const PROPERTY = /\b(house|houses|home|homes|property|properties|condo|condos|townhouse|townhome|duplex|triplex|land|real estate|realtor|realty|mobile home)\b/i
 
-// About a house or property at all (if not, it can't be a seller).
-const PROPERTY = /\b(house|houses|home|homes|property|properties|condo|condos|townhouse|townhome|duplex|triplex|land|lot|lots|real estate|realtor|realty|mobile home|estate)\b/i
+// Wants to sell (or sell to a buyer like us): seller words next to a property word, so "sell my
+// car" or "cash for gold" don't count. Also written without spaces, and home-buying companies'
+// names, which sellers search.
+const SELL_TALK = /\b(sell|selling|sold|we buy|who buys?|that buys?|companies that buy|buy my|buys (houses?|homes?)|cash (for|offer|buyers?)|instant offer|(house|home|property) buyers?)\b/i
+const SELLER_NAMES = /(webuy\w*houses|webuy\w*homes|sellmyhouse|sellmyhome|cashforhouses|opendoor|offerpad|homevestors|ugly ?houses?)/i
+// Reasons people sell, that mean a seller even without a property word.
+const SELLER_SITUATION =
+  /\b(behind on (my )?(mortgage|payments)|(stop|stopping|avoid|avoiding) foreclosure|pre-?foreclosure|tired (of being a )?landlord|(bad|problem) tenants?|short sale|code violations?|condemned (house|home|property)?|(fire|water) damaged? (house|home|property))\b/i
+// Reasons people sell, when it's about a house: "inherited house", "divorce house", "as is home".
+const SELLER_REASON = /\b(inherit\w*|probate|divorc\w*|as[- ]is|fixer|distressed|relocat\w*|ugly|unwanted|foreclos\w*|get rid of|what is my|how much is my|worth)\b/i
+// Shopping for a home, even when the words sound like a seller's: "foreclosed homes for sale",
+// "fixer upper homes for sale", "buy house cash".
+const BUYER = /\b(for sale|foreclosures? near me|foreclosed (homes?|houses?|properties)|foreclosure (listings?|auctions?)|bank owned|reo|buy(ing)? (a |an )?(house|home|houses|homes|property|condo|land)|open house|first time home ?buyers?|pre-?approv\w*)\b/i
 
 // Words that mean the searcher isn't a seller. Edit these to fit your market.
 const junk: { reason: string; words: string[]; always?: boolean }[] = [
   // Flagged even next to seller words ("we buy houses jobs").
   { reason: "Job seeker", always: true, words: ["job", "jobs", "hiring", "career", "careers", "salary", "internship", "employment", "resume"] },
   { reason: "Renter", words: ["rent", "rental", "rentals", "apartment", "apartments", "lease", "leasing", "roommate", "section 8"] },
-  { reason: "Home buyer, not seller", words: ["homes for sale", "houses for sale", "house for sale", "for sale near me", "buy a house", "buying a house", "buy a home", "first time home buyer", "first time homebuyer", "open house", "pre approval", "preapproval"] },
   { reason: "Wants a loan, not to sell", words: ["mortgage", "mortgages", "refinance", "refi", "heloc", "home equity", "loan", "loans", "lender", "lenders"] },
   { reason: "Research or DIY", words: ["how to", "diy", "course", "class", "classes", "license", "training", "school", "reddit", "youtube", "definition", "meaning", "what is"] },
   { reason: "Looking for free stuff", words: ["free"] },
@@ -58,15 +66,29 @@ export function findWastedSearches(terms: SearchTerm[], costPerConversion: numbe
   const wasted: WastedSearch[] = []
   for (const t of terms) {
     if (t.conversions >= 0.5 || t.cost <= 0) continue
-    const always = patterns.find((p) => p.always && p.re.test(t.term))
-    if (always) {
-      wasted.push({ ...t, reason: always.reason, negative: `"${always.word}"` })
+    const term = t.term
+    const flag = (reason: string, negative: string) => wasted.push({ ...t, reason, negative })
+    // Job seekers, even next to seller words ("we buy houses jobs"), but not "job relocation".
+    const job = patterns.find((p) => p.always && p.re.test(term))
+    if (job && !/relocat/i.test(term)) {
+      flag(job.reason, `"${job.word}"`)
       continue
     }
-    if (SELLER.test(t.term)) continue
-    const match = patterns.find((p) => p.re.test(t.term))
-    if (match) wasted.push({ ...t, reason: match.reason, negative: `"${match.word}"` })
-    else if (!PROPERTY.test(t.term)) wasted.push({ ...t, reason: "Not about selling a house", negative: `[${t.term}]` })
+    // Buying their first home, though "home buyer" sounds like us.
+    if (/\b(first[- ]time (home ?)?buyers?|pre-?approv\w*)\b/i.test(term)) {
+      flag("Home buyer, not seller", `"first time home buyer"`)
+      continue
+    }
+    const property = PROPERTY.test(term)
+    if ((SELL_TALK.test(term) && property) || SELLER_NAMES.test(term.replace(/\s+/g, ""))) continue
+    if (BUYER.test(term)) {
+      flag("Home buyer, not seller", `[${term}]`)
+      continue
+    }
+    if (SELLER_SITUATION.test(term) || (property && SELLER_REASON.test(term))) continue
+    const match = patterns.find((p) => !p.always && p.re.test(term))
+    if (match) flag(match.reason, `"${match.word}"`)
+    else if (!property) flag("Not about selling a house", `[${term}]`)
   }
   wasted.sort((a, b) => b.cost - a.cost)
   return { wasted, spendLimit, total: wasted.reduce((sum, t) => sum + t.cost, 0) }
