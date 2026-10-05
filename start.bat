@@ -79,7 +79,7 @@ if not defined NEED_BUILD if exist .data\app-version (
 )
 set "MODE=start"
 if defined NEED_BUILD (
-  echo Getting the app ready. This takes a minute or two after an update...
+  echo Getting the app ready after the update. The first time takes a minute or two, later updates only seconds...
   call npm run build
   if errorlevel 1 (
     echo The fast version couldn't be built, so the app starts in the slower mode.
