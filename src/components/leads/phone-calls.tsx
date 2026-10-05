@@ -2,10 +2,12 @@ import { Phone, PhoneMissed } from "lucide-react"
 
 import { formatNumber } from "@/components/dashboard/format"
 import Paged from "@/components/ui/paged"
-import type { Call } from "@/lib/google/calls"
+import CallLeadButton from "@/components/leads/call-lead-button"
+import type { Call, CallCounting } from "@/lib/google/calls"
+import { callIdOf } from "@/lib/leads/call-id"
 import { cn } from "@/lib/utils"
 
-type Props = { result: { calls: Call[] } | { error: string } | null }
+type Props = { result: { calls: Call[]; counting?: CallCounting | null } | { error: string } | null; addedCalls?: string[] }
 
 const duration = (s: number) => (s < 60 ? `${s} sec` : `${Math.floor(s / 60)} min ${s % 60 ? `${s % 60} sec` : ""}`.trim())
 
@@ -18,7 +20,8 @@ function when(start: string) {
 }
 
 // Calls from Google Ads over the last 30 days, missed calls first in the highlights.
-export default function PhoneCalls({ result }: Props) {
+export default function PhoneCalls({ result, addedCalls = [] }: Props) {
+  const counting = result && "calls" in result ? result.counting : undefined
   const calls = result && "calls" in result ? result.calls : []
   const missed = calls.filter((c) => c.missed).length
   const answered = calls.length - missed
@@ -69,12 +72,31 @@ export default function PhoneCalls({ result }: Props) {
               the Google Ads call report, and make sure someone answers during ad hours.
             </p>
           )}
+          {counting !== undefined && counting !== null && (
+            <p className="mx-5 mt-3 rounded-xl bg-muted/60 p-3 text-sm sm:mx-6">
+              {counting.length ? (
+                <>
+                  <strong>Google Ads counts calls on its own:</strong>{" "}
+                  {counting.map((c) => `“${c.name}”${c.seconds ? ` (calls of ${c.seconds}+ seconds)` : ""}`).join(", ")}. Calls have no
+                  click ID to send back; for a caller who turns into a real seller, click <strong>Add as lead</strong> and type their
+                  number, and the app sends it as a qualified lead (and later a closed deal), matched by that phone number.
+                </>
+              ) : (
+                <>
+                  <strong>Google Ads isn&apos;t counting calls as conversions yet.</strong> Calls have no click ID to send back, so turn it on
+                  in Google Ads: <strong>Goals → Conversions → + New conversion action → Phone calls → Calls from ads using call
+                  extensions</strong>, count calls of 60 seconds or longer. For a caller who becomes a real seller, also click{" "}
+                  <strong>Add as lead</strong> below.
+                </>
+              )}
+            </p>
+          )}
           {calls.length ? (
             <div className="mt-4">
               <Paged
                 noun="calls"
                 table={{
-                  className: "w-full min-w-[560px] text-sm",
+                  className: "w-full min-w-[720px] text-sm",
                   bodyClassName: "divide-y tabular-nums",
                   head: (
                     <thead className="text-left text-xs text-muted-foreground">
@@ -83,7 +105,8 @@ export default function PhoneCalls({ result }: Props) {
                         <th className="px-3 py-3 font-medium">Result</th>
                         <th className="px-3 py-3 text-right font-medium">Length</th>
                         <th className="px-3 py-3 font-medium">Area code</th>
-                        <th className="px-5 py-3 font-medium sm:px-6">Campaign</th>
+                        <th className="px-3 py-3 font-medium">Campaign</th>
+                        <th className="px-5 py-3 font-medium sm:px-6">Lead</th>
                       </tr>
                     </thead>
                   ),
@@ -100,9 +123,15 @@ export default function PhoneCalls({ result }: Props) {
                     </td>
                     <td className="px-3 py-3 text-right">{c.missed ? "–" : duration(c.seconds)}</td>
                     <td className="px-3 py-3">{c.areaCode ? `(${c.areaCode})` : "–"}</td>
-                    <td className="px-5 py-3 sm:px-6">
+                    <td className="px-3 py-3">
                       {c.campaign}
                       <span className="text-xs text-muted-foreground"> · from {c.from === "Website" ? "website" : "ad"}</span>
+                    </td>
+                    <td className="px-5 py-3 sm:px-6">
+                      <CallLeadButton
+                        call={{ start: c.start, areaCode: c.areaCode, campaign: c.campaign, seconds: c.seconds }}
+                        added={addedCalls.includes(callIdOf(c))}
+                      />
                     </td>
                   </tr>
                 ))}

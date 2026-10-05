@@ -17,7 +17,7 @@ import { DATA_MANAGER_LIBRARY } from "@/lib/google/data-manager"
 import { cn } from "@/lib/utils"
 import { requireSession } from "@/lib/auth/session"
 import { activeAccount } from "@/lib/google/active-account"
-import { tryGetCalls } from "@/lib/google/calls"
+import { callCounting, tryGetCalls } from "@/lib/google/calls"
 import { catchUp, leadsVersion } from "@/lib/leads/background"
 import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
@@ -119,7 +119,9 @@ function mainGoogleState(lead: Lead): LeadRow["google"] {
 async function loadCalls(sub: string) {
   try {
     const active = await activeAccount(sub)
-    return active ? await tryGetCalls(active.connection, active.account) : null
+    if (!active) return null
+    const [calls, counting] = await Promise.all([tryGetCalls(active.connection, active.account), callCounting(active.connection, active.account)])
+    return "calls" in calls ? { ...calls, counting } : calls
   } catch {
     return { error: "Couldn't reach Google Ads for calls." }
   }
@@ -256,7 +258,7 @@ export default async function LeadsPage() {
           )}
         </section>
 
-        <PhoneCalls result={calls} />
+        <PhoneCalls result={calls} addedCalls={leads.map((l) => l.callId).filter((id): id is string => Boolean(id))} />
 
         <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} />
       </main>

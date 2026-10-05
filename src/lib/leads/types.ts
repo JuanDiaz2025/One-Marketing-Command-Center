@@ -122,6 +122,8 @@ export type Lead = {
   tracking?: LeadTracking
   // Set for leads picked up from the WordPress Lead Saver plugin ("wp:<site>:<id>"), so none is added twice.
   inboxId?: string
+  // Set for a lead made from a Google Ads phone call ("call:<start time>:<area code>"), so it's added once.
+  callId?: string
   status?: LeadStatus
   statusChangedAt?: string
   // "auto" when the app set the status from the lead's score; anything you set yourself wins.

@@ -51,6 +51,32 @@ export async function getCalls(connection: AdsConnection, account: AdsAccount, s
 const cache = new Map<string, { at: number; result: { calls: Call[] } | { error: string } }>()
 const FRESH_MS = 60_000
 
+// Whether Google Ads counts calls as conversions on its own ("Calls from ads", calls to the number
+// on your website), and from how many seconds. Asked at most once an hour.
+export type CallCounting = { name: string; seconds?: number; website: boolean }[]
+const countingCache = new Map<string, { at: number; result: CallCounting | null }>()
+export async function callCounting(connection: AdsConnection, account: AdsAccount): Promise<CallCounting | null> {
+  const hit = countingCache.get(account.customerId)
+  if (hit && Date.now() - hit.at < 60 * 60_000) return hit.result
+  let result: CallCounting | null = null
+  try {
+    const rows = (await runQuery(
+      connection,
+      account,
+      "SELECT conversion_action.name, conversion_action.type, conversion_action.phone_call_duration_seconds FROM conversion_action WHERE conversion_action.status = 'ENABLED' AND conversion_action.type IN ('AD_CALL', 'WEBSITE_CALL')",
+    )) as Row[]
+    result = rows.map((r) => ({
+      name: String(r.conversionAction?.name ?? ""),
+      seconds: r.conversionAction?.phoneCallDurationSeconds ? Number(r.conversionAction.phoneCallDurationSeconds) : undefined,
+      website: r.conversionAction?.type === "WEBSITE_CALL",
+    }))
+  } catch {
+    result = null // unknown this time
+  }
+  countingCache.set(account.customerId, { at: Date.now(), result })
+  return result
+}
+
 // Keeps a Google Ads problem from hiding the rest of the page.
 export async function tryGetCalls(connection: AdsConnection, account: AdsAccount, sinceDays = 30, range?: Range) {
   const key = `${account.customerId}:${sinceDays}:${range ? `${range.start}:${range.end}` : ""}`
