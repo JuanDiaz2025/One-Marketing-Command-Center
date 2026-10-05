@@ -1,10 +1,12 @@
-// Chat conversations, saved in .data/chats.json per signed-in person, so a conversation is still
+// Chat conversations (ported from One Marketing Command Center), saved in .data/chats.json per person, so a conversation is still
 // there after a refresh, on another page, or after restarting the app. The server saves each
 // question as soon as it's asked and the reply when it's ready, so even a refresh while Claude
 // is still answering doesn't lose it.
 import { randomBytes } from "node:crypto"
 
+import { signedInEmail } from "@/lib/auth"
 import { jsonFileStore } from "@/lib/json-file-store"
+import { currentName } from "@/lib/people"
 
 export type ChatMessage = { role: "user" | "assistant"; content: string }
 export type Chat = {
@@ -33,6 +35,12 @@ const isPending = (c: Chat) =>
 const titleOf = (messages: ChatMessage[]) => {
   const first = messages.find((m) => m.role === "user")?.content.trim().replace(/\s+/g, " ") ?? "New chat"
   return first.length > 70 ? `${first.slice(0, 67)}…` : first
+}
+
+// Whose chats these are: the Google email when someone signed in with Google, otherwise the name
+// they type for reviews and approvals. With a shared password and no name, the team shares one list.
+export async function chatUser() {
+  return (await signedInEmail()) ?? ((await currentName()) ? `name:${(await currentName()).toLowerCase()}` : "team")
 }
 
 export async function listChats(user: string): Promise<ChatSummary[]> {

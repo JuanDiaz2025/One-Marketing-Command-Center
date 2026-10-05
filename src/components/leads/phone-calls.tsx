@@ -1,9 +1,9 @@
 import { Phone, PhoneMissed } from "lucide-react"
 
 import { formatNumber } from "@/components/dashboard/format"
-import Paged from "@/components/ui/paged"
 import CallLeadButton from "@/components/leads/call-lead-button"
-import type { Call, CallCounting } from "@/lib/google/calls"
+import Paged from "@/components/ui/paged"
+import type { Call, CallCounting } from "@/lib/google-ads/calls"
 import { callIdOf } from "@/lib/leads/call-id"
 import { cn } from "@/lib/utils"
 
@@ -22,6 +22,7 @@ function when(start: string) {
 // Calls from Google Ads over the last 30 days, missed calls first in the highlights.
 export default function PhoneCalls({ result, addedCalls = [] }: Props) {
   const counting = result && "calls" in result ? result.counting : undefined
+  const countingPrimary = counting?.filter((c) => c.primary) ?? []
   const calls = result && "calls" in result ? result.calls : []
   const missed = calls.filter((c) => c.missed).length
   const answered = calls.length - missed
@@ -77,16 +78,22 @@ export default function PhoneCalls({ result, addedCalls = [] }: Props) {
               {counting.length ? (
                 <>
                   <strong>Google Ads counts calls on its own:</strong>{" "}
-                  {counting.map((c) => `“${c.name}”${c.seconds ? ` (calls of ${c.seconds}+ seconds)` : ""}`).join(", ")}. Calls have no
-                  click ID to send back; for a caller who turns into a real seller, click <strong>Add as lead</strong> and type their
-                  number, and the app sends it as a qualified lead (and later a closed deal), matched by that phone number.
+                  {counting.map((c) => `“${c.name}”${c.seconds ? ` (calls of ${c.seconds}+ seconds)` : ""}${c.primary ? "" : " (secondary)"}`).join(", ")}. Calls have
+                  no click ID to send back; for a caller who turns into a real seller, click <strong>Add as lead</strong> and type their number,
+                  and the app sends it as a qualified lead (and later a closed deal), matched by that phone number.
+                  {countingPrimary.length > 0 && (
+                    <>
+                      {" "}
+                      <strong>Watch for double counting:</strong> a call counted by Google and also added here as a lead counts twice for bidding
+                      while both are main goals. Keep one of them primary (Google Ads → Goals → Conversions).
+                    </>
+                  )}
                 </>
               ) : (
                 <>
-                  <strong>Google Ads isn&apos;t counting calls as conversions yet.</strong> Calls have no click ID to send back, so turn it on
-                  in Google Ads: <strong>Goals → Conversions → + New conversion action → Phone calls → Calls from ads using call
-                  extensions</strong>, count calls of 60 seconds or longer. For a caller who becomes a real seller, also click{" "}
-                  <strong>Add as lead</strong> below.
+                  <strong>Google Ads isn&apos;t counting calls as conversions yet.</strong> Calls have no click ID to send back, so turn it on in
+                  Google Ads: <strong>Goals → Conversions → + New conversion action → Phone calls → Calls from ads using call extensions</strong>,
+                  count calls of 60 seconds or longer. For a caller who becomes a real seller, also click <strong>Add as lead</strong> below.
                 </>
               )}
             </p>
@@ -128,10 +135,14 @@ export default function PhoneCalls({ result, addedCalls = [] }: Props) {
                       <span className="text-xs text-muted-foreground"> · from {c.from === "Website" ? "website" : "ad"}</span>
                     </td>
                     <td className="px-5 py-3 sm:px-6">
-                      <CallLeadButton
-                        call={{ start: c.start, areaCode: c.areaCode, campaign: c.campaign, seconds: c.seconds }}
-                        added={addedCalls.includes(callIdOf(c))}
-                      />
+                      {c.missed ? (
+                        <span className="text-xs text-muted-foreground">–</span>
+                      ) : (
+                        <CallLeadButton
+                          call={{ start: c.start, areaCode: c.areaCode, campaign: c.campaign, seconds: c.seconds }}
+                          added={addedCalls.includes(callIdOf(c))}
+                        />
+                      )}
                     </td>
                   </tr>
                 ))}

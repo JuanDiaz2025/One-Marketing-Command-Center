@@ -1,5 +1,5 @@
 import { claudeStatus, startClaudeLogin } from "@/lib/assistant/claude-code"
-import { getSession } from "@/lib/auth/session"
+import { isSignedIn } from "@/lib/auth"
 
 // Only the person at this computer may start a sign-in here, not someone reaching the app through
 // go-online.bat's public address.
@@ -19,16 +19,16 @@ function fromThisComputer(request: Request) {
 
 // GET → { installed, loggedIn }: whether the chat can use Claude on this computer.
 export async function GET() {
-  if (!(await getSession())) return Response.json({ error: "Sign in first." }, { status: 401 })
+  if (!(await isSignedIn())) return Response.json({ error: "Sign in first." }, { status: 401 })
   return Response.json(await claudeStatus())
 }
 
 // POST → opens the Claude sign-in (installing Claude Code first if needed).
 export async function POST(request: Request) {
-  if (!(await getSession())) return Response.json({ error: "Sign in first." }, { status: 401 })
+  if (!(await isSignedIn())) return Response.json({ error: "Sign in first." }, { status: 401 })
   if (!fromThisComputer(request)) {
     return Response.json(
-      { error: "Open the Command Center on the computer that runs it (http://localhost:4000) to sign in to Claude." },
+      { error: "Open DealTrack on the computer that runs it (http://localhost:3000) to sign in to Claude." },
       { status: 403 },
     )
   }

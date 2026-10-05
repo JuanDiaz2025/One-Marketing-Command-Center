@@ -1,88 +1,88 @@
 import type { Metadata } from "next"
 import { redirect } from "next/navigation"
-import { CircleAlert, CircleCheck, Settings } from "lucide-react"
 
 import BrandLogo from "@/components/brand-logo"
 import GoogleButton from "@/components/google-button"
-import { missingSignInSettings } from "@/lib/auth/config"
-import { safeNext } from "@/lib/auth/oauth-state"
-import { getSession } from "@/lib/auth/session"
+import LoginForm from "@/app/login/login-form"
+import { changesEnabled, googleSignInEnabled, isAdmin, isSignedIn, passwordConfigured } from "@/lib/auth"
+import { safeNext } from "@/lib/google-signin"
 
-export const metadata: Metadata = {
-  title: "Sign in · One Marketing Command Center",
+const ERRORS: Record<string, string> = {
+  not_allowed: "That Google account isn't on DealTrack's list. Ask your admin to add it to ALLOWED_EMAILS.",
+  cancelled: "Google sign-in was cancelled.",
+  expired: "The sign-in took too long or was opened twice. Try again.",
+  failed: "Google couldn't sign you in. Try again, or use the team password.",
+  google_off: "Google sign-in isn't set up. Add ALLOWED_EMAILS to .env.local and restart DealTrack.",
 }
 
-const errors: Record<string, string> = {
-  cancelled: "Sign-in was cancelled. Try again when you're ready.",
-  expired: "That sign-in link expired. Please try again.",
-  not_allowed:
-    "That Google account isn't allowed to use this app. Ask the owner to add it to ALLOWED_EMAILS.",
-  not_configured: "Google sign-in isn't set up yet. See the steps below.",
-  failed: "Google sign-in didn't go through. Please try again.",
-}
+export const metadata: Metadata = { title: "Sign in · DealTrack" }
 
-export default async function LoginPage({ searchParams }: PageProps<"/login">) {
-  const q = await searchParams
-  const next = safeNext(typeof q.next === "string" ? q.next : undefined)
-  if (await getSession()) redirect(next)
-
-  const error = typeof q.error === "string" ? (errors[q.error] ?? errors.failed) : null
-  const missing = missingSignInSettings()
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const raw = typeof params.next === "string" ? params.next : "/overview"
+  const next = safeNext(raw)
+  // ?admin=1 lets someone who can already see the reports sign in again as an admin.
+  const wantsAdmin = params.admin === "1"
+  if ((await isSignedIn()) && !(wantsAdmin && !(await isAdmin()))) redirect(next)
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center px-4 py-16">
-      <div className="w-full max-w-sm">
-        <div className="flex justify-center">
-          <BrandLogo large />
-        </div>
-        <div className="mt-8 rounded-2xl border bg-card p-6 shadow-xl sm:p-8">
-          <h1 className="text-2xl font-bold tracking-tight">Sign in</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Use your Google account. You can connect Google Ads after you sign in.
+    <main className="flex flex-1 items-center justify-center px-4 py-16">
+      <div className="flex w-full max-w-sm flex-col gap-8">
+        <BrandLogo large />
+        <div className="flex flex-col gap-2">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {wantsAdmin ? "Sign in as an admin" : "Sign in to DealTrack"}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {wantsAdmin
+              ? "Admins can make changes in Google Ads: negative keywords, location exclusions, and pausing."
+              : "Google Ads results and leads for Twin Home Buyer."}
           </p>
-
-          {q.signed_out && !error && (
-            <p role="status" className="mt-5 flex gap-2 rounded-xl bg-muted p-3 text-sm">
-              <CircleCheck className="mt-0.5 size-4 shrink-0" />
-              You&apos;re signed out.
-            </p>
-          )}
-          {error && (
-            <p role="alert" className="mt-5 flex gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
-              <CircleAlert className="mt-0.5 size-4 shrink-0" />
-              {error}
-            </p>
-          )}
-
-          <div className="mt-6">
-            <GoogleButton
-              href={`/api/auth/google?next=${encodeURIComponent(next)}`}
-              disabled={missing.length > 0}
-            >
-              Continue with Google
-            </GoogleButton>
-          </div>
         </div>
-
-        {missing.length > 0 && (
-          <div className="mt-4 rounded-xl border border-dashed bg-card/60 p-4 text-sm">
-            <p className="flex items-center gap-2 font-medium">
-              <Settings className="size-4" />
-              One-time setup needed
-            </p>
-            <p className="mt-2 text-muted-foreground">
-              Add these to the <code className="font-mono">.env.local</code> file in the app
-              folder, then restart the app:
-            </p>
-            <ul className="mt-2 flex flex-col gap-1 font-mono text-xs">
-              {missing.map((name) => (
-                <li key={name}>{name}</li>
-              ))}
-            </ul>
-            <p className="mt-2 text-muted-foreground">
-              The README explains where to get them in Google Cloud.
+        {typeof params.error === "string" && ERRORS[params.error] && (
+          <p role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
+            {ERRORS[params.error]}
+          </p>
+        )}
+        {googleSignInEnabled() && (
+          <div className="flex flex-col gap-2">
+            <GoogleButton href={`/api/auth/google?next=${encodeURIComponent(next)}`}>Continue with Google</GoogleButton>
+            <p className="text-xs text-muted-foreground">
+              {wantsAdmin ? "Admin emails get admin access automatically." : "For the team's allowed Google accounts."}
             </p>
           </div>
+        )}
+        {googleSignInEnabled() && passwordConfigured() && (!wantsAdmin || changesEnabled()) && (
+          <div className="flex items-center gap-3 text-xs text-muted-foreground" aria-hidden>
+            <span className="h-px flex-1 bg-border" />
+            or use the {wantsAdmin ? "admin" : "team"} password
+            <span className="h-px flex-1 bg-border" />
+          </div>
+        )}
+        {passwordConfigured() && (!wantsAdmin || !!process.env.ADMIN_PASSWORD) ? (
+          <LoginForm next={next} />
+        ) : (
+          !googleSignInEnabled() && (
+            <p className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm">
+              {wantsAdmin ? (
+                <>
+                  No admin password is set. Add <code className="font-mono">ADMIN_PASSWORD</code> (or{" "}
+                  <code className="font-mono">ADMIN_EMAILS</code> for Google sign-in) to the server&apos;s environment variables, then
+                  restart the app.
+                </>
+              ) : (
+                <>
+                  No sign-in is set up. Add <code className="font-mono">APP_PASSWORD</code>, or{" "}
+                  <code className="font-mono">ALLOWED_EMAILS</code> for Google sign-in, to the server&apos;s environment variables,
+                  then reload this page.
+                </>
+              )}
+            </p>
+          )
         )}
       </div>
     </main>

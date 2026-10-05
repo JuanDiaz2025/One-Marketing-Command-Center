@@ -87,7 +87,9 @@ export type ConversionUpload = {
   retraction?: { state: "pending" | "sent" | "failed"; at: string; tries?: number; lastTry?: string; error?: string }
   // Sent once more after a "not found" refusal, when the app learned to send to the owning account.
   fixRetry?: boolean
-  // Kept only for its resend id: queued, then marked Not interested before it was sent.
+  // Retried once after DealTrack learned to use its existing conversion action when Google said the name was taken.
+  nameRetry?: boolean
+  // Kept only for its resend id: queued, then marked Not interested (or put back as New) before it was sent.
   parked?: boolean
   // Sent again matched by email/phone only, after Google refused its click ID.
   noClick?: boolean
@@ -106,6 +108,10 @@ export type LeadScore = {
   // Couldn't be scored (its fields weren't recognized): never given a status automatically.
   unscored?: boolean
 }
+
+// Leads made from a tap on the website's phone number (call-taps.ts). The caller's number isn't
+// known until the team checks the call in the phone system, so they're never scored automatically.
+export const CALL_TAP_SOURCE = "Website · Call button"
 
 export type Lead = {
   id: string

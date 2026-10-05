@@ -1,15 +1,17 @@
-// Tiny JSON-file persistence (files live in .data/, not committed).
+// Tiny JSON-file persistence for the leads (files live in .data/ next to DealTrack's own data).
 // If the file system is read-only (e.g. serverless hosting), data is kept in
 // memory until the server restarts.
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
+
+import { DATA_DIR } from "@/lib/store"
 
 import { shared } from "@/lib/shared-state"
 
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 export function jsonFileStore<T>(name: string, seed: () => T | Promise<T>) {
-  const file = path.join(process.cwd(), ".data", name)
+  const file = path.join(DATA_DIR, name)
   let memory: T | null = null
 
   async function write(data: T) {

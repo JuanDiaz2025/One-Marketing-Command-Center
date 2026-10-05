@@ -4,16 +4,17 @@ import path from "node:path"
 import { headers } from "next/headers"
 import { CircleAlert, CircleCheck, Download, Globe, TriangleAlert } from "lucide-react"
 
-import CopyButton from "@/components/dashboard/copy-button"
-import Disclosure from "@/components/ui/disclosure"
-import { timeAgo } from "@/components/leads/lead-list"
+import CopyButton from "@/components/copy-button"
 import WordPressForm from "@/components/leads/wordpress-form"
 import { buttonVariants } from "@/components/ui/button"
+import Disclosure from "@/components/ui/disclosure"
 import { tunnelUrl, webhookSecret } from "@/lib/leads/webhook"
 import { recentAttempts, type WebhookAttempt } from "@/lib/leads/webhook-log"
 import { CF7_HIDDEN_FIELDS, TRACKING_SNIPPET } from "@/lib/leads/wordpress-snippets"
 import { getWordPress, type SiteEvent } from "@/lib/leads/wordpress"
 import { PLUGIN_VERSION } from "@/lib/leads/wordpress-plugin"
+import { timeAgo } from "@/lib/leads/time"
+import { DATA_DIR } from "@/lib/store"
 import { cn } from "@/lib/utils"
 
 // Google Ads fills in {campaignid}, {keyword} and {creative} for each click.
@@ -34,7 +35,7 @@ function describe(a: WebhookAttempt) {
 // Whether the old Google Sheet inbox (removed) was set up here: its leads no longer come in.
 async function oldSheetInbox() {
   try {
-    const state = JSON.parse(await readFile(path.join(process.cwd(), ".data", "lead-inbox.json"), "utf8")) as { url?: string }
+    const state = JSON.parse(await readFile(path.join(DATA_DIR, "lead-inbox.json"), "utf8")) as { url?: string }
     return Boolean(state.url)
   } catch {
     return false
@@ -60,7 +61,7 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
   const h = await headers()
   const configured = process.env.SITE_URL?.replace(/\/$/, "")
   const tunnel = configured ? null : await tunnelUrl()
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:4000"
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000"
   const origin = configured || tunnel || `${h.get("x-forwarded-proto") ?? "http"}://${host}`
   const url = `${origin}/api/leads/webhook?key=${encodeURIComponent(await webhookSecret())}`
   const localOnly = !configured && !tunnel && LOCAL.test(host)

@@ -9,7 +9,7 @@ process.argv = [process.argv[0], script, ...args]
 const target = path.resolve(script)
 // The chat's tool server is started by Claude Code from another folder; the app's data files are
 // found relative to the working folder, so move to the app folder before anything loads.
-if (process.env.OMCC_ROOT) process.chdir(process.env.OMCC_ROOT)
+if (process.env.DEALTRACK_ROOT) process.chdir(process.env.DEALTRACK_ROOT)
 
 try {
   // Loaded here rather than at the top, so a missing package is reported below too.
@@ -20,10 +20,10 @@ try {
   const message = error instanceof Error ? error.stack || error.message : String(error)
   console.error(message)
   // Leave the reason where the app can show it in the chat.
-  if (process.env.OMCC_ROOT) {
+  if (process.env.DEALTRACK_ROOT) {
     try {
-      mkdirSync(path.join(process.env.OMCC_ROOT, ".data"), { recursive: true })
-      writeFileSync(path.join(process.env.OMCC_ROOT, ".data", "assistant-tools-error.log"), `${new Date().toISOString()}\n${message}\n`)
+      mkdirSync(path.join(process.env.DEALTRACK_ROOT, ".data"), { recursive: true })
+      writeFileSync(path.join(process.env.DEALTRACK_ROOT, ".data", "assistant-tools-error.log"), `${new Date().toISOString()}\n${message}\n`)
     } catch {
       // Nothing more to do.
     }

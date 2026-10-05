@@ -8,11 +8,12 @@ import path from "node:path"
 
 import { completeTracking, trackingAliases } from "@/lib/leads/tracking"
 import type { Lead, LeadTracking } from "@/lib/leads/types"
+import { DATA_DIR } from "@/lib/store"
 
 export type WebsiteLead = Omit<Lead, "id" | "createdAt" | "qrCodeId">
 
 // The key WordPress must send, from LEADS_WEBHOOK_SECRET or created once in .data/webhook-secret.
-const secretFile = path.join(process.cwd(), ".data", "webhook-secret")
+const secretFile = path.join(DATA_DIR, "webhook-secret")
 let secret: Promise<string> | null = null
 
 export function webhookSecret() {
@@ -44,7 +45,7 @@ let tunnelCheck: { url: string; at: number; alive: boolean } | null = null
 export async function tunnelUrl() {
   let url: string
   try {
-    url = (await readFile(path.join(process.cwd(), ".data", "public-url"), "utf8")).trim()
+    url = (await readFile(path.join(DATA_DIR, "public-url"), "utf8")).trim()
   } catch {
     return null
   }

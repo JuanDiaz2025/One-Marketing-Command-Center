@@ -1,5 +1,5 @@
 // The chat on Claude Code, the Claude app installed on this computer, signed in with the
-// company's Claude account: no API key, and usage counts against that Claude plan.
+// company's Claude account (ported from One Marketing Command Center): no API key, and usage counts against that Claude plan.
 // Chosen with ASSISTANT_PROVIDER=claude-code. Each question runs `claude -p` with its built-in
 // tools turned off and the chat's own tools (Google Ads queries, leads) served over MCP by
 // scripts/assistant-mcp.ts.
@@ -11,20 +11,21 @@ import path from "node:path"
 
 import { AssistantError, INSTRUCTIONS, type AskInput } from "@/lib/assistant/shared"
 import { buildSnapshot } from "@/lib/assistant/snapshot"
+import { DATA_DIR } from "@/lib/store"
 
 const TIMEOUT_MS = 4 * 60_000
-const TOOLS = ["mcp__omcc__google_ads_query", "mcp__omcc__list_leads", "mcp__omcc__deal_history"]
+const TOOLS = ["mcp__dealtrack__google_ads_query", "mcp__dealtrack__list_leads", "mcp__dealtrack__dealtrack_status", "mcp__dealtrack__fraud_check", "mcp__dealtrack__dealtrack_page", "mcp__dealtrack__campaign_detail", "mcp__dealtrack__deal_history"]
 
 const NOT_INSTALLED = "The chat needs Claude on this computer. Click Sign in with Claude below: it sets it up and signs you in with your Claude account."
 const NOT_SIGNED_IN = "Claude isn't signed in on this computer yet. Click Sign in with Claude below and sign in with your Claude account."
 export const SETUP = "claude_setup"
 // What Claude replies when the app's tools didn't reach it, so the chat can say why.
-const NO_TOOLS = "OMCC_TOOLS_UNAVAILABLE"
+const NO_TOOLS = "DEALTRACK_TOOLS_UNAVAILABLE"
 
 // The tool server's start-up error, if it left one (scripts/run-ts.mjs writes it).
 function toolsError() {
   try {
-    const log = readFileSync(path.join(process.cwd(), ".data", "assistant-tools-error.log"), "utf8")
+    const log = readFileSync(path.join(DATA_DIR, "assistant-tools-error.log"), "utf8")
     return log.split("\n").slice(1, 4).join(" ").trim().slice(0, 300)
   } catch {
     return ""
@@ -104,10 +105,10 @@ function run(args: string[], stdin: string, cwd: string, env: NodeJS.ProcessEnv)
 // tool server reads those from .env.local itself.
 const PASS_THROUGH = ["PATH", "Path", "SystemRoot", "SYSTEMROOT", "windir", "TEMP", "TMP", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "HOME", "HOMEDRIVE", "HOMEPATH", "ComSpec", "PATHEXT"]
 
-function toolServer(root: string, userId: string | undefined, customerId: string | undefined) {
+function toolServer(root: string) {
   const env: Record<string, string> = {}
   for (const name of PASS_THROUGH) if (process.env[name]) env[name] = process.env[name]!
-  Object.assign(env, { OMCC_ROOT: root, OMCC_USER: userId ?? "", OMCC_CUSTOMER_ID: customerId ?? "" })
+  Object.assign(env, { DEALTRACK_ROOT: root })
   return {
     command: process.execPath,
     args: [path.join(root, "scripts", "run-ts.mjs"), path.join(root, "scripts", "assistant-mcp.ts")],
@@ -153,7 +154,7 @@ function checkToolServer(server: ReturnType<typeof toolServer>, cwd: string): Pr
 
 // Keeps the last problem with the chat's tools in .data/chat-problem.log, for troubleshooting.
 async function noteProblem(root: string, lines: string[]) {
-  await writeFile(path.join(root, ".data", "chat-problem.log"), `${new Date().toISOString()}\n${lines.join("\n")}\n`).catch(() => {})
+  await writeFile(path.join(DATA_DIR, "chat-problem.log"), `${new Date().toISOString()}\n${lines.join("\n")}\n`).catch(() => {})
 }
 
 // The MCP lines of Claude Code's debug log: why it couldn't connect to the tool server.
@@ -161,21 +162,21 @@ function mcpLog(file: string) {
   try {
     return readFileSync(file, "utf8")
       .split("\n")
-      .filter((l) => /MCP server "omcc"|\[MCP\]/.test(l))
+      .filter((l) => /MCP server "dealtrack"|\[MCP\]/.test(l))
       .slice(-12)
   } catch {
     return []
   }
 }
 
-export async function askClaudeCode({ turns, situation, tools, userId }: AskInput): Promise<string> {
+export async function askClaudeCode({ turns, situation }: AskInput): Promise<string> {
   // An empty folder to run in, so Claude Code sees no project files, plus its settings files.
-  const dir = await mkdtemp(path.join(tmpdir(), "omcc-chat-"))
+  const dir = await mkdtemp(path.join(tmpdir(), "dealtrack-chat-"))
   try {
     const root = process.cwd()
-    const server = toolServer(root, userId, tools.account?.customerId)
+    const server = toolServer(root)
     const mcp = path.join(dir, "mcp.json")
-    await writeFile(mcp, JSON.stringify({ mcpServers: { omcc: server } }))
+    await writeFile(mcp, JSON.stringify({ mcpServers: { dealtrack: server } }))
 
     // Earlier turns go in as text; the last one is the question.
     const earlier = turns.slice(0, -1)
@@ -212,7 +213,7 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
       const system = path.join(dir, "system.txt")
       await writeFile(
         system,
-        `${INSTRUCTIONS}\n\n${situation}\n\nUse the google_ads_query, list_leads and deal_history tools for real numbers. Answer in Markdown.\n\nIf the google_ads_query and list_leads tools are not available to you, reply with exactly ${NO_TOOLS} and nothing else.`,
+        `${INSTRUCTIONS}\n\n${situation}\n\nUse the dealtrack_page, campaign_detail, google_ads_query, list_leads, dealtrack_status, fraud_check and deal_history tools for real numbers. Answer in Markdown.\n\nIf the google_ads_query and list_leads tools are not available to you, reply with exactly ${NO_TOOLS} and nothing else.`,
       )
       const debug = path.join(dir, "claude-debug.log")
       const text = await runClaude(
@@ -237,7 +238,7 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
 
     let snapshot: string
     try {
-      snapshot = await buildSnapshot(tools)
+      snapshot = await buildSnapshot()
     } catch (error) {
       throw new AssistantError(
         `Couldn't look up your Google Ads data for Claude: ${error instanceof Error ? detail(error.message) : "unknown error"}`,
@@ -247,7 +248,7 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
     const system = path.join(dir, "system-snapshot.txt")
     await writeFile(
       system,
-      `${INSTRUCTIONS}\n\n${situation}\n\nYou have no tools this time. Instead, here is the account's data, looked up just now (JSON; money in the account currency; the last 30 days unless it says otherwise). Answer only from it, and if the question needs something that isn't in it, say what's missing. Answer in Markdown.\n\n${snapshot}`,
+      `${INSTRUCTIONS}\n\n${situation}\n\nYou have no tools this time. Instead, here is the account's data, looked up just now (JSON; money in dollars; the last 30 days unless it says otherwise). Answer only from it, and if the question needs something that isn't in it, say what's missing. Answer in Markdown.\n\n${snapshot}`,
     )
     return await runClaude([...common, "--system-prompt-file", system], prompt, dir, env)
   } finally {

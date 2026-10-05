@@ -21,7 +21,7 @@ const tools: Anthropic.Beta.BetaTool[] = toolSpecs.map((t) => ({
   strict: true,
 }))
 
-export async function askClaude({ turns, situation, tools: context }: AskInput): Promise<string> {
+export async function askClaude({ turns, situation }: AskInput): Promise<string> {
   const messages: Anthropic.Beta.BetaMessageParam[] = turns.map((t) => ({ role: t.role, content: t.content }))
   const client = new Anthropic()
   try {
@@ -62,7 +62,7 @@ export async function askClaude({ turns, situation, tools: context }: AskInput):
       )
       const results = await Promise.all(
         calls.map(async (call): Promise<Anthropic.Beta.BetaToolResultBlockParam> => {
-          const result = await runTool(call.name, call.input, context)
+          const result = await runTool(call.name, call.input)
           return {
             type: "tool_result",
             tool_use_id: call.id,

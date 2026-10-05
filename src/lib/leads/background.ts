@@ -1,19 +1,22 @@
 // The Leads page's background work: new leads from the WordPress site (checked at most every 30
-// seconds), scores for new leads, conversions for Google Ads and the spreadsheet (at most every
-// 6 hours). Run after a page is sent, so nothing waits on it.
+// seconds), taps on the website's phone number (call-taps.ts, at most every minute), scores for
+// new leads, conversions for Google Ads and the spreadsheet (at most every 6 hours). Run after a
+// page is sent, so nothing waits on it. From One Marketing Command Center.
 import { createHash } from "node:crypto"
 import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
 
-import { activeAccount } from "@/lib/google/active-account"
-import { sendPendingConversions } from "@/lib/google/offline-conversions"
-import { syncSheetIfDue } from "@/lib/google/sheets-sync"
+import { activeAccount } from "@/lib/conversions/google"
+import { sendPendingConversions } from "@/lib/conversions/offline-conversions"
+import { syncSheetIfDue } from "@/lib/sheets/sync"
 import { scoreUnscored } from "@/lib/leads/store"
+import { syncCallTaps } from "@/lib/leads/call-taps"
 import { syncWordPress } from "@/lib/leads/wordpress"
+import { DATA_DIR } from "@/lib/store"
 
-async function sendConversions(sub: string) {
+async function sendConversions() {
   try {
-    const active = await activeAccount(sub)
+    const active = await activeAccount()
     if (active) {
       void syncSheetIfDue(active.connection, active.account)
       await sendPendingConversions(active.connection, active.account)
@@ -23,12 +26,13 @@ async function sendConversions(sub: string) {
   }
 }
 
-export function catchUp(sub: string) {
+export function catchUp() {
   return Promise.all([
     scoreUnscored()
       .then(() => syncWordPress())
       .catch((error) => console.error("Couldn't check the website for new leads:", error)),
-    sendConversions(sub),
+    syncCallTaps().catch((error) => console.error("Couldn't check PostHog for call taps:", error)),
+    sendConversions(),
   ])
 }
 
@@ -36,11 +40,16 @@ export function catchUp(sub: string) {
 // states, the website connection), so the page only reloads when there's something new. The
 // website check's own "last checked" time doesn't count: it's saved every 30 seconds.
 export async function leadsVersion() {
-  const dir = path.join(process.cwd(), ".data")
   const [leads, sheet, site] = await Promise.all([
-    stat(path.join(dir, "leads.json")).then((s) => s.mtimeMs, () => 0),
-    stat(path.join(dir, "sheet-sync.json")).then((s) => s.mtimeMs, () => 0),
-    readFile(path.join(dir, "wordpress.json"), "utf8").then(
+    stat(path.join(DATA_DIR, "leads.json")).then(
+      (s) => s.mtimeMs,
+      () => 0,
+    ),
+    stat(path.join(DATA_DIR, "sheet-sync.json")).then(
+      (s) => s.mtimeMs,
+      () => 0,
+    ),
+    readFile(path.join(DATA_DIR, "wordpress.json"), "utf8").then(
       (text) => {
         try {
           const state = JSON.parse(text) as Record<string, unknown>

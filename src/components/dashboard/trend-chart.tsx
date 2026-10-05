@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 
-import { formatDate, formatNumber } from "@/components/dashboard/format"
+import { formatDate, formatNumber, formatUsd } from "@/components/dashboard/format"
 
 type Point = { date: string; value: number }
 
@@ -11,7 +11,8 @@ const H = 160
 
 // Round the axis max up to a clean number (e.g. 237 -> 250).
 function niceMax(n: number) {
-  if (n <= 1) return 1
+  // Small counts get a 0–2 axis so the middle tick is a whole number.
+  if (n <= 2) return 2
   const step = 10 ** Math.floor(Math.log10(n)) / 2
   return Math.ceil(n / step) * step
 }
@@ -20,13 +21,17 @@ export default function TrendChart({
   data,
   color,
   label,
+  unit = "number",
 }: {
   data: Point[]
   color: string
   label: string
+  // "score" is a 0–10 scale shown to one decimal (Quality Score).
+  unit?: "number" | "usd" | "score"
 }) {
+  const fmt = unit === "usd" ? formatUsd : unit === "score" ? (n: number) => n.toFixed(1) : formatNumber
   const [active, setActive] = useState<number | null>(null)
-  const max = niceMax(Math.max(...data.map((d) => d.value)))
+  const max = unit === "score" ? 10 : niceMax(Math.max(0, ...data.map((d) => d.value)))
   const span = Math.max(data.length - 1, 1)
   const x = (i: number) => (i / span) * W
   const y = (v: number) => H - (v / max) * H
@@ -35,7 +40,6 @@ export default function TrendChart({
   const last = data.length - 1
   const shown = active ?? last
   const point = data[shown]
-  if (!point) return null // no days with data
 
   function onMove(e: React.PointerEvent<HTMLDivElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
@@ -48,14 +52,14 @@ export default function TrendChart({
       <figcaption className="flex items-baseline justify-between text-sm">
         <span className="font-medium">{label}</span>
         <span className="text-muted-foreground tabular-nums">
-          {formatDate(point.date)}: <span className="font-medium text-foreground">{formatNumber(point.value)}</span>
+          {formatDate(point.date)}: <span className="font-medium text-foreground">{fmt(point.value)}</span>
         </span>
       </figcaption>
       <div className="flex gap-2">
         {/* Y-axis ticks */}
         <div className="flex h-36 flex-col justify-between py-0 text-right text-[11px] leading-none text-muted-foreground tabular-nums">
-          <span>{formatNumber(max)}</span>
-          <span>{formatNumber(max / 2)}</span>
+          <span>{fmt(max)}</span>
+          <span>{fmt(max / 2)}</span>
           <span>0</span>
         </div>
         <div

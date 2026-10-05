@@ -23,7 +23,7 @@ const tools: OpenAI.Responses.FunctionTool[] = toolSpecs.map((t) => ({
   strict: true,
 }))
 
-export async function askOpenAI({ turns, situation, tools: context }: AskInput): Promise<string> {
+export async function askOpenAI({ turns, situation }: AskInput): Promise<string> {
   const input: OpenAI.Responses.ResponseInputItem[] = turns.map((t) => ({
     role: t.role,
     content: t.content,
@@ -68,7 +68,7 @@ export async function askOpenAI({ turns, situation, tools: context }: AskInput):
           } catch {
             args = {}
           }
-          const result = await runTool(call.name, args, context)
+          const result = await runTool(call.name, args)
           return {
             type: "function_call_output",
             call_id: call.call_id,

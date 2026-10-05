@@ -67,8 +67,8 @@ export default function SendingCheck({ stuck, lastError }: { stuck: number; last
           {retrying ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <RefreshCw data-icon="inline-start" />}
           {retrying ? "Sending…" : "Try again now"}
         </Button>
-        <a href="/api/auth/google?intent=ads" className="inline-flex items-center px-2 text-primary underline underline-offset-4">
-          Connect Google Ads again
+        <a href="/api/conversions/connect" className="inline-flex items-center px-2 text-primary underline underline-offset-4">
+          Connect Google for conversions
         </a>
       </div>
       {note && <p className="text-muted-foreground">{note}</p>}

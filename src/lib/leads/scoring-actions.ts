@@ -2,13 +2,13 @@
 
 import { revalidatePath } from "next/cache"
 
-import { getSession } from "@/lib/auth/session"
+import { isAdmin } from "@/lib/auth"
 import { setAutoStatus } from "@/lib/leads/scoring"
 
 // Turns automatic status from the lead score on or off (Leads page).
 export async function setAutoStatusAction(on: boolean): Promise<{ error?: string }> {
-  if (!(await getSession())) return { error: "Sign in first." }
+  if (!(await isAdmin())) return { error: "Only admins can change this. Sign in as an admin." }
   await setAutoStatus(on)
-  revalidatePath("/leads")
+  revalidatePath("/leads", "layout")
   return {}
 }

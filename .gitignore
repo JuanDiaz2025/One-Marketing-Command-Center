@@ -44,7 +44,5 @@ next-env.d.ts
 # local survey data (demo store)
 /.data/
 
-# tunnel tool downloaded by go-online.bat
+# cloudflared, downloaded by go-online.bat
 /.tools/
-.data-before-restore/
-.data-incoming/

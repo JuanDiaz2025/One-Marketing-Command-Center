@@ -2,7 +2,7 @@
 REM Double-click this (while the app is running) so WordPress can send website leads to the app.
 REM It opens a free Cloudflare tunnel: a public https:// address that forwards to this computer.
 cd /d "%~dp0"
-title Command Center - online for WordPress
+title DealTrack - online for WordPress
 
 where curl >nul 2>nul
 if errorlevel 1 (
@@ -11,7 +11,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-curl -s -o nul http://localhost:4000
+curl -s -o nul http://localhost:3000
 if errorlevel 1 (
   echo The app isn't running yet. Double-click start.bat first, wait for the browser to open,
   echo then double-click this file again.
@@ -32,7 +32,7 @@ if not exist .tools\cloudflared.exe (
 
 if exist .tools\tunnel.log del .tools\tunnel.log
 echo Opening the public address. This takes a few seconds...
-start "" /b .tools\cloudflared.exe tunnel --no-autoupdate --url http://localhost:4000 --logfile .tools\tunnel.log
+start "" /b .tools\cloudflared.exe tunnel --no-autoupdate --url http://localhost:3000 --logfile .tools\tunnel.log
 
 REM Wait for the tunnel's address, then save it so the Leads page shows the right webhook address.
 powershell -NoProfile -ExecutionPolicy Bypass -Command ^

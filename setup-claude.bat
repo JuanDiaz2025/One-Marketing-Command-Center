@@ -3,7 +3,7 @@ REM Sets up the "Ask about your ads" chat to use your Claude account (no API key
 REM installs Claude Code if it's missing, then signs in with your Claude subscription.
 REM The chat's "Sign in with Claude" button opens this too.
 cd /d "%~dp0"
-title Sign in to Claude for the Command Center
+title Sign in to Claude for DealTrack
 
 set "CLAUDE="
 where claude >nul 2>nul && set "CLAUDE=claude"
@@ -32,5 +32,5 @@ call "%CLAUDE%" auth login --claudeai
 echo.
 call "%CLAUDE%" auth status --text
 echo.
-echo Done. Go back to the Command Center and ask your question again. You can close this window.
+echo Done. Go back to DealTrack and ask your question again. You can close this window.
 pause

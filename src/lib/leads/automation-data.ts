@@ -1,14 +1,14 @@
 // What the automation settings page shows: where each stage goes in Google Ads, and the recent
 // leads the rules editor previews against.
 import type { TargetsView } from "@/components/leads/conversion-targets"
-import { activeAccount } from "@/lib/google/active-account"
-import { conversionTargets } from "@/lib/google/offline-conversions"
+import { activeAccount } from "@/lib/conversions/google"
+import { conversionTargets } from "@/lib/conversions/offline-conversions"
 import type { Lead } from "@/lib/leads/types"
 
 // Which conversion action each stage goes to, or null when Google Ads isn't connected or answering.
-export async function loadTargets(sub: string): Promise<TargetsView | null> {
+export async function loadTargets(): Promise<TargetsView | null> {
   try {
-    const active = await activeAccount(sub)
+    const active = await activeAccount()
     if (!active) return null
     const t = await conversionTargets(active.connection, active.account)
     const brief = (o?: { resourceName: string; name: string }) => o && { resourceName: o.resourceName, name: o.name }

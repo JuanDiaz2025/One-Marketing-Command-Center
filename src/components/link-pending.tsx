@@ -1,11 +1,12 @@
 "use client"
 
+// Put inside a <Link>: while the page it opens is loading, a spinner shows on the link and a bar
+// runs across the top of the window, so a click visibly does something (some pages, like a
+// 12-month range, take a few seconds to gather). From One Marketing Command Center.
+
 import { useLinkStatus } from "next/link"
 import { LoaderCircle } from "lucide-react"
 
-// Put inside a <Link>: while the page it opens is loading, a spinner shows on the link and a bar
-// runs across the top of the window, so a click visibly does something (some pages, like All time
-// on Google Ads, take a few seconds to gather).
 export default function LinkPending() {
   const { pending } = useLinkStatus()
   if (!pending) return null

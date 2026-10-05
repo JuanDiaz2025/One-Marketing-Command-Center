@@ -13,7 +13,7 @@ export default function ThemeToggle() {
     root.classList.toggle("dark", dark)
     root.style.colorScheme = dark ? "dark" : "light"
     try {
-      localStorage.setItem("omcc-theme", dark ? "dark" : "light")
+      localStorage.setItem("dealtrack-theme", dark ? "dark" : "light")
     } catch {
       // Private window: it still switches, it just isn't remembered.
     }

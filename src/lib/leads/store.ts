@@ -1,5 +1,6 @@
-// QR codes and the leads they collect, saved in .data/leads.json (not committed).
-// Swap these functions for database calls to go to production.
+// Website leads, saved in .data/leads.json (the same file and format as One Marketing Command
+// Center, so its leads can be copied over). Older files may also hold QR codes; DealTrack only
+// reads their placement names to label those leads.
 import { randomBytes } from "node:crypto"
 
 import { jsonFileStore } from "@/lib/json-file-store"
@@ -23,35 +24,13 @@ export const newId = () =>
 
 export async function listQrCodes() {
   const db = await file.read()
-  return [...db.qrCodes].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-}
-
-export async function getQrCode(id: string) {
-  const db = await file.read()
-  return db.qrCodes.find((c) => c.id === id) ?? null
-}
-
-export async function createQrCode(input: Omit<QrCode, "id" | "createdAt" | "active">) {
-  return file.update((db) => {
-    const code: QrCode = { ...input, id: newId(), active: true, createdAt: new Date().toISOString() }
-    db.qrCodes.push(code)
-    return code
-  })
-}
-
-export async function updateQrCode(id: string, patch: Partial<Omit<QrCode, "id" | "createdAt">>) {
-  return file.update((db) => {
-    const code = db.qrCodes.find((c) => c.id === id)
-    if (!code) return null
-    Object.assign(code, patch)
-    return code
-  })
+  return [...(db.qrCodes ?? [])]
 }
 
 // Newest first.
 export async function listLeads() {
   const db = await file.read()
-  return [...db.leads].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  return [...(db.leads ?? [])].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
 }
 
 const digits = (s?: string) => s?.replace(/\D/g, "").slice(-10) || undefined
@@ -71,6 +50,7 @@ export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?:
   const [{ autoStatus }, rules] = await Promise.all([getScoringSettings(), getRules()])
   return file.update((db) => {
     const at = createdAt ? new Date(createdAt).toISOString() : new Date().toISOString()
+    db.leads ??= []
     if (input.inboxId) {
       const known = db.leads.find((l) => sameSource(l.inboxId, input.inboxId))
       if (known) return known
@@ -127,7 +107,7 @@ export async function updateLead(id: string, change: (lead: Lead) => void) {
 // is sent to Google Ads without you choosing it.
 export async function scoreUnscored() {
   const db = await file.read()
-  if (db.leads.every((l) => l.score)) return
+  if ((db.leads ?? []).every((l) => l.score)) return
   await file.update((db) => {
     const byDate = [...db.leads].sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     byDate.forEach((lead, i) => {

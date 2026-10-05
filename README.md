@@ -1,189 +1,172 @@
-# One Marketing Command Center
+# DealTrack
 
-Your Google Ads results, website leads and phone calls in one place.
+Google Ads results for Twin Home Buyer, built from the AdPilot hackathon app.
 
-- **Sign in with Google.** Only the Google accounts you allow can get in.
-- **Google Ads dashboard.** Connect your Google Ads account to see spend, clicks, conversions and cost per conversion, by day and by campaign, for the last 7, 30 or 90 days, all time, or exact dates picked on the calendar. It reads your real account through the Google Ads API. The only changes it ever makes in Google Ads are the lead-quality conversions described under Leads.
-- **Needs attention.** Every time the dashboard opens it checks the account for problems: disapproved or limited ads, campaigns limited by budget or unable to run, active campaigns with no impressions, spend with no conversions (including conversion tracking that looks broken), search campaigns with a low click rate, and keywords with a poor Quality Score. Each problem says how to fix it, and **Ask how to fix** sends it to the chat box for step-by-step help. The checks are in `src/lib/google/health.ts`.
-- **More tabs.** **Keywords** (spend, clicks, cost per click and per lead, Quality Score; poor scores and keywords spending a lead's worth with no lead in red), **Ads** (headlines, approval, Ad Strength, results), **Devices** (phones vs computers vs tablets, with the cheapest and the wasteful one called out), **Best times** (leads and spend by day of the week and hour, for an ad schedule), **Conversion tracking** (what Google counts as a lead, and actions that record nothing), and impression share on **Campaigns** (how often ads showed, and how much was lost to budget or rank).
-- **Locations.** Where each campaign is set to show (included and excluded places, and whether it reaches only people in the area), and which cities the clicks and spend came from, with places outside your target area marked. Needs attention flags campaigns with no location, the "Presence or interest" setting, spend from outside the area, and places that spend without bringing leads.
-- **Searches to remove.** Lists search terms that cost money without bringing in a lead (renters, job seekers, home buyers, DIY research, or anything that cost more than a lead usually does), with a **Copy negative keywords** button to paste into Google Ads. Searches first spotted in the last day are tagged **New**, and wasted searches also appear as an alert under **Needs attention**. The rules are in `src/lib/google/wasted-searches.ts`.
-- **Ask about your ads.** The button in the bottom corner of every page opens a chat: ask a question or ask for a report ("build a report for the last 7 days"), and it looks up your Google Ads data, website leads and calls to answer, with tables you can copy or download. It needs an OpenAI or Anthropic key (see below), and it only reads data; it can't change anything in Google Ads.
-- **Website leads.** Your WordPress forms send each new lead to the app by webhook, and it appears on the **Leads** page marked **Website**, with the form's name, without reloading the page. The Leads page shows the webhook address to paste into WordPress, and the last few times WordPress sent something (and why anything was turned away).
-- **Lead tracking.** Leads show as a spreadsheet (search, filter by channel, 25 per page) with a column for each detail: date, name, phone, email, property, channel (Google Ads, Facebook, organic search, direct mail...), UTM source, medium, campaign, term and content, Google click ID, landing page, referrer and form. The Lead Saver plugin fills these in by itself (it adds hidden fields to every Contact Form 7 form and a small tracking script to every page; nothing to paste), and **Export CSV** includes every column.
-- **Lead quality back to Google Ads.** Each lead has a **Status** (New, Interested, Appointment, Offer made, Closed deal, Not interested). Interested and later, and Closed deal, are uploaded to Google Ads as offline conversions to two conversion actions the app creates the first time ("Command Center – Interested lead" and "Command Center – Deal closed", as secondary conversions so bidding doesn't change until you make them primary under Goals → Conversions). Each is matched by the lead's Google click ID (gclid, from the tracking snippet) and, when present, the lead's email and phone hashed with SHA-256 (enhanced conversions for leads: turn them on in Google Ads under Goals → Settings → Enhanced conversions for leads). Google needs a few hours before a new conversion action accepts uploads; the app retries waiting ones hourly while the Leads page is open, and shows each lead's result in the Google Ads column.
-- **Phone calls.** Calls from your Google Ads (call assets, call ads, and your website's number with Google's call tracking) show on the **Leads** page: when, answered or missed, how long, the caller's area code, and the campaign. Missed calls are highlighted, and also show under **Needs attention**.
+It reports on one Google Ads account and collects the website's leads. The leads, calls, chat and Google sign-in came over from One Marketing Command Center. The pages are grouped the way the work goes:
 
-## Running it
+**Overview.** Spend, leads, cost per lead, clicks, click-through rate, and search impression share, each with its change against the period before and a sparkline; a chart that compares any two metrics (`?m1=cost&m2=leads`); status cards for open alerts, this month's pacing, the weekly negatives, and the go-live audit; and what needs attention.
 
-**Updates install themselves.** Each time you start the app with `start.bat`, it checks for a newer version, downloads it and restarts with it. Your settings (`.env.local`) and data (`.data`) are kept. No internet? It just starts the version you have.
+**Leads.** Every lead from the website forms as it arrives (WordPress sends it by webhook): a searchable spreadsheet with the channel worked out from the UTM tags and Google click ID (Google Ads, Facebook, organic search, direct mail...), landing page, referrer and form, plus **Export CSV**. Below it, phone calls from Google Ads (answered or missed, length, area code, campaign), and the WordPress setup: the webhook address, the Contact Form 7 hidden fields, and a tracking snippet. The page refreshes itself every few seconds. Missed ad calls also raise an alert.
 
-**Windows:** unzip the project, open the folder, and double-click `start.bat`.
+**Ask about your ads.** The button in the corner of every page opens a chat. Ask a question or for a report ("what went wrong last week?", "build a report for September") and it looks up the Google Ads account, the website leads, and DealTrack's own records (alerts, budget lines, weekly negatives) to answer, with tables you can copy or download. It only reads; it can't change anything. It runs on an OpenAI key, an Anthropic key, or the Claude Code app signed in with a Claude account (see Settings).
 
-1. The first time, it installs everything and creates a `.env.local` settings file, which it opens in Notepad.
-2. Fill in the settings (see [One-time Google setup](#one-time-google-setup)), save, and run `start.bat` again.
-3. Your browser opens at http://localhost:4000. Keep the black window open while you use the app.
+**Monitor**
 
-After an update, start.bat first builds the fast version of the app (a minute or two the first time; later updates reuse that work and take seconds), then starts it; if building fails it starts the slower developer version instead.
+- **Alerts:** rules checked every time the page (or the Overview) opens: the budget's alert and pause lines, a month heading past budget, $20K+ in a month with no leads, days of spend with no leads, cost per lead over a limit, yesterday's spend, clicks, or cost per click far above normal, ads that stopped spending, disapproved ads in running campaigns, invalid clicks, broken landing pages, soft conversions, script errors, and last week's unusual numbers. Every alert goes into a history with when it started and when it cleared. Admins set the limits on the page.
+- **Budget & pacing:** this month's spend against the monthly budget, with the alert and pause lines: where the month is heading at the recent pace and at full budgets, the daily spend needed to land on budget, and each campaign's spend and share lost to budget. At the pause line, admins can pause running campaigns from here (turning them back on is done in Google Ads, on purpose).
+- **Quality Score:** each keyword's 1–10 score and its three parts, a 12-month weekly trend, how scores are spread, and what to fix. Seller (non-brand) keywords by default.
 
-**Mac or Linux:**
+**Audit**
 
-```bash
-cp .env.example .env.local   # then fill it in
-npm install
-npm run dev
-```
+- **Go-live audit:** grades the account A to F in six areas (conversion tracking, location targeting, keywords and negatives, ads and landing pages, budget, campaign setup), with a "fix first" list. Checks Google Ads can't see (click ID capture, the test lead, after-hours coverage, the call outcome form, retargeting, baseline numbers) are ticked by a person with their name.
+- **Ads & creatives:** every enabled ad: disapprovals and limits with the reason in plain English and the fix, ad strength, too few headlines or descriptions, heavy pinning, broken landing pages, and Google's Best/Good/Low rating of each headline and description.
+- **Landing pages:** where your ads send people. Pages behind ads that are running right now come first, then the most-spent pages. Up to 8 get a mobile PageSpeed test and a check for a short form, tap-to-call, and reviews, next to their spend, conversions, and PostHog submit rate.
+- **Conversions:** what Google counts as a conversion, with a warning if a primary conversion isn't really a lead.
 
-## One-time Google setup
+**Optimize**
 
-You need three values for `.env.local`. This takes about 15 minutes, plus a few days' wait for Google to approve the developer token (step 4).
+- **Campaigns:** every campaign in the account, running or not, with its daily budget and results. Filter by status like Google Ads.
+- **Search terms:** what people typed, which terms spent money without converting, and suggested negative keywords. Searches that say "sell" are never suggested as negatives (only competitor names and places outside California are).
+- **Weekly negatives:** the weekly routine. DealTrack drafts one batch from last week's searches, or from any dates and any one campaign, paused ones too. Lines come from the rules in `negatives.ts` and from words that never converted in 12 months. Then someone reviews each line, someone else approves, an admin pushes the approved lines to Google Ads in one change, and a week later the result is checked (did spend on those searches stop, and did leads hold up?). Anything that would block a search that converted in the last 12 months, or a seller saying "sell", is held back. At most one push a week. The **Campaign check** tab lists each campaign (running ones, then paused ones by search spend) with the standard negatives it doesn't block yet (competitors, places outside California, agents, home buyers, renters, loans, jobs, listing sites, price checks) and the last 12 months' rule-matched spend nothing blocks. Choose campaigns and draft a batch from it; the push can put the lines in one shared list, "DealTrack standard negatives", attached to the chosen campaigns.
+- **Keywords:** each keyword marked "Stop or fix" (spent $100+ without converting) or "Scale" (converting cheaper than average).
+- **Keyword ideas:** the opposite of negatives. From a period's search terms (12 months by default): searches that converted but aren't keywords yet (exact), phrases several converting searches share (phrase), and seller situations (inherited, probate, divorce, foreclosure, repairs, tenants…) with how often they show up. Each idea goes into the ad group where it converted, or every idea goes into a campaign you pick (the running one, say), and any line can go into several ad groups. Tick lines, or take them all, to put them into one campaign at once. Never suggested: anything the negative rules block, competitor names unless you include them, anything a negative already blocks there, and keywords the campaign already has. Same review, approval, and admin push as the negatives; keywords are added paused by default. Keyword Planner volume and bids for California are added automatically once the developer token has Basic access.
+- **Locations:** a Cities/Counties switch, a campaign filter (all campaigns or one), and four tabs. Counties come straight from Google's county report, which also counts people placed in a county but not a city. **Targeting** also has "By targeted location", the same numbers as Google Ads' Locations tab (performance per targeted place, not where people were); both add up to the same totals. **Map**: shaded areas (California city and town outlines from Census cartographic boundaries in `src/lib/places/ca-places.json`; county outlines from us-atlas, ISC license; places outside California stay bubbles) or a bubble per place (size or shade by impressions, spend, clicks or conversions; color by cost per conversion against the average), hover for its numbers and the campaigns that ran there, search to fly to a city, and quick facts (average and highest impressions, most spend, most conversions, cheapest conversions). Place centers come from US ZIP code data (the zipcodes package, BSD license) filled in with the Census Gazetteer, in `src/lib/places/us-cities.json`; places outside the US are summed in a note instead; the base map is OpenStreetMap. **Overview**: spend in and outside California; people in the area versus people elsewhere searching about it (presence vs. interest), overall and per campaign; and California regions (SF & Peninsula, South Bay, East Bay, North Bay, Sacramento, Central Valley, Central Coast, Southern California) against your average cost per conversion. **Cities**: California cities that spent a lot without results (exclude on purpose, or leave), cities outside California to exclude, and the costliest cities. **Targeting**: each running campaign's targeted and excluded places and location setting, with warnings; paused ones that spent are folded below. Long periods are fetched in 90-day pieces; place names are kept once fetched, so later loads are fast.
+- **Day & hour:** a heat map of spend and conversions by weekday and hour.
 
-### 1. Create a Google Cloud project
+**Insights**
 
-1. Go to https://console.cloud.google.com and create a project (for example "Marketing Command Center").
-2. Open **APIs & Services → Library**, search for **Google Ads API**, and click **Enable**.
+- **Behavior:** Google Ads visitors by default: each recent visit with its campaign, keyword, pages, time on site, device, city, whether they submitted the form, and a link to the PostHog replay; plus submit rates by campaign, keyword, landing page, device, day, and hour.
+- **Forecast:** Google Ads leads and cost per lead to expect by monthly budget over 3, 6, or 12 months. With the PPC LEAD sheet connected it also forecasts deals, net revenue, ad spend per deal, and the chance of zero deals.
 
-### 2. Set up the sign-in screen
+**Reports**
 
-Open **Google Auth Platform** (under APIs & Services) and click **Get started**.
+- **Weekly report:** one week against the week before: headline numbers, the month's pacing, campaigns, searches that cost money without a conversion, invalid clicks by month and campaign, alerts, the week's negatives, and every change made in the account. Print it, or copy a plain-text summary into Slack or an email.
+- **Changes:** Google's own change history for the last 30 days: who changed what, and from where.
 
-- **App name:** One Marketing Command Center. **Support email:** yours.
-- **Audience:** pick **Internal** if you sign in with a company Google Workspace account (like `@twinhomebuyer.com`). Only your company's accounts can use it, and Google doesn't need to review it. Otherwise pick **External** and add yourself and your team under **Test users**.
-- **Data access → Add or remove scopes:** add `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`, and `https://www.googleapis.com/auth/adwords`.
+Most pages have date presets (including the Bateman period, Jun 5 – Jul 23, 2026) and a custom from/to range.
 
-> With **External** and publishing status **Testing**, Google makes the Google Ads connection expire after 7 days, and you'll need to click **Connect again** each week. To stop that, either use **Internal** or publish the app.
+## Saved data
 
-### 3. Create the sign-in client
+DealTrack keeps its own records in the `.data` folder on the computer running it (git ignores it). Set `DEALTRACK_DATA_DIR` to keep it somewhere else.
 
-1. **Google Auth Platform → Clients → Create client**, type **Web application**.
-2. Under **Authorized redirect URIs**, add exactly:
-   `http://localhost:4000/api/auth/google/callback`
-   (and `https://your-domain/api/auth/google/callback` once the app is on a website).
-3. Copy the **Client ID** and **Client secret** into `.env.local` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`.
+- `dealtrack.json`: the budget and alert lines, the alert history, the weekly negative batches with every step's name and time, and the go-live audit ticks.
+- `leads.json`: the website leads (same format as One Marketing Command Center: copy its `.data/leads.json` here to bring its leads over).
+- `webhook-secret`: the key WordPress sends with each lead (unless `LEADS_WEBHOOK_SECRET` is set). `webhook-log.json`: the last few webhook calls, for troubleshooting.
+- `public-url`: the public address while `go-online.bat` runs.
 
-### 4. Get a Google Ads developer token
+- It's per computer. If two people each run DealTrack on their own laptop, each has their own history. Run it on one computer (or copy the file) to share one record.
+- Back it up like any other file. Deleting it resets the settings and history; Google Ads isn't affected.
+- It needs a disk to write to. On hosting without one (Vercel, for example), the reports work but saving shows an error.
+- Checks run when someone opens the app, not on a schedule: alerts are evaluated when the Alerts page or the Overview opens.
+- Steps that need a name (budget lines, audit ticks, proving, approving, pushing) use the name typed in the "Your name" field. It's remembered in that browser for a year.
 
-1. You need a Google Ads **manager account**. Create one free at https://ads.google.com/home/tools/manager-accounts/, then link your Google Ads account to it.
-2. In the manager account, open **Tools → API Center**, fill in the form, and accept the terms.
-3. Copy the **Developer token** into `.env.local` as `GOOGLE_ADS_DEVELOPER_TOKEN`.
-4. A new token has **Test Account Access** only, which can't read real accounts. Click **Apply for Basic Access** in the API Center. Google usually replies within a few business days. Until then the dashboard explains that the token only has test access.
+## Signing in
 
-### 5. Turn on the chat (optional)
+- **Continue with Google:** set `ALLOWED_EMAILS` (addresses or whole domains, like `@twinhomebuyer.com`) and, for admins, `ADMIN_EMAILS`. It uses the Google Ads web client (or `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`); add `http://localhost:3000/api/auth/google/callback` to that client's **Authorized redirect URIs** in Google Cloud (and `https://your-address/api/auth/google/callback` once it's online). Google sign-in stays off until `ALLOWED_EMAILS` is set, so no other Google account can get in. People signed in with Google get their name filled in automatically. Taking an email off the list signs that person out.
+- **Passwords:** `APP_PASSWORD` to view and `ADMIN_PASSWORD` for changes still work, alongside Google or instead of it.
+- With no sign-in set up, the reports are open on your own computer only: never in production, and never while `go-online.bat` has DealTrack on a public address.
 
-The chat can use OpenAI (GPT-5.5 by default) or Anthropic's Claude. Fill in one key:
+## Website leads from WordPress
 
-- **OpenAI:** at https://platform.openai.com add credit under **Settings → Billing**, then open **API keys → Create new secret key** and copy it into `.env.local` as `OPENAI_API_KEY`. Set a monthly cap under **Settings → Limits**.
-- **Claude:** at https://console.anthropic.com create a workspace under **Settings → Workspaces**, then **API keys → Create key** in that workspace, and copy it into `.env.local` as `ANTHROPIC_API_KEY`.
+1. Open **Leads** and expand **Website leads (WordPress)**. Copy the webhook address.
+2. In WordPress, paste it into the form's webhook setting, method **POST** (Contact Form 7: the free **CF7 to Webhook** plugin; Elementor: Actions After Submit → Webhook; WPForms and Gravity Forms: their webhook add-on). Sending the key as an `X-Webhook-Secret` header instead of `?key=` in the address keeps it out of logs, where the plugin allows it.
+3. Name the fields name, phone, email, property address and message (most forms already do). Add the hidden fields and tracking snippet shown on the page so each lead carries its UTM tags and Google click ID.
+4. WordPress has to reach DealTrack: put it online, or double-click `go-online.bat` (a free Cloudflare tunnel; leads arrive only while it and DealTrack run, and the address changes each time).
 
-- **Claude with no API key:** set `ASSISTANT_PROVIDER=claude-code`, then in the chat click **Sign in with Claude** (or double-click `setup-claude.bat`). It installs Claude Code if it's missing and signs in with your Claude account in the browser; the chat asks your question again when it's done. Each question runs Claude Code with its own tools turned off and only the chat's read-only Google Ads and leads lookups (`scripts/assistant-mcp.ts`), and counts against your Claude plan's usage. Everyone using the app shares the signed-in person's plan.
+## Making changes (admins only)
 
-With both keys filled in, OpenAI answers unless `ASSISTANT_PROVIDER=anthropic`. Each question costs a few cents; a long report can cost more. Questions and the data the assistant looks up (ad numbers, and lead names and contact details when you ask about leads) are sent to the provider you chose to produce the answer.
+Reports are read-only for everyone. People who sign in with `ADMIN_PASSWORD` can also:
 
-### 6. Choose who can sign in
+- **Add negative keywords** from the Search terms page: tick suggested ones or type your own, choose phrase, exact, or broad match, and choose campaigns.
+- **Push the weekly negatives** batch once it's proven and approved.
+- **Exclude cities** outside the buy area from the Locations page.
+- **Pause campaigns** from Budget & pacing once spend reaches the pause line.
+- **Undo** negatives and exclusions with Remove, in the lists below each panel.
+- **Set the budget lines and alert limits** (these only change DealTrack's saved data).
 
-Set `ALLOWED_EMAILS` in `.env.local`, for example:
+Safeguards:
 
-```
-ALLOWED_EMAILS=@twinhomebuyer.com,partner@gmail.com
-```
+- Every change shows exactly what will happen and needs a second click to confirm.
+- Only running campaigns are chosen by default. Paused ones can be added from a search box.
+- Terms and cities that brought conversions are left unchecked.
+- Cities in the buy area can't be excluded, whatever is sent to the server.
+- Remove only works on negative keywords and location exclusions, so it can't delete keywords, ads, or campaigns.
+- Nothing is changed automatically: alerts and the budget's pause line only ask a person.
+- Changes appear in Google Ads' change history (and on the Changes page) as made through the API.
+- **Dry run:** with `DEALTRACK_VALIDATE_ONLY=1`, every change is sent with Google's validate-only flag: Google checks it and applies nothing. Use it to try the buttons.
 
-An entry starting with `@` allows a whole domain. If you leave it empty, any Google account can sign in while the app runs on your computer. On a website it refuses everyone until you set it.
+Without `ADMIN_PASSWORD`, nobody can make changes and the dashboard is read-only.
 
-Restart the app after saving `.env.local`.
+## Run it
 
-## Using it
-
-1. Open http://localhost:4000 and click **Continue with Google**.
-2. On the **Google Ads** page, click **Connect Google Ads** and sign in with the Google account you use at ads.google.com. It can be a different account from the one you signed in with. Tick the box that lets the app see your Google Ads.
-3. If you can open more than one Google Ads account, pick one from the **Account** list. Accounts under a manager account are included.
-
-## Website leads from WordPress (Contact Form 7)
-
-The **Lead Saver** plugin keeps every Contact Form 7 submission in WordPress itself, so leads sent while the app or your computer is off are never lost, and nothing needs a public address. On the Leads page, open **Website leads (WordPress)**:
-
-1. Click **Download the Lead Saver plugin**. The file has your private key inside, so don't share it.
-2. In WordPress, open **Plugins → Add New Plugin** and click **Upload Plugin** at the top (it isn't in the WordPress plugin store; you upload the file), choose `omcc-lead-saver.zip`, click **Install Now**, then **Activate**.
-3. Type your website's address in the app and click **Connect**.
-
-The plugin also does the lead tracking (UTM tags, Google click ID, landing page, referrer) on its own. When the app has a newer plugin, the Leads page says so: download it and upload it the same way, then click **Replace current with uploaded**.
-
-The app picks up new leads every 30 seconds while it's open (and whenever the chat needs leads), keeping the time each one was really sent. In WordPress, **Contact → Command Center leads** shows what's been saved and when the app last picked leads up. The app reads them from `/wp-json/omcc/v1/leads` (or `?rest_route=/omcc/v1/leads` on sites without pretty permalinks), sending the key. If a security plugin or firewall blocks the WordPress REST API, allow `/wp-json/omcc/`. CF7 to Webhook isn't needed with it; if both are on, a lead still shows up only once.
-
-**Sending conversions to Google Ads uses Google's Data Manager API** (Google closed the Google Ads API's conversion upload to new apps). Once: turn on the Data Manager API in the Google Cloud project that has the app's sign-in client (https://console.cloud.google.com/apis/library/datamanager.googleapis.com), then connect Google Ads again in the app so Google grants the `datamanager` permission. Until both are done, conversions wait (the Leads page says so) and are sent by themselves within a few minutes after.
-
-## Lead scoring
-
-Every lead is scored from 0 to 100 when it arrives (`src/lib/leads/scoring.ts`): a real phone number, a property address, an email, a full name, a paid ad click, a seller search ("sell my house fast"), a motivated seller in the message (inherited, foreclosure, repairs...) and coming back again add points; a fake-looking number, links in the message or a reCAPTCHA spam block take points away. Tests, fake names, adverts and leads with no real phone or email are Junk. Hot is 70+ with a sign they want to sell (a seller search or their own words); otherwise 70+ is Warm. Warm is 40 to 69.
-
-With **Set the status from the score** on (the default, on the Leads page), a new Hot lead is marked **Interested**, which sends Google Ads an offline conversion, and Junk is marked **Not interested**. That follows Google Ads' advice to send back only qualified leads. A status you set yourself always wins. Only leads received in the last 24 hours get a status from their score, so old leads (from before scoring, or a first sync with the website) aren't reported to Google Ads without you.
-
-## Google Ads rules and invalid leads
-
-The automation runs by itself and isn't shown on the Leads page. The Google Ads rules run in the background and aren't shown anywhere in the app (they're kept in `.data/lead-rules.json`). **http://localhost:4000/leads/automation** (not linked in the app) has the on/off switch, where each stage goes in Google Ads, and the sending check.
-
-Rules decide what Google Ads hears about each new lead, top to bottom, first match wins: send it as a **Qualified lead** or **Converted lead** (with a value), **report it as an invalid lead** (to a secondary, reporting-only action worth $0: Google never bids for it, but its reports show which campaigns and keywords bring junk), or don't send it. The starting rules: report Junk as invalid, send Hot leads as qualified.
-
-On the Leads page, the **✕** on a lead marks it Not interested and moves it to the **Not interested** list: anything already sent for it is taken back from Google Ads (a retraction), and it's reported as an invalid lead. **↺** puts it back, taking back the invalid report. Statuses you set yourself always win; rules only run on leads from the last 24 hours and are kept in `.data/lead-rules.json`.
-
-## Other way: an instant webhook
-
-Not needed with the Lead Saver plugin; useful for other form plugins. It only works while the app is running and reachable from the internet.
-
-1. Open the **Leads** page, expand **Website leads (WordPress)** and then **Other way (advanced)**. Copy the webhook address.
-2. In WordPress, open your form's webhook setting and paste the address, method **POST**:
-   - **Contact Form 7:** install the free **CF7 to Webhook** plugin, edit the form, open its **Webhook** tab, tick the box, and paste the address.
-   - **Elementor:** Actions After Submit → Webhook. **WPForms, Gravity Forms:** their webhook add-on.
-3. Name the fields name (or first name and last name), phone, email, property address and message. Most forms already do. Anything else is kept in the lead's notes.
-4. Submit the form once as a test.
-
-**WordPress has to be able to reach the app.** It's on the internet and the app runs on your computer, so `localhost` addresses don't work from WordPress. Either:
-
-- **Put the app online** (recommended, and leads arrive even when your computer is off): host it somewhere with a disk that keeps files, set `SITE_URL` to its address, set `AUTH_SECRET`, and add `https://your-address/api/auth/google/callback` to the Google sign-in client's redirect URIs.
-- **Or open a tunnel from your computer:** with the app running, double-click **go-online.bat**. It downloads Cloudflare's free tunnel tool once, gives the app a public `https://…trycloudflare.com` address, and shows and copies the full webhook address to paste into WordPress. Leads only arrive while that window and the app are running, and the address changes each time, so paste the new one into WordPress each time.
-
-Every request must carry the secret key (`?key=…` in the address, or an `X-Webhook-Secret` header). A test request with GET to the same address answers `{"ok": true}` without adding a lead.
-
-## Unzipped into a new folder?
-
-start.bat brings your data over by itself: when the copy it runs from has no connections yet, it looks for an earlier copy of the app (Desktop, Downloads, Documents, OneDrive) and copies its `.data` folder (leads, chats, the WordPress connection and key, the Google Ads sign-in). The earlier copy isn't changed; what the new copy had is kept in `.data-before-restore`.
-
-## Deal History: 2024–2026 deals and Google Ads data
-
-The **Deal History** tab at the top shows the combined deals (filter by year) and the summary by year and by campaign, read live from the sheet, and links your spreadsheet (paste its link, click **Connect and sync**). The app adds and keeps up to date two tabs, and never changes any other tab:
-
-- **Google Ads data**: spend, clicks, impressions and conversions per campaign per month since January 2024.
-- **2024–2026 Combined**: every deal from the year tabs (any tab with a year in its name whose first row has Address and Marketing Fee columns, e.g. 2026, 2025, PENDING 2024), one row each with the year from the tab's name, plus a summary by year and by Google Ads campaign: deals, marketing fees, ad spend, ad spend per (PPC) deal and return on ad spend, as formulas over the two tabs.
-
-It refreshes at most every 6 hours while the app is used, or with **Sync now**. It needs the Google Sheets API turned on in the Google Cloud project of the app's sign-in client, and Google Ads connected again so Google grants the spreadsheets permission.
-
-## Daily Google Ads check
-
-`npm run daily-check -- <folder>` pulls the dashboard's numbers and problems (including locations) for the last 7, 30 and 90 days and all time, and writes them to that folder as JSON, plus `summary.md`: what's wrong in the last 30 days, most serious first, with how to fix each one. A scheduled Claude session runs it every morning, loads the results into the live Command Center page, and sends the summary.
-
-It needs `GOOGLE_ADS_REFRESH_TOKEN`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` and `GOOGLE_ADS_DEVELOPER_TOKEN` (and optionally `GOOGLE_ADS_CUSTOMER_ID`), from the environment or `.env.local`. The refresh token has to come from the same Google client as `GOOGLE_CLIENT_ID`: in https://developers.google.com/oauthplayground, click the gear, tick **Use your own OAuth credentials**, enter the client ID and secret, authorize `https://www.googleapis.com/auth/adwords`, and exchange the code for tokens. (Add `https://developers.google.com/oauthplayground` to the client's redirect URIs first.)
-
-## Where data is kept
-
-Everything is saved in the `.data/` folder next to the app (it's never committed):
-
-- `leads.json`: leads from the website (and any older QR code leads).
-- `webhook-log.json`: the last few times something called the website-leads webhook.
-- `wordpress.json`: your website's address and how far its saved leads have been picked up.
-- `conversion-actions.json`: which Google Ads conversion action each lead stage goes to (your own "Qualified lead" / "Converted lead", found automatically, or one you picked on the Leads page).
-- `lead-scoring.json`: whether the status is set from each lead's score (on unless you turn it off).
-- `sheet-sync.json`: the linked Google Sheet and when it was last updated.
-- `chats.json`: your chat conversations (the latest 50 per person), so they're still there after a refresh or a restart. **Past chats** in the chat lists them; **New chat** starts a fresh one.
-- `chat-problem.log`: why the chat last answered without its tools, if it did.
-- `public-url`: the tunnel address from go-online.bat.
-- `webhook-secret`: the key WordPress sends with each lead, unless `LEADS_WEBHOOK_SECRET` is set.
-- `google-ads.json`: each person's Google Ads connection. The Google token is encrypted.
-- `auth-secret`: the key used for that encryption and for sign-in cookies. If you delete it, everyone has to sign in and connect Google Ads again.
-
-Before putting the app on a website, set `AUTH_SECRET`, `SITE_URL` and `ALLOWED_EMAILS`, and use a host with a disk that keeps files (or swap `src/lib/leads/store.ts` and `src/lib/google/connections.ts` for a database).
-
-## For developers
-
-- Next.js 16 (App Router), Tailwind CSS 4, TypeScript. `npm run lint`, `npm run build`.
-- Sign-in: `src/app/api/auth/google/*` (OAuth 2.0 authorization code flow with PKCE), `src/lib/auth/*` (AES-GCM encrypted session cookie), `src/proxy.ts` (redirects signed-out visitors).
-- Google Ads: `src/lib/google/ads.ts` calls the REST API (`googleAds:search` with GAQL) using the signed-in person's refresh token and the developer token.
-- Leads: `src/lib/leads/*`, public form at `/s/<code-id>`.
+1. Install [Node.js](https://nodejs.org) 20 or newer.
+2. In this folder, copy `.env.example` to `.env.local` and fill in the values (below).
+3. Run:
+
+   ```bash
+   npm install
+   npm run dev
+   ```
+
+4. Open http://localhost:3000.
+
+**Faster for everyday use:** `npm run dev` compiles each page the first time you open it, which adds a few seconds per page. `start.bat` (or `npm run build` then `npm start`) runs the finished build and is much quicker.
+
+**Windows:** double-click `start.bat`. The first time, it creates `.env.local` and opens it in Notepad so you can paste in the keys. Run it again after saving, and it installs everything and opens the dashboard. It runs the production build, so it takes about a minute to start. For editing the code, use `npm run dev` instead.
+
+## Settings
+
+All settings are environment variables. On your computer they go in `.env.local`, which git ignores. When the app is online, add them in the hosting provider's settings (on Vercel: Project → Settings → Environment Variables). Never put the values in the code.
+
+| Variable | Where to find it |
+| --- | --- |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads manager account → Admin → API Center |
+| `GOOGLE_ADS_CLIENT_ID` | Google Cloud → Google Auth Platform → Clients → the web client |
+| `GOOGLE_ADS_CLIENT_SECRET` | Same client, under Client secrets |
+| `GOOGLE_ADS_REFRESH_TOKEN` | OAuth Playground with the `https://www.googleapis.com/auth/adwords` scope |
+| `GOOGLE_ADS_CUSTOMER_ID` | The ad account's 10-digit ID, top right in Google Ads (Twin Home Buyer: `9897155298`) |
+| `GOOGLE_ADS_LOGIN_CUSTOMER_ID` | Optional. The manager account's ID, only if access goes through it |
+| `APP_PASSWORD` | A team password you choose, for viewing. Required online; optional on your computer |
+| `ADMIN_PASSWORD` | Optional. A separate password that allows changes in Google Ads |
+| `SESSION_SECRET` | Any long random string |
+| `LEADS_SHEET_ID` | Optional. Adds deals and profit to Forecast. The PPC LEAD sheet's ID, from its URL between `/d/` and `/edit` |
+| `GOOGLE_SHEETS_REFRESH_TOKEN` | Forecast. OAuth Playground → gear → "Use your own OAuth credentials" (the Ads web client) → scope `https://www.googleapis.com/auth/spreadsheets.readonly`. Enable the Google Sheets API in the same Cloud project. Optional if `GOOGLE_ADS_REFRESH_TOKEN` has both scopes |
+| `POSTHOG_API_KEY`, `POSTHOG_PROJECT_ID`, `POSTHOG_HOST` | Behavior, Alerts. PostHog → Settings → Personal API keys → "Read-only access", limited to the project (Twin Home Buyer: `421236`, host `https://us.posthog.com`) |
+| `CLARITY_API_TOKEN` | Alerts. Clarity → Settings → Data export. Allows ~10 calls a day, so results are cached 3 hours |
+| `PAGESPEED_API_KEY` | Landing pages, Go-live audit. Google Cloud → enable PageSpeed Insights API → Credentials → Create API key |
+| `ALLOWED_EMAILS` | Google sign-in: who may view, e.g. `@twinhomebuyer.com,partner@gmail.com` |
+| `ADMIN_EMAILS` | Google sign-in: who may also make changes, e.g. `seth@twinhomebuyer.com` |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional. A separate Google client for sign-in; defaults to the Google Ads client |
+| `SITE_URL` | Once online: its address, for the Google sign-in redirect and the webhook address |
+| `LEADS_WEBHOOK_SECRET` | Optional. The key WordPress sends; one is created in `.data` if empty |
+| `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` | The chat. platform.openai.com → API keys, or console.anthropic.com → API keys. Billed per question (a few cents) |
+| `ASSISTANT_PROVIDER` | Optional. `claude-code` uses the Claude Code app on this computer signed in with a Claude account, no key (double-click `setup-claude.bat` or click **Sign in with Claude** in the chat). With both keys, OpenAI answers unless this says `anthropic` |
+| `DEALTRACK_DATA_DIR` | Optional. Where the saved data goes (default: `.data` in this folder) |
+| `DEALTRACK_WARMUP` | Optional. `0` stops the startup warm-up (see Speed) |
+| `DEALTRACK_VALIDATE_ONLY` | Optional. `1` turns on dry-run mode: Google checks every change and applies nothing |
+
+If a value is missing, the page that needs it says which one; the other pages keep working.
+
+## Speed
+
+- When the server starts, it fetches the reports people open first (the Overview, alert rules, landing page tests, the go-live audit) in the background, so the first visit doesn't wait. It prints "DealTrack: reports ready" when done, usually within a minute.
+- Google Ads reports are fresh for 10 minutes. After that, for up to 6 hours, the last result shows at once and a new one is fetched in the background. "Refresh now" on the Overview fetches everything again.
+- PageSpeed results are kept 12 hours (and shown for up to a week while a new test runs), since each test takes 10–30 seconds.
+- A bar across the top shows a page is loading, and slow pages show what they're waiting for.
+
+## How it works
+
+- `src/lib/google-ads/client.ts` trades the refresh token for an access token and runs GAQL queries against the Google Ads API (v22). Results are cached for 10 minutes, since Explorer access allows 2,880 API operations a day.
+- `src/lib/google-ads/reports.ts` holds the report queries and turns Google's micros and strings into dollars and numbers. `overview.ts`, `ads.ts`, `quality.ts`, and `invalid-clicks.ts` hold the newer pages' queries.
+- `src/lib/store.ts` reads and writes the saved data file. Saves are queued and written to a temporary file first, so two at once can't overwrite each other and a crash can't leave half a file.
+- `src/lib/alert-rules.ts` holds the alert rules and the alert history; `src/lib/budget.ts` the pacing; `src/lib/audit.ts` the go-live audit; `src/lib/negative-batches.ts` the weekly negatives.
+- `src/lib/service-area.ts` lists the buy area. Edit it to change the buy box.
+- `src/lib/negatives.ts` holds the rules behind suggested negative keywords. Edit them as the team learns from lead outcomes.
+- `src/lib/google-ads/changes.ts` makes the changes (negative keywords, location exclusions, pausing) and re-checks every input against the live account first. `src/app/actions/changes.ts` is the only way the pages reach it, and it checks for an admin session.
+
+## Next steps
+
+- Sign in with Google (one login per person) instead of a shared password and a typed name.
+- If more than one computer runs DealTrack, move the saved data to a shared database so everyone sees one history.
+- Host it online so alerts can run on a schedule and send email or Slack, instead of only when the app is open, and so WordPress can send leads without the tunnel.
+- The chat sends what it looks up (ad numbers, and lead names and contact details when asked about leads) to the AI provider chosen above.

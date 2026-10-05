@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
-import { getSession } from "@/lib/auth/session"
+import { isAdmin } from "@/lib/auth"
 import { defaultRules } from "@/lib/leads/rules"
 import { saveRules } from "@/lib/leads/rules-store"
 
@@ -37,7 +37,7 @@ const rules = z
 
 // Saves the Google Ads rules from the Leads page (or puts the defaults back).
 export async function saveRulesAction(input: unknown, reset = false): Promise<{ error?: string }> {
-  if (!(await getSession())) return { error: "Sign in first." }
+  if (!(await isAdmin())) return { error: "Only admins can change the Google Ads rules. Sign in as an admin." }
   if (reset) {
     await saveRules(defaultRules())
   } else {
@@ -49,6 +49,6 @@ export async function saveRulesAction(input: unknown, reset = false): Promise<{ 
     }
     await saveRules(parsed.data as Parameters<typeof saveRules>[0])
   }
-  revalidatePath("/leads")
+  revalidatePath("/leads", "layout")
   return {}
 }

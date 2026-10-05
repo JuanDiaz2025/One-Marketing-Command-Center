@@ -12,13 +12,14 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-// Light or dark before anything is drawn (no white flash): your choice from the switch in the top
-// bar, or else your computer's setting. The public QR form (/s/...) that sellers see stays light.
-const THEME_SCRIPT = `(function(){try{var p=location.pathname.indexOf("/s/")===0;var t=localStorage.getItem("omcc-theme");var d=!p&&(t?t==="dark":matchMedia("(prefers-color-scheme: dark)").matches);var e=document.documentElement;e.classList.toggle("dark",d);e.style.colorScheme=d?"dark":"light"}catch(_){}})()`
+// Light or dark before anything is drawn (no white flash): the choice from the switch in the top bar,
+// or else the computer's setting. Printing is always light.
+const THEME_SCRIPT = `(function(){try{var t=localStorage.getItem("dealtrack-theme");var d=t?t==="dark":matchMedia("(prefers-color-scheme: dark)").matches;var e=document.documentElement;e.classList.toggle("dark",d);e.style.colorScheme=d?"dark":"light";var was;addEventListener("beforeprint",function(){was=e.classList.contains("dark");e.classList.remove("dark")});addEventListener("afterprint",function(){if(was)e.classList.add("dark")})}catch(_){}})()`
 
 export const metadata: Metadata = {
-  title: "One Marketing Command Center",
-  description: "Google Ads results, website leads and phone calls in one place.",
+  title: "DealTrack · Twin Home Buyer",
+  description: "Google Ads results for Twin Home Buyer: spend, leads, wasted search terms, and cities.",
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
