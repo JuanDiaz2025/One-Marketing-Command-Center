@@ -248,7 +248,7 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
     })
     return
   }
-  const click = googleClick(lead.tracking)
+  const click = entry.noClick ? null : googleClick(lead.tracking)
   const ids = identifiers(lead)
   if (!click && !ids.length) {
     await updateLead(lead.id, (l) => {
@@ -307,20 +307,30 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
           accountId: account.customerId,
           state: waitingFor || (RETRY.test(`${code} ${error}`) && tries < MAX_TRIES) ? "pending" : "failed",
         }
-      : { at: current.at, value: current.value, rule: current.rule, transactionId: current.transactionId ?? `${l.id}-${kind}`, action, requestId, tries, lastTry: now, state: "sent", matchedBy: [click && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
+      : { at: current.at, value: current.value, rule: current.rule, noClick: current.noClick, transactionId: current.transactionId ?? `${l.id}-${kind}`, action, requestId, tries, lastTry: now, state: "sent", matchedBy: [click && "Google click ID", ids.length && "email/phone"].filter(Boolean).join(" + ") }
   })
 }
 
 // Google's reasons in plain words.
 const REASONS: Record<string, string> = {
   INVALID_CLICK_ID: "Google doesn't recognize the click ID (a typed-in test, or a click from another account)",
+  INVALID_GCLID: "Google doesn't recognize the click ID (a typed-in test, or a click from another account)",
+  INVALID_GBRAID: "Google doesn't recognize the iPhone click ID",
+  INVALID_WBRAID: "Google doesn't recognize the iPhone click ID",
+  DESTINATION_ACCOUNT_DATA_POLICY_PROHIBITS_ENHANCED_CONVERSIONS: "the account hasn't accepted the customer data terms for enhanced conversions",
   CLICK_NOT_FOUND: "Google couldn't find that ad click",
   EXPIRED_EVENT: "the ad click was too long ago (over 90 days)",
   EVENT_TOO_OLD: "the ad click was too long ago (over 90 days)",
   DUPLICATE_TRANSACTION_ID: "it was already sent before",
   NO_MATCH: "Google couldn't match it to anyone who clicked your ads",
 }
-const humanize = (reason: string) => REASONS[reason] ?? reason.toLowerCase().replace(/_/g, " ")
+// Google's codes come as e.g. PROCESSING_ERROR_REASON_INVALID_GCLID.
+const humanize = (reason: string) => {
+  const code = reason.replace(/^PROCESSING_(ERROR|WARNING)_REASON_/, "")
+  return REASONS[code] ?? REASONS[reason] ?? code.toLowerCase().replace(/_/g, " ")
+}
+// Google refused the click ID itself (a typed-in test, or a click from another account).
+const BAD_CLICK = /INVALID_(GCLID|GBRAID|WBRAID|CLICK_ID)|CLICK_NOT_FOUND/i
 
 // Asks Google what it decided about a sent conversion: at most every 30 minutes, starting 30
 // minutes after sending, for up to 3 days.
@@ -328,11 +338,13 @@ async function checkDecision(connection: AdsConnection, lead: Lead, kind: Conver
   const entry = lead.conversions?.[kind]
   if (!entry?.requestId) return
   let decided: NonNullable<typeof entry.google>
+  let lastReasons = "" // Google's codes, before translating
   const now = new Date().toISOString()
   try {
     const res = await requestStatus(connection, entry.requestId)
     const statuses = res.requestStatusPerDestination ?? []
     const errors = statuses.flatMap((d) => d.errorInfo?.errorCounts ?? []).map((e) => e.reason ?? "").filter(Boolean)
+    lastReasons = errors.join(" ")
     const warnings = statuses.flatMap((d) => d.warningInfo?.warningCounts ?? []).map((w) => w.reason ?? "").filter(Boolean)
     const states = statuses.map((d) => d.requestStatus)
     if (!states.length || states.some((st) => st === "PROCESSING" || st === "REQUEST_STATUS_UNKNOWN")) decided = { status: "processing", checkedAt: now }
@@ -341,6 +353,26 @@ async function checkDecision(connection: AdsConnection, lead: Lead, kind: Conver
   } catch (e) {
     // Try again later, but keep why it didn't work, so the Leads page can say so.
     decided = { status: "processing", reason: `Couldn't ask Google: ${e instanceof Error ? e.message : String(e)}`.slice(0, 300), checkedAt: now }
+  }
+  // Refused only because of the click ID: send it again matched by the lead's email/phone (once),
+  // if it still stands (the lead wasn't moved back since).
+  const rawReasons = decided.status === "rejected" ? lastReasons : ""
+  const stillWanted = kind === "invalid" ? lead.status === "not_interested" : !["new", "not_interested"].includes(lead.status ?? "new")
+  if (decided.status === "rejected" && BAD_CLICK.test(rawReasons) && !entry.noClick && identifiers(lead).length && stillWanted) {
+    await updateLead(lead.id, (l) => {
+      const e = l.conversions?.[kind]
+      if (!e || e.requestId !== entry.requestId) return
+      l.conversions![kind] = {
+        state: "pending",
+        at: e.at,
+        value: e.value,
+        rule: e.rule,
+        // A new id: the refused one was never counted, but a fresh one avoids any duplicate check.
+        transactionId: `${e.transactionId ?? `${l.id}-${kind}`}-p`,
+        noClick: true,
+      }
+    })
+    return
   }
   await updateLead(lead.id, (l) => {
     const e = l.conversions?.[kind]
@@ -459,6 +491,25 @@ export function sendPendingConversions(connection: AdsConnection, account: AdsAc
             l.conversions![kind] = again
           })
           lead.conversions![kind] = entry = again
+        }
+        // Refused by Google (so never counted): on a lead that's New or Not interested again there's
+        // nothing to show or take back; on a good lead refused only for its click ID, send it again
+        // matched by email/phone (once).
+        if (kind !== "invalid" && entry?.state === "sent" && entry.google?.status === "rejected" && !entry.retraction) {
+          if (lead.status === "new" || lead.status === "not_interested") {
+            await updateLead(lead.id, (l) => {
+              if (l.conversions?.[kind]?.google?.status === "rejected") delete l.conversions[kind]
+            })
+            delete lead.conversions![kind]
+            continue
+          }
+          if (!entry.noClick && /click id|gclid|gbraid|wbraid/i.test(entry.google.reason ?? "") && identifiers(lead).length) {
+            const again = { state: "pending" as const, at: entry.at, value: entry.value, rule: entry.rule, transactionId: `${entry.transactionId ?? `${lead.id}-${kind}`}-p`, noClick: true }
+            await updateLead(lead.id, (l) => {
+              if (l.conversions?.[kind]?.google?.status === "rejected") l.conversions[kind] = again
+            })
+            lead.conversions![kind] = entry = again
+          }
         }
         // Sent earlier but no longer true (Not interested now, or an invalid report on a lead that's
         // good again): take it back.

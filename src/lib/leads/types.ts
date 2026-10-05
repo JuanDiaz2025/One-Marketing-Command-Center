@@ -89,6 +89,8 @@ export type ConversionUpload = {
   fixRetry?: boolean
   // Kept only for its resend id: queued, then marked Not interested before it was sent.
   parked?: boolean
+  // Sent again matched by email/phone only, after Google refused its click ID.
+  noClick?: boolean
   // The Google Ads account it last failed in, and how often it was tried again after the account changed.
   accountId?: string
   accountResets?: number

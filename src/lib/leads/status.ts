@@ -36,6 +36,21 @@ export function applyStatus(lead: Lead, status: LeadStatus, by: "auto" | "you", 
     reportInvalid(lead, now)
     return
   }
+  // Put back as New (marked Interested or further by mistake): Google shouldn't keep counting it as a
+  // good lead. Take back what was sent (unless Google refused it anyway) and drop what wasn't.
+  if (status === "new") {
+    for (const kind of ["interested", "closed"] as const) {
+      const entry = lead.conversions[kind]
+      if (!entry) continue
+      if (entry.state === "sent" && entry.google?.status !== "rejected") {
+        if (!entry.retraction) entry.retraction = { state: "pending", at: now }
+      } else if (entry.state !== "sent" && entry.transactionId) {
+        lead.conversions[kind] = { state: "skipped", parked: true, at: entry.at, transactionId: entry.transactionId }
+      } else if (!entry.retraction) {
+        delete lead.conversions[kind]
+      }
+    }
+  }
   // Not "not interested" any more (good after all, or put back as New): an invalid report already
   // sent is taken back, one not sent yet is dropped.
   const invalid = lead.conversions.invalid
