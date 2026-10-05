@@ -13,7 +13,7 @@ import { AssistantError, INSTRUCTIONS, type AskInput } from "@/lib/assistant/sha
 import { buildSnapshot } from "@/lib/assistant/snapshot"
 
 const TIMEOUT_MS = 4 * 60_000
-const TOOLS = ["mcp__omcc__google_ads_query", "mcp__omcc__list_leads"]
+const TOOLS = ["mcp__omcc__google_ads_query", "mcp__omcc__list_leads", "mcp__omcc__deal_history"]
 
 const NOT_INSTALLED = "The chat needs Claude on this computer. Click Sign in with Claude below: it sets it up and signs you in with your Claude account."
 const NOT_SIGNED_IN = "Claude isn't signed in on this computer yet. Click Sign in with Claude below and sign in with your Claude account."
@@ -212,7 +212,7 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
       const system = path.join(dir, "system.txt")
       await writeFile(
         system,
-        `${INSTRUCTIONS}\n\n${situation}\n\nUse the google_ads_query and list_leads tools for real numbers. Answer in Markdown.\n\nIf the google_ads_query and list_leads tools are not available to you, reply with exactly ${NO_TOOLS} and nothing else.`,
+        `${INSTRUCTIONS}\n\n${situation}\n\nUse the google_ads_query, list_leads and deal_history tools for real numbers. Answer in Markdown.\n\nIf the google_ads_query and list_leads tools are not available to you, reply with exactly ${NO_TOOLS} and nothing else.`,
       )
       const debug = path.join(dir, "claude-debug.log")
       const text = await runClaude(

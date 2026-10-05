@@ -32,17 +32,18 @@ function appVersion() {
 export default function AppHeader({ current, user }: { current: Current; user: Session }) {
   return (
     <header className="sticky top-0 z-20 border-b border-border/70 bg-background print:hidden">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
-        <div className="flex min-w-0 items-center gap-6">
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+        <div className="flex min-w-0 items-center gap-4 xl:gap-6">
           <BrandLogo href="/dashboard" compact />
-          <nav aria-label="Main" className="hidden items-center gap-1 text-sm sm:flex">
+          <nav aria-label="Main" className="hidden shrink-0 items-center gap-1 text-sm sm:flex">
             {links.map((l) => (
               <Link
                 key={l.href}
                 href={l.href}
                 aria-current={current === l.href ? "page" : undefined}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-muted-foreground hover:bg-muted hover:text-foreground",
+                  // One line always ("Deal History", not "Deal / History").
+                  "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 whitespace-nowrap text-muted-foreground hover:bg-muted hover:text-foreground",
                   current === l.href && "bg-muted font-medium text-foreground",
                 )}
               >
@@ -53,7 +54,7 @@ export default function AppHeader({ current, user }: { current: Current; user: S
             ))}
           </nav>
         </div>
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {user.picture ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -63,10 +64,11 @@ export default function AppHeader({ current, user }: { current: Current; user: S
               className="size-8 shrink-0 rounded-full"
             />
           ) : null}
-          <span className="hidden truncate text-sm text-muted-foreground md:inline" title={user.email}>
+          {/* Wide windows only, so the menu always fits on one line. */}
+          <span className="hidden max-w-56 truncate text-sm text-muted-foreground xl:inline" title={user.email}>
             {user.email}
           </span>
-          {appVersion() && <span className="hidden text-xs text-muted-foreground/70 lg:inline">Version {appVersion()}</span>}
+          {appVersion() && <span className="hidden text-xs whitespace-nowrap text-muted-foreground/70 xl:inline">Version {appVersion()}</span>}
           <ThemeToggle />
           <form action={signOutAction}>
             <Button type="submit" variant="ghost" size="lg">
@@ -83,7 +85,7 @@ export default function AppHeader({ current, user }: { current: Current; user: S
             key={l.href}
             href={l.href}
             aria-current={current === l.href ? "page" : undefined}
-            className={cn("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-muted-foreground", current === l.href && "bg-muted font-medium text-foreground")}
+            className={cn("inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 whitespace-nowrap text-muted-foreground", current === l.href && "bg-muted font-medium text-foreground")}
           >
             {l.href === "/dashboard" && <GoogleAdsMark className="size-4" />}
             {l.label}

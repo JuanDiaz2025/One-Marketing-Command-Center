@@ -6,6 +6,7 @@ import { syncWordPress } from "@/lib/leads/wordpress"
 import { leadSource } from "@/lib/leads/source"
 import { leadChannel } from "@/lib/leads/tracking"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
+import { readCombined } from "@/lib/google/sheets-sync"
 
 // Written once and handed to whichever AI provider is set up (see claude.ts and openai.ts).
 export type ToolSpec = {
@@ -49,6 +50,23 @@ export const toolSpecs: ToolSpec[] = [
         days: { type: "integer", description: "How many days back to look, from 1 to 365." },
       },
       required: ["days"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "deal_history",
+    description:
+      "The company's closed and pending deals from its Google Sheet (the Deal History tab: every deal from the 2024, 2025 and 2026 tabs in one list), " +
+      "with each deal's lead name, dates (lead received, contract signed, acquired), address, Google Ads campaign, keyword, ad group, lead source (PPC = Google Ads, " +
+      "Direct Mail, Realtor...), marketing fee (the deal's profit to the company) and status, plus summary tables by year and by Google Ads campaign " +
+      "(deals, marketing fees, Google Ads spend, ad spend per deal, return on ad spend). Use it for questions about deals, profit, which campaigns or keywords " +
+      "brought deals, and return on ad spend. Pass a year to see only that year's deals, or 0 for all.",
+    parameters: {
+      type: "object",
+      properties: {
+        year: { type: "integer", description: "A year like 2025 for only that year's deals, or 0 for all years." },
+      },
+      required: ["year"],
       additionalProperties: false,
     },
   },
@@ -110,6 +128,18 @@ export async function runTool(
             })),
         ),
       }
+    }
+
+    if (name === "deal_history") {
+      if (!connection) return { content: "Google isn't connected yet, so the spreadsheet can't be read.", isError: true }
+      const view = await readCombined(connection)
+      if (!view) return { content: "No spreadsheet is linked yet: it's linked on the Deal History tab (Spreadsheet connection).", isError: true }
+      const year = Math.round(Number((input as { year?: unknown }).year) || 0)
+      const deals = view.deals
+        .filter((d) => !year || d[0] === String(year))
+        .map((d) => Object.fromEntries(view.header.map((h, i) => [h, d[i] ?? ""]).filter(([, v]) => v !== "")))
+      const summaries = view.tables.map((t) => ({ table: t.header[0], rows: t.rows.map((r) => Object.fromEntries(t.header.map((h, i) => [i === 0 ? t.header[0] : h, r[i] ?? ""]).filter(([h, v]) => h && v !== ""))) }))
+      return { content: `${JSON.stringify({ summaries, notes: view.notes })}\n${asResult(deals)}` }
     }
 
     return { content: `Unknown tool ${name}.`, isError: true }
