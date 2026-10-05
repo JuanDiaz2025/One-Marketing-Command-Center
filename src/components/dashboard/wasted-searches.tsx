@@ -15,7 +15,7 @@ type Props = {
 }
 
 // Search terms that cost money without bringing in a lead, and the negative keywords to block them.
-export default function WastedSearches({ wasted, total, spendLimit, currency, error }: Props) {
+export default function WastedSearches({ wasted, total, currency, error }: Props) {
   const money = (n: number, cents = false) => formatMoney(n, currency, cents)
   const fresh = wasted.filter((w) => w.isNew).length
 
@@ -89,8 +89,10 @@ export default function WastedSearches({ wasted, total, spendLimit, currency, er
       <div className="px-5 py-4 text-xs text-muted-foreground sm:px-6">
         {wasted.length > 10 && <p>Most expensive first. Copy includes all of them, not only this page.</p>}
         <p>
-          Flagged when a search brought no leads and either matches a word like &ldquo;rent&rdquo; or
-          &ldquo;jobs&rdquo;, or cost more than {money(spendLimit)}. Check the list first, then in
+          Flagged when a search brought no leads and doesn&apos;t fit a cash home buyer: job seekers, renters, home buyers,
+          people after a loan or another service (remodeling, roofing&hellip;), DIY research, or searches not about a house at
+          all. Searches from people who want to sell (&ldquo;sell my house fast&rdquo;, &ldquo;we buy houses&rdquo;,
+          foreclosure, inherited&hellip;) are never flagged, whatever they cost. Check the list first, then in
           Google Ads open <strong>Keywords → Negative keywords → +</strong>, paste, and save.
           Performance Max searches aren&apos;t included; Google doesn&apos;t report them here.
         </p>
