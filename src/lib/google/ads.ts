@@ -184,9 +184,16 @@ function byPreference(a: AdsAccount, b: AdsAccount) {
   return Number(a.test) - Number(b.test) || Number(unnamed(a)) - Number(unnamed(b)) || a.name.localeCompare(b.name)
 }
 
-// The account you picked on the Google Ads page, or else the best guess at your main one.
-export function chosenAccount(accounts: AdsAccount[], selectedCustomerId?: string) {
-  return accounts.find((a) => a.customerId === selectedCustomerId) ?? [...accounts].sort(byPreference)[0]
+// The account you picked on the Google Ads page, or else the best guess at your own business's: the
+// one named like your email's company (bryan@twinhomebuyer.com → "Twin Home Buyer"), not a client's
+// account you also manage, and never just the first name in the alphabet.
+export function chosenAccount(accounts: AdsAccount[], selectedCustomerId?: string, email?: string) {
+  const picked = accounts.find((a) => a.customerId === selectedCustomerId)
+  if (picked) return picked
+  const letters = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "")
+  const company = letters(email?.split("@")[1]?.split(".")[0] ?? "")
+  const own = company.length >= 4 ? accounts.filter((a) => !a.test && letters(a.name).includes(company)) : []
+  return [...(own.length ? own : accounts)].sort(byPreference)[0]
 }
 
 export type Metrics = {

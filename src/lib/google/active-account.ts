@@ -14,6 +14,6 @@ export async function activeAccount(sub: string) {
     connection.accounts = await listAccounts(connection)
     await updateConnection(sub, { accounts: connection.accounts, accountsFetchedAt: new Date().toISOString() })
   }
-  const account = chosenAccount(connection.accounts, connection.selectedCustomerId)
+  const account = chosenAccount(connection.accounts, connection.selectedCustomerId, connection.email)
   return account ? { connection, account } : null
 }

@@ -2,6 +2,7 @@ import type { Metadata } from "next"
 import { CircleAlert, CircleCheck, ExternalLink, RefreshCw } from "lucide-react"
 
 import AppHeader from "@/components/app-header"
+import AccountSelect from "@/components/dashboard/account-select"
 import AssistantLauncher from "@/components/dashboard/assistant-launcher"
 import { AdsError, ConnectAds, DisconnectButton, SetupNeeded } from "@/components/dashboard/ads-panels"
 import {
@@ -113,7 +114,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
       })
     }
     const account =
-      chosenAccount(connection.accounts, connection.selectedCustomerId)
+      chosenAccount(connection.accounts, connection.selectedCustomerId, connection.email)
     if (!account) return { kind: "no-accounts", connection }
     // Calls cover the same stretch as the period (all time: the last year).
     const callDays = Math.min(365, Math.round((Date.parse(period.end) - Date.parse(period.start)) / 86_400_000) + 1)
@@ -371,18 +372,13 @@ function Report({
             <label htmlFor="customerId" className="text-sm font-medium">
               Account
             </label>
-            <select
-              id="customerId"
-              name="customerId"
-              defaultValue={account.customerId}
-              className="h-10 max-w-full min-w-0 rounded-lg border bg-card px-3 text-sm"
-            >
-              {connection.accounts.map((a) => (
-                <option key={a.customerId} value={a.customerId}>
-                  {a.name} ({formatCustomerId(a.customerId)}){a.managerName ? ` · via ${a.managerName}` : ""}
-                </option>
-              ))}
-            </select>
+            <AccountSelect
+              current={account.customerId}
+              options={connection.accounts.map((a) => ({
+                value: a.customerId,
+                label: `${a.name} (${formatCustomerId(a.customerId)})${a.managerName ? ` · via ${a.managerName}` : ""}`,
+              }))}
+            />
             <input type="hidden" name="period" value={periodQuery(period)} />
             <Button type="submit" variant="outline" size="lg">
               Show

@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     }
   }
   const account =
-    (connection && chosenAccount(connection.accounts, connection.selectedCustomerId)) ?? null
+    (connection && chosenAccount(connection.accounts, connection.selectedCustomerId, connection.email)) ?? null
 
   const today = new Date().toISOString().slice(0, 10)
   const situation =
