@@ -58,6 +58,7 @@ export const navGroups = [
     links: [
       { href: "/competitors/keywords", label: "Keyword explorer" },
       { href: "/competitors/rankings", label: "Google rankings" },
+      { href: "/competitors/sites", label: "Competitor sites" },
     ],
   },
   {
@@ -70,6 +71,7 @@ export const navGroups = [
   {
     label: "Reports",
     links: [
+      { href: "/weekly-review", label: "Weekly review" },
       { href: "/report", label: "Weekly report" },
       { href: "/changes", label: "Changes" },
       { href: "/deals", label: "Deal History" },

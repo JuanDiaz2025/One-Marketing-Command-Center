@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Download, LoaderCircle, Play, Search, Square, Trash2, X } from "lucide-react"
+import { Download, LoaderCircle, Play, Search, Square, Trash2 } from "lucide-react"
 
 import { continueScanAction, deleteScanAction, startScanAction, stopScanAction, type SerpState } from "@/app/actions/serp"
 import { BrandView, MapsView } from "@/components/research/rankings-maps"
@@ -39,6 +39,7 @@ type Props = {
   initialTab: Tab
   topics: { id: string; label: string }[]
   places: string[]
+  targeted: string[] // places our running campaigns target
   // named: the keyword names a city ("city") or a region like "bay area" ("region").
   keywords: { t: string; v: number | null; named: "city" | "region" | "" }[]
 }
@@ -197,6 +198,123 @@ function ShownScan({
 
 // ---- The scan form ----------------------------------------------------------------------------
 
+// What a scan costs, roughly: credits left after it, the money it would be at each service's list
+// price (Serper's free credits cover it until they run out; Brave's first ~1,000 a month are free),
+// and how long it runs at the scan's own pace (3 Serper searches at a time, about 4–5 a second;
+// Brave one a second). Prices change: check serper.dev and brave.com/search/api.
+const PRICE_PER_1000 = { serper: 1, brave: 5 } as const
+const SECONDS_PER_SEARCH = { serper: 0.22, brave: 1.1 } as const
+const BRAVE_FREE_MONTHLY = 1000
+
+function ScanCost({ service, searches, credits, balance }: { service: SerpEngine; searches: number; credits: number; balance: number | null }) {
+  const usd = (n: number) => (n < 10 ? `$${n.toFixed(2)}` : `$${Math.round(n).toLocaleString("en-US")}`)
+  const secs = searches * SECONDS_PER_SEARCH[service]
+  const time = secs < 90 ? "about a minute" : secs < 3600 ? `about ${Math.round(secs / 60)} minutes` : `about ${(secs / 3600).toFixed(1)} hours`
+  const price = (credits / 1000) * PRICE_PER_1000[service]
+  return (
+    <span className="mt-1 block text-xs text-muted-foreground">
+      {service === "serper" ? (
+        <>
+          {balance !== null && credits <= balance ? (
+            <>
+              Leaves <b className="text-foreground tabular-nums">{fmt(balance - credits)}</b> credits. Free: your credits cover it (about {usd(price)}{" "}
+              at Serper&apos;s paid price).
+            </>
+          ) : (
+            <>About {usd(price)} at Serper&apos;s paid price (roughly $1 per 1,000 credits).</>
+          )}
+        </>
+      ) : (
+        <>
+          {searches <= BRAVE_FREE_MONTHLY
+            ? "Free if it fits in Brave's ~1,000 free searches this month"
+            : `About ${usd(((searches - BRAVE_FREE_MONTHLY) / 1000) * PRICE_PER_1000.brave)} beyond Brave's ~1,000 free searches a month`}{" "}
+          ($5 per 1,000 after that).
+        </>
+      )}{" "}
+      Takes {time}; you can leave the page, or stop it and keep what it found.
+    </span>
+  )
+}
+
+// "Search from": a searchable checklist. Our targeted cities first (all at once with one click),
+// then the other California places; California itself only for Google results.
+function PlaceChecklist({
+  places,
+  targeted,
+  where,
+  setWhere,
+  allowState,
+}: {
+  places: string[]
+  targeted: string[]
+  where: string[]
+  setWhere: (list: string[]) => void
+  allowState: boolean
+}) {
+  const [query, setQuery] = useState("")
+  const q = query.trim().toLowerCase()
+  const ours = new Set(targeted)
+  const match = (p: string) => !q || p.toLowerCase().includes(q)
+  const others = places.filter((p) => p !== STATEWIDE && !ours.has(p)).sort()
+  const toggle = (p: string) => setWhere(where.includes(p) ? where.filter((x) => x !== p) : [...where, p])
+  const allTargeted = targeted.length > 0 && targeted.every((p) => where.includes(p))
+  const chosenCities = where.filter((p) => p !== STATEWIDE)
+  const box = (p: string, label = p) => (
+    <label key={p} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 hover:bg-muted">
+      <input type="checkbox" checked={where.includes(p)} onChange={() => toggle(p)} />
+      {label}
+    </label>
+  )
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border p-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search cities and counties…"
+          aria-label="Search places"
+          className="h-8 min-w-48 flex-1 rounded-md border border-input bg-background px-2 text-xs"
+        />
+        {targeted.length > 0 && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setWhere(allTargeted ? where.filter((p) => !ours.has(p)) : [...new Set([...where, ...targeted])])}
+          >
+            {allTargeted ? "Untick our cities" : `All ${targeted.length} of our cities`}
+          </Button>
+        )}
+        {chosenCities.length > 0 && (
+          <Button type="button" size="sm" variant="ghost" onClick={() => setWhere(where.filter((p) => p === STATEWIDE))}>
+            Clear cities
+          </Button>
+        )}
+        <span className="text-xs text-muted-foreground">
+          {where.includes(STATEWIDE) && allowState ? "California + " : ""}
+          {chosenCities.length} {chosenCities.length === 1 ? "city" : "cities"} picked
+        </span>
+      </div>
+      <div className="flex max-h-64 flex-col overflow-y-auto text-xs">
+        {allowState && match("california") && box(STATEWIDE, "California (whole state)")}
+        {targeted.some(match) && <p className="mt-1 px-2 font-medium text-muted-foreground">Our targeted cities</p>}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3">{targeted.filter(match).map((p) => box(p))}</div>
+        {others.some(match) && <p className="mt-2 px-2 font-medium text-muted-foreground">Other California places</p>}
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3">{others.filter(match).map((p) => box(p))}</div>
+        {!targeted.some(match) && !others.some(match) && !(allowState && match("california")) && (
+          <p className="px-2 py-1 text-muted-foreground">No place matches.</p>
+        )}
+      </div>
+      {!targeted.length && (
+        <p className="text-xs text-muted-foreground">
+          Your targeted cities show up here after “Get volumes: California + every targeted city” on the Keyword explorer.
+        </p>
+      )}
+    </div>
+  )
+}
+
 function ScanPanel({
   admin,
   engines,
@@ -207,6 +325,7 @@ function ScanPanel({
   running,
   topics,
   places,
+  targeted,
   keywords,
   brandQueries,
   busy,
@@ -219,7 +338,6 @@ function ScanPanel({
   const [minVolume, setMinVolume] = useState(0)
   const [max, setMax] = useState("")
   const [where, setWhere] = useState<string[]>([STATEWIDE])
-  const [city, setCity] = useState("")
   const [stars, setStars] = useState(false)
   const hasVolumes = keywords.some((k) => k.v !== null)
   // Google Maps and the brand check only run on Serper.
@@ -251,12 +369,6 @@ function ScanPanel({
   const credits = kind === "brand" ? brandQueries.length + 3 : kind === "maps" && stars ? searches * 3 : searches
   const tooMany = service === "serper" && balance !== null && credits > balance
   const ready = kind === "brand" ? serperReady : keywords.length > 0 && (kind === "web" || serperReady)
-
-  const addCity = () => {
-    const match = places.find((p) => p.toLowerCase() === city.trim().toLowerCase())
-    if (match && !where.includes(match)) setWhere([...where, match])
-    setCity("")
-  }
 
   return (
     <Disclosure className="group rounded-2xl border bg-card shadow-xs" initialOpen={open}>
@@ -414,37 +526,7 @@ function ScanPanel({
                 {service === "serper" ? (
                   <fieldset className="flex flex-col gap-2">
                     <legend className="mb-1 text-xs font-medium text-muted-foreground">Search from</legend>
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      {where
-                        .filter((p) => kind === "web" || p !== STATEWIDE)
-                        .map((p) => (
-                          <span key={p} className="flex items-center gap-1 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs">
-                            {p === STATEWIDE ? "California (whole state)" : p}
-                            <button type="button" aria-label={`Remove ${p}`} onClick={() => setWhere(where.filter((x) => x !== p))}>
-                              <X className="size-3" />
-                            </button>
-                          </span>
-                        ))}
-                      <input
-                        list="serp-places"
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addCity())}
-                        placeholder="Add a city…"
-                        aria-label="Add a city"
-                        className="h-8 w-44 rounded-md border border-input bg-background px-2 text-xs"
-                      />
-                      <datalist id="serp-places">
-                        {places
-                          .filter((p) => !where.includes(p) && (kind === "web" || p !== STATEWIDE))
-                          .map((p) => (
-                            <option key={p} value={p} />
-                          ))}
-                      </datalist>
-                      <Button type="button" size="sm" variant="outline" onClick={addCity} disabled={!city.trim()}>
-                        Add
-                      </Button>
-                    </div>
+                    <PlaceChecklist places={places} targeted={targeted} where={where} setWhere={setWhere} allowState={kind === "web"} />
                     <p className="text-xs text-muted-foreground">
                       {kind === "maps"
                         ? "Google Maps needs a city: each keyword is searched once from each city you add. Keywords that name a city (“we buy houses fresno”) are searched from that city only."
@@ -475,7 +557,7 @@ function ScanPanel({
                       {balance !== null && <> of the {fmt(balance)} left</>}
                     </>
                   )}
-                  .
+                  .{searches > 0 && <ScanCost service={service} searches={searches} credits={credits} balance={balance} />}
                   {tooMany && (
                     <span className="block text-xs text-amber-700">
                       That’s more than Serper has left: pick fewer topics or places, or set “At most”.

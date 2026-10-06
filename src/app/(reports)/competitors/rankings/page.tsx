@@ -4,14 +4,14 @@ import { PageHeader } from "@/components/report"
 import Rankings, { type Tab } from "@/components/research/rankings"
 import { isAdmin } from "@/lib/auth"
 import { TOPICS, placeOf, topicOf } from "@/lib/research/classify"
-import { getResearch } from "@/lib/research/keywords"
+import { estimatedShares, getResearch } from "@/lib/research/keywords"
 import { analyze, analyzeMaps, localKey } from "@/lib/research/serp-analysis"
 import {
   BRAND_QUERIES,
   ENGINE_LABELS,
   KIND_LABELS,
   OUR_SITES,
-  PLACE_CHOICES,
+  scanPlaces,
   enginesReady,
   getReviews,
   getScanResults,
@@ -34,7 +34,14 @@ const REGION =
 // and reviews, the brand check, and past scans.
 export default async function RankingsPage({ searchParams }: { searchParams: Promise<{ scan?: string; tab?: string }> }) {
   const { scan: picked, tab } = await searchParams
-  const [scans, research, balance, admin, reviews] = await Promise.all([getScans(), getResearch(), serperBalance(), isAdmin(), getReviews()])
+  const [scans, research, balance, admin, reviews, places] = await Promise.all([
+    getScans(),
+    getResearch(),
+    serperBalance(),
+    isAdmin(),
+    getReviews(),
+    scanPlaces(),
+  ])
   const kindOf = (s: Scan): ScanKind => s.kind ?? "web"
 
   // For each kind: the scan asked for, else the newest one with results. It's compared with the
@@ -65,6 +72,10 @@ export default async function RankingsPage({ searchParams }: { searchParams: Pro
   const volumes = new Map(research.keywords.filter((k) => k.volume !== undefined).map((k) => [k.text, k.volume!]))
   for (const k of research.keywords)
     for (const [place, v] of Object.entries(k.local ?? {})) if (v.volume !== undefined) volumes.set(localKey(place, k.text), v.volume)
+  // Cities with only Keyword Planner's city total: estimated from California's volume.
+  for (const [place, share] of estimatedShares(research.placeTotals, research.keywords))
+    for (const k of research.keywords)
+      if (k.volume !== undefined && !volumes.has(localKey(place, k.text))) volumes.set(localKey(place, k.text), Math.round(k.volume * share))
 
   return (
     <>
@@ -88,7 +99,8 @@ export default async function RankingsPage({ searchParams }: { searchParams: Pro
         reviews={reviews}
         initialTab={TABS.includes(tab as Tab) ? (tab as Tab) : "sites"}
         topics={TOPICS.map((t) => ({ id: t.id, label: t.label }))}
-        places={PLACE_CHOICES}
+        places={places.all}
+        targeted={places.targeted}
         keywords={research.keywords.map((k) => {
           const place = placeOf(k.text)
           return { t: topicOf(k.text), v: k.volume ?? null, named: !place ? "" : REGION.test(place) ? "region" : "city" }

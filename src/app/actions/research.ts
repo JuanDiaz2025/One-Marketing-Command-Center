@@ -6,10 +6,12 @@
 import { refresh } from "next/cache"
 
 import { isSignedIn } from "@/lib/auth"
+import { currentName } from "@/lib/people"
+import { startCityVolumes, stopCityVolumes } from "@/lib/research/city-volumes"
 import { addKeywords, fetchVolumes, removeKeywords, suggestKeywords, type KeywordSource } from "@/lib/research/keywords"
 import type { ParsedFile } from "@/lib/research/parse"
 
-export type ResearchState = { ok?: boolean; message?: string }
+export type ResearchState = { ok?: boolean; message?: string; lines?: string[] }
 
 const KINDS: Record<ParsedFile["kind"], { source: KeywordSource; what: string }> = {
   "ads-report": { source: "ads-report", what: "Google Ads keyword report (keywords only)" },
@@ -35,11 +37,21 @@ export async function importKeywordsAction(file: ParsedFile & { name: string }):
   }))
   if (!rows.length) return { ok: false, message: "No keywords found in that file. It needs a “Keyword” column, or one keyword per line." }
   const location = file.kind === "planner" && typeof file.location === "string" ? file.location.slice(0, 120) : undefined
+  const cities = Object.keys(file.kind === "planner" && file.placeTotals && typeof file.placeTotals === "object" ? file.placeTotals : {}).filter(
+    (p) => p.toLowerCase() !== "california",
+  ).length
   const { added, updated } = await addKeywords(
     rows,
     kind.source,
     `${kind.what}${location ? ` (${location})` : ""}: ${String(file.name).slice(0, 80)}`,
     location,
+    file.kind === "planner" && file.placeTotals && typeof file.placeTotals === "object"
+      ? Object.fromEntries(
+          Object.entries(file.placeTotals)
+            .slice(0, 500)
+            .map(([k, v]) => [String(k).slice(0, 80), Number(v) || 0]),
+        )
+      : undefined,
   )
   refresh()
   return {
@@ -48,6 +60,10 @@ export async function importKeywordsAction(file: ParsedFile & { name: string }):
       file.kind === "planner"
         ? `Keyword Planner file${location ? ` for ${location}` : ""}: volumes for ${(added + updated).toLocaleString("en-US")} keywords (${added.toLocaleString("en-US")} new).${
             location && location.toLowerCase() !== "california" ? ` Pick “${location}” under “Volumes for” to see them.` : ""
+          }${
+            cities > 1
+              ? ` Google adds the cities together per keyword, but gives each city's total, so ${cities} cities now have estimated volumes (marked “est.” under “Volumes for”).`
+              : ""
           }`
         : `${rows.length.toLocaleString("en-US")} keywords read, ${added.toLocaleString("en-US")} new.${file.kind === "ads-report" ? " Only the keywords were kept, not the report's numbers." : ""}`,
   }
@@ -75,6 +91,25 @@ export async function volumesAction(): Promise<ResearchState> {
   const res = await fetchVolumes()
   refresh()
   return res
+}
+
+// California and every place running campaigns target, from Keyword Planner, in the background.
+export async function cityVolumesAction(): Promise<ResearchState> {
+  if (!(await isSignedIn())) return { ok: false, message: "Sign in first." }
+  try {
+    const res = await startCityVolumes((await currentName()) || "Someone")
+    refresh()
+    return res
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Couldn't read the campaigns' locations from Google Ads." }
+  }
+}
+
+export async function stopCityVolumesAction(): Promise<ResearchState> {
+  if (!(await isSignedIn())) return { ok: false, message: "Sign in first." }
+  stopCityVolumes()
+  refresh()
+  return { ok: true, message: "Stopping after the city in progress." }
 }
 
 export async function removeKeywordsAction(texts: string[]): Promise<ResearchState> {
