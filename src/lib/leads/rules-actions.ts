@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { z } from "zod"
 
+import { guard } from "@/lib/guard"
 import { getSession } from "@/lib/auth/session"
 import { defaultRules } from "@/lib/leads/rules"
 import { saveRules } from "@/lib/leads/rules-store"
@@ -36,7 +37,7 @@ const rules = z
   .max(30)
 
 // Saves the Google Ads rules from the Leads page (or puts the defaults back).
-export async function saveRulesAction(input: unknown, reset = false): Promise<{ error?: string }> {
+async function saveRulesActionUnguarded(input: unknown, reset = false): Promise<{ error?: string }> {
   if (!(await getSession())) return { error: "Sign in first." }
   if (reset) {
     await saveRules(defaultRules())
@@ -51,4 +52,8 @@ export async function saveRulesAction(input: unknown, reset = false): Promise<{ 
   }
   revalidatePath("/leads")
   return {}
+}
+
+export async function saveRulesAction(input: unknown, reset = false): Promise<{ error?: string }> {
+  return guard(() => saveRulesActionUnguarded(input, reset), (error) => ({ error }))
 }

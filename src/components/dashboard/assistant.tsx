@@ -80,7 +80,12 @@ function Reply({ content }: { content: string }) {
           variant="ghost"
           size="sm"
           onClick={async () => {
-            await navigator.clipboard.writeText(content)
+            // The browser can refuse (an http address or a blocked permission): then nothing happens.
+            try {
+              await navigator.clipboard.writeText(content)
+            } catch {
+              return
+            }
             setCopied(true)
             setTimeout(() => setCopied(false), 2000)
           }}

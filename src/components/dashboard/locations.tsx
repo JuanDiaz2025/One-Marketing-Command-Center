@@ -97,7 +97,7 @@ export default function Locations({ locations, currency }: Props) {
                   ),
                 }}
                 items={locations.places.map((p) => (
-                  <tr key={`${p.name}-${p.inTarget}`}>
+                  <tr key={p.id}>
                     <td className="px-5 py-3 sm:px-6">
                       <p className="font-medium">
                         {p.name}

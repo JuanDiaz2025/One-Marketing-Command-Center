@@ -111,7 +111,7 @@ async function load(user: Session, period: Period): Promise<Loaded> {
       await updateConnection(user.sub, {
         accounts: connection.accounts,
         accountsFetchedAt: new Date().toISOString(),
-      })
+      }).catch((error) => console.error("Couldn't save the Google Ads account list:", error))
     }
     const account =
       chosenAccount(connection.accounts, connection.selectedCustomerId, connection.email)
@@ -140,7 +140,9 @@ async function load(user: Session, period: Period): Promise<Loaded> {
     const costPerConversion = totals.conversions ? totals.cost / totals.conversions : 0
     const wasted = findWastedSearches("terms" in searchTerms ? searchTerms.terms : [], costPerConversion)
     // New searches are spotted in the usual last-30-days view; other ranges only look them up.
-    const seen = await firstSeen(user.sub, account.customerId, wasted.wasted.map(searchKey), Date.now(), period.preset === "30")
+    const seen = await firstSeen(user.sub, account.customerId, wasted.wasted.map(searchKey), Date.now(), period.preset === "30").catch(
+      () => new Map<string, string>(),
+    )
     for (const w of wasted.wasted) {
       w.isNew = Date.now() - Date.parse(seen.get(searchKey(w)) ?? "") < NEW_FOR_MS
     }

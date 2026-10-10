@@ -24,9 +24,10 @@ const tools: Anthropic.Beta.BetaTool[] = toolSpecs.map((t) => ({
 // One quick question with no tools (e.g. scoring a phone call); `signal` cancels it.
 export async function askClaudePlain(system: string, prompt: string, signal: AbortSignal): Promise<string> {
   const response = await new Anthropic().messages.create(
-    { model: MODEL, max_tokens: 1000, system, messages: [{ role: "user", content: prompt }] },
+    { model: MODEL, max_tokens: 4000, output_config: { effort: "low" }, system, messages: [{ role: "user", content: prompt }] },
     { signal },
   )
+  if (response.stop_reason !== "end_turn") throw new Error(`Claude stopped early (${response.stop_reason})`)
   return response.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)

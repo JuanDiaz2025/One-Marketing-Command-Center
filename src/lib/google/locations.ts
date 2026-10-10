@@ -6,6 +6,8 @@ import type { Issue } from "@/lib/google/health"
 import { describePeriod, type Period } from "@/lib/google/period"
 
 export type Place = Metrics & {
+  // Google's location ID (two places can share a name, e.g. Springfield).
+  id: string
   name: string
   // False when the click came from outside every location the campaign targets.
   inTarget: boolean
@@ -105,7 +107,7 @@ export async function getLocations(
       (country ? `geoTargetConstants/${country}` : "unknown")
     const inTarget = get<boolean>(r, "userLocationView.targetingLocation") === true
     const key = `${id}|${inTarget}`
-    const current = byPlace.get(key) ?? { name: names.get(id) ?? "Unknown location", inTarget, ...emptyMetrics() }
+    const current = byPlace.get(key) ?? { id: key, name: names.get(id) ?? "Unknown location", inTarget, ...emptyMetrics() }
     byPlace.set(key, { ...current, ...addMetrics(current, toMetrics(r.metrics)) })
   }
   const places = [...byPlace.values()].sort((a, b) => b.cost - a.cost || b.clicks - a.clicks)

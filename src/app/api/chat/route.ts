@@ -76,10 +76,10 @@ export async function POST(request: Request) {
         : provider === "claude-code"
           ? await askClaudeCode(input)
           : await askClaude(input)
-    await saveReply(session.sub, chatId, reply)
+    await saveReply(session.sub, chatId, reply).catch((error) => console.error("Couldn't save the answer to the chat history:", error))
     return Response.json({ reply, chatId })
   } catch (error) {
-    await dropQuestion(session.sub, chatId)
+    await dropQuestion(session.sub, chatId).catch(() => {})
     if (error instanceof AssistantError) {
       return Response.json({ error: error.message, code: error.code, chatId }, { status: error.status })
     }

@@ -5,12 +5,13 @@ import path from "node:path"
 
 import { revalidatePath } from "next/cache"
 
+import { guard } from "@/lib/guard"
 import { getSession } from "@/lib/auth/session"
 import { activeAccount } from "@/lib/google/active-account"
 import { checkSending, retryNow, sendPendingConversions, setConversionTarget, type CheckStep } from "@/lib/google/offline-conversions"
 
 // Picks which Google Ads conversion action a lead stage is sent to (Leads page).
-export async function setConversionTargetAction(kind: string, resourceName: string): Promise<{ error?: string }> {
+async function setConversionTargetActionUnguarded(kind: string, resourceName: string): Promise<{ error?: string }> {
   const session = await getSession()
   if (!session) return { error: "Sign in first." }
   if (kind !== "interested" && kind !== "closed" && kind !== "invalid") return { error: "Unknown stage." }
@@ -28,7 +29,7 @@ export async function setConversionTargetAction(kind: string, resourceName: stri
 
 // "Check sending to Google Ads" on the Leads page: which version of the app this is, then each
 // thing sending needs, in order.
-export async function checkSendingAction(): Promise<{ steps: CheckStep[] }> {
+async function checkSendingActionUnguarded(): Promise<{ steps: CheckStep[] }> {
   const session = await getSession()
   if (!session) return { steps: [{ ok: false, title: "Signed in", detail: "Sign in first." }] }
   let version = "unknown"
@@ -56,7 +57,7 @@ export async function checkSendingAction(): Promise<{ steps: CheckStep[] }> {
 }
 
 // "Try again now": sends every waiting or failed lead again right away.
-export async function retryNowAction(): Promise<{ error?: string }> {
+async function retryNowActionUnguarded(): Promise<{ error?: string }> {
   const session = await getSession()
   if (!session) return { error: "Sign in first." }
   try {
@@ -68,4 +69,16 @@ export async function retryNowAction(): Promise<{ error?: string }> {
   }
   revalidatePath("/leads")
   return {}
+}
+
+export async function setConversionTargetAction(kind: string, resourceName: string): Promise<{ error?: string }> {
+  return guard(() => setConversionTargetActionUnguarded(kind, resourceName), (error) => ({ error }))
+}
+
+export async function checkSendingAction(): Promise<{ steps: CheckStep[] }> {
+  return guard(() => checkSendingActionUnguarded(), (error) => ({ steps: [{ ok: false, title: "Check", detail: error }] }))
+}
+
+export async function retryNowAction(): Promise<{ error?: string }> {
+  return guard(() => retryNowActionUnguarded(), (error) => ({ error }))
 }

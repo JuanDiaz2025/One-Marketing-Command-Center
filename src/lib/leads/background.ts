@@ -15,7 +15,7 @@ async function sendConversions(sub: string) {
   try {
     const active = await activeAccount(sub)
     if (active) {
-      void syncSheetIfDue(active.connection, active.account)
+      void syncSheetIfDue(active.connection, active.account).catch((error) => console.error("Couldn't update the spreadsheet:", error))
       await sendPendingConversions(active.connection, active.account)
     }
   } catch (error) {

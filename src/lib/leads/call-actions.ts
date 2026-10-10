@@ -5,6 +5,7 @@
 // phone number instead, the way Google matches form leads without a click ID.
 import { revalidatePath } from "next/cache"
 
+import { guard } from "@/lib/guard"
 import { getSession } from "@/lib/auth/session"
 import { runQuery } from "@/lib/google/ads"
 import { activeAccount } from "@/lib/google/active-account"
@@ -15,6 +16,8 @@ import { applyStatus } from "@/lib/leads/status"
 import { addLead, listLeads, updateLead } from "@/lib/leads/store"
 import { leadStatuses, type Lead, type LeadStatus, type Motivation } from "@/lib/leads/types"
 
+
+type CallInput = { phone: string; name: string; status: string; notes: string; answers?: CallAnswers }
 
 // "2026-09-06 08:11:00" is in the Google Ads account's time zone; turn it into the real moment.
 async function callTime(start: string, { connection, account }: NonNullable<Awaited<ReturnType<typeof activeAccount>>>) {
@@ -37,9 +40,9 @@ async function callTime(start: string, { connection, account }: NonNullable<Awai
   }
 }
 
-export async function addCallLeadAction(
+async function addCallLeadActionUnguarded(
   call: CallInfo,
-  input: { phone: string; name: string; status: string; notes: string; answers?: CallAnswers },
+  input: CallInput,
 ): Promise<{ error?: string; ok?: string; motivation?: Motivation }> {
   const session = await getSession()
   if (!session) return { error: "Sign in first." }
@@ -94,6 +97,25 @@ export async function addCallLeadAction(
   const label = { hot: "Hot", warm: "Warm", cold: "Cold", junk: "Not a seller" }[motivation.grade]
   // What Google Ads actually heard (or will), from the lead itself.
   const c = sentNow?.conversions ?? {}
-  const sent = c.interested || c.closed ? " Sent to Google Ads as a qualified lead, matched by the phone number." : c.invalid ? " Reported to Google Ads as not a seller." : ""
+  const good = c.closed ?? c.interested
+  const told = (e: typeof good, done: string, what: string) =>
+    !e
+      ? ""
+      : e.state === "sent"
+        ? ` ${done}`
+        : e.state === "failed"
+          ? ` Couldn't send it to Google Ads yet (${what}); the Leads page shows why, and it's tried again.`
+          : e.state === "pending"
+            ? active
+              ? ` It will be sent to Google Ads (${what}) shortly.`
+              : ` It will be sent to Google Ads (${what}) once Google Ads is connected.`
+            : ""
+  const sent = good
+    ? told(good, "Sent to Google Ads as a qualified lead, matched by the phone number.", "as a qualified lead")
+    : told(c.invalid, "Reported to Google Ads as not a seller.", "as not a seller")
   return { ok: `Motivation ${motivation.value} (${label}). Added to your leads.${sent}`, motivation }
+}
+
+export async function addCallLeadAction(call: CallInfo, input: CallInput): Promise<{ error?: string; ok?: string; motivation?: Motivation }> {
+  return guard(() => addCallLeadActionUnguarded(call, input), (error) => ({ error }))
 }

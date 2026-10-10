@@ -296,7 +296,7 @@ async function upload(connection: AdsConnection, account: AdsAccount, snapshot: 
     const current = l.conversions?.[kind]
     // Removed while it was being sent (marked ✕ or New meanwhile), but Google has it now: keep a
     // record of it and take it back, so Google doesn't count a lead you turned down.
-    if (!current && !error) {
+    if (!error && (!current || (current.parked && current.transactionId === entry.transactionId))) {
       l.conversions ??= {}
       l.conversions[kind] = {
         at: entry.at,
@@ -434,7 +434,10 @@ async function retract(connection: AdsConnection, account: AdsAccount, snapshot:
     // Taken back in the account that owns the conversion action (a manager account, with
     // cross-account conversion tracking), where it was counted: the action as this account lists
     // it says "customers/<this account>/…", so ask who really owns it.
-    const owner = await ownerOf(connection, account, sentTo)
+    // Start from the account the action was listed under (it may not be the one selected now).
+    const listed = sentTo.match(/^customers\/(\d+)\//)?.[1]
+    const lookup = listed && listed !== account.customerId ? { ...account, customerId: listed } : account
+    const owner = (await ownerOf(connection, lookup, sentTo)) ?? listed
     const target = owner && owner !== account.customerId ? { ...account, customerId: owner, loginCustomerId: account.loginCustomerId ?? owner } : account
     const actionInOwner = owner && owner !== account.customerId ? `customers/${owner}/conversionActions/${sentTo.split("/").pop()}` : sentTo
     const base = { conversionAction: actionInOwner, adjustmentType: "RETRACTION", adjustmentDateTime: adsTime(r.at) }

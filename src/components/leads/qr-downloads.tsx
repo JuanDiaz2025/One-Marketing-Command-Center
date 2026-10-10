@@ -55,7 +55,12 @@ export default function QrDownloads({
   }
 
   async function copyLink() {
-    await navigator.clipboard.writeText(url)
+    // The browser can refuse (an http address or a blocked permission): then nothing happens.
+    try {
+      await navigator.clipboard.writeText(url)
+    } catch {
+      return
+    }
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
   }

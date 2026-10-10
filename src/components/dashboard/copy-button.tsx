@@ -13,7 +13,12 @@ export default function CopyButton({ text, label }: { text: string; label: strin
       variant="outline"
       size="lg"
       onClick={async () => {
-        await navigator.clipboard.writeText(text)
+        // The browser can refuse (an http address or a blocked permission): then nothing happens.
+        try {
+          await navigator.clipboard.writeText(text)
+        } catch {
+          return
+        }
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
       }}
