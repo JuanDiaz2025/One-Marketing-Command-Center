@@ -98,6 +98,16 @@ export type ConversionUpload = {
 
 // How good a lead looks the moment it arrives, scored by the app (scoring.ts).
 export type LeadGrade = "hot" | "warm" | "cold" | "junk"
+// How motivated a caller is to sell, scored from what they said on the call (motivation.ts).
+export type Motivation = {
+  value: number // 0-100
+  grade: LeadGrade
+  reasons: string[]
+  summary?: string
+  by: "ai" | "rules"
+  at: string
+}
+
 export type LeadScore = {
   value: number // 0-100
   grade: LeadGrade
@@ -124,6 +134,8 @@ export type Lead = {
   inboxId?: string
   // Set for a lead made from a Google Ads phone call ("call:<start time>:<area code>"), so it's added once.
   callId?: string
+  // From a phone call: how motivated they are to sell. When set, it's the lead's score.
+  motivation?: Motivation
   status?: LeadStatus
   statusChangedAt?: string
   // "auto" when the app set the status from the lead's score; anything you set yourself wins.

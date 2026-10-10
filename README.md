@@ -143,6 +143,10 @@ Not needed with the Lead Saver plugin; useful for other form plugins. It only wo
 
 Every request must carry the secret key (`?key=…` in the address, or an `X-Webhook-Secret` header). A test request with GET to the same address answers `{"ok": true}` without adding a lead.
 
+## Phone calls: Add as lead and motivation score
+
+Each call from Google Ads on the Leads page has **Add as lead**. Right after the call, type the caller's number, pick quick answers (why they're selling, when, the house's condition, price, who lives there) and add notes; **Score and add** has the AI set up for the chat (or, without one, a rule-based score from the quick answers) rate how motivated they are, 0 to 100. With "Status: decide from the score", Hot callers become Interested (sent to Google Ads as a qualified lead, matched by their number), callers who aren't sellers become Not interested, and the rest stay New.
+
 ## Unzipped into a new folder?
 
 start.bat brings your data over by itself: when the copy it runs from has no connections yet, it looks for an earlier copy of the app (Desktop, Downloads, Documents, OneDrive) and copies its `.data` folder (leads, chats, the WordPress connection and key, the Google Ads sign-in). The earlier copy isn't changed; what the new copy had is kept in `.data-before-restore`.

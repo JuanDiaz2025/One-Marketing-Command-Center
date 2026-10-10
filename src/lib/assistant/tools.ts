@@ -123,6 +123,8 @@ export async function runTool(
               source: leadSource(l, placements),
               channel: leadChannel(l),
               score: l.score && { value: l.score.value, grade: l.score.grade, reasons: l.score.reasons },
+              // For leads from a phone call: how motivated the caller is to sell (0-100), from the call.
+              callMotivation: l.motivation && { value: l.motivation.value, grade: l.motivation.grade, summary: l.motivation.summary, reasons: l.motivation.reasons },
               status: l.status ?? "new",
               tracking: l.tracking,
             })),

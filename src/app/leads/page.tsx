@@ -258,7 +258,12 @@ export default async function LeadsPage() {
           )}
         </section>
 
-        <PhoneCalls result={calls} addedCalls={leads.map((l) => l.callId).filter((id): id is string => Boolean(id))} />
+        <PhoneCalls
+          result={calls}
+          addedCalls={Object.fromEntries(
+            leads.filter((l) => l.callId).map((l) => [l.callId!, l.motivation ? { value: l.motivation.value, grade: l.motivation.grade } : null]),
+          )}
+        />
 
         <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} />
       </main>
