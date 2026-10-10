@@ -238,9 +238,12 @@ const run = shared("conversions-run", () => ({
 }))
 const RETRY_AFTER_MS = 60 * 60_000
 
-async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead, kind: ConversionKind) {
-  const entry = lead.conversions?.[kind]
-  if (!entry) return
+async function upload(connection: AdsConnection, account: AdsAccount, snapshot: Lead, kind: ConversionKind) {
+  // The lead as saved right now: the run started from an older copy, and you may have changed it
+  // since (✕, a new status) while earlier leads were being sent.
+  const lead = (await listLeads()).find((l) => l.id === snapshot.id)
+  const entry = lead?.conversions?.[kind]
+  if (!lead || !entry || entry.state !== "pending") return
   // Marked Not interested: only its invalid-lead report goes to Google.
   if (kind !== "invalid" && lead.status === "not_interested") {
     await updateLead(lead.id, (l) => {
@@ -291,6 +294,23 @@ async function upload(connection: AdsConnection, account: AdsAccount, lead: Lead
   await updateLead(lead.id, (l) => {
     // Work from the lead as saved now: the status may have changed while this was being sent.
     const current = l.conversions?.[kind]
+    // Removed while it was being sent (marked ✕ or New meanwhile), but Google has it now: keep a
+    // record of it and take it back, so Google doesn't count a lead you turned down.
+    if (!current && !error) {
+      l.conversions ??= {}
+      l.conversions[kind] = {
+        at: entry.at,
+        value: entry.value,
+        rule: entry.rule,
+        transactionId: entry.transactionId ?? `${l.id}-${kind}`,
+        action,
+        requestId,
+        lastTry: now,
+        state: "sent",
+        ...(wanted(l, kind, entry) ? {} : { retraction: { state: "pending" as const, at: now } }),
+      }
+      return
+    }
     if (!current || current.state !== "pending") return
     if (current.at !== entry.at) return // set again meanwhile: the next run sends the new one
     const tries = (current.tries ?? 0) + 1
@@ -400,20 +420,24 @@ type AdjustResult = { partialFailureError?: { message?: string; details?: { erro
 
 // Takes a sent conversion back from Google Ads (a retraction), by the id it was sent with, or by
 // its Google click id and time when Google doesn't know that id.
-async function retract(connection: AdsConnection, account: AdsAccount, lead: Lead, kind: ConversionKind) {
-  const entry = lead.conversions?.[kind]
+async function retract(connection: AdsConnection, account: AdsAccount, snapshot: Lead, kind: ConversionKind) {
+  // As saved right now (you may have set the lead back to good meanwhile).
+  const lead = (await listLeads()).find((l) => l.id === snapshot.id)
+  const entry = lead?.conversions?.[kind]
   const r = entry?.retraction
-  if (!entry || !r) return
+  if (!lead || !entry || !r || r.state !== "pending") return
   const sentTo = entry.action ?? (await conversionAction(connection, account, kind).catch(() => undefined))
   let error: string | undefined
   let code = ""
   if (!sentTo) error = "Couldn't find which conversion action it was sent to."
   else {
-    const base = { conversionAction: sentTo, adjustmentType: "RETRACTION", adjustmentDateTime: adsTime(r.at) }
     // Taken back in the account that owns the conversion action (a manager account, with
-    // cross-account conversion tracking), where it was counted.
-    const owner = sentTo.match(/^customers\/(\d+)\//)?.[1]
+    // cross-account conversion tracking), where it was counted: the action as this account lists
+    // it says "customers/<this account>/…", so ask who really owns it.
+    const owner = await ownerOf(connection, account, sentTo)
     const target = owner && owner !== account.customerId ? { ...account, customerId: owner, loginCustomerId: account.loginCustomerId ?? owner } : account
+    const actionInOwner = owner && owner !== account.customerId ? `customers/${owner}/conversionActions/${sentTo.split("/").pop()}` : sentTo
+    const base = { conversionAction: actionInOwner, adjustmentType: "RETRACTION", adjustmentDateTime: adsTime(r.at) }
     const attempt = async (id: Record<string, unknown>) => {
       const res = await postToAds<AdjustResult>(connection, target, ":uploadConversionAdjustments", {
         conversionAdjustments: [{ ...base, ...id }],
@@ -440,6 +464,12 @@ async function retract(connection: AdsConnection, account: AdsAccount, lead: Lea
   const now = new Date().toISOString()
   await updateLead(lead.id, (l) => {
     const current = l.conversions?.[kind]?.retraction
+    // You set it back to good while Google was withdrawing it: Google no longer counts it, so
+    // send it again as a new conversion (a fresh id; the old one was taken back).
+    if (!current && !error && l.conversions?.[kind]?.state === "sent" && wanted(l, kind, l.conversions[kind]!)) {
+      l.conversions[kind] = { state: "pending", at: now, value: l.conversions[kind]!.value, rule: l.conversions[kind]!.rule, transactionId: `${l.id}-${kind}-${Date.now().toString(36)}` }
+      return
+    }
     if (!current || current.state !== "pending") return
     const tries = (current.tries ?? 0) + 1
     l.conversions![kind]!.retraction = error
