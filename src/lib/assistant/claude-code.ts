@@ -62,7 +62,7 @@ function claudeEnv() {
 // with spaces for it.
 const quote = (arg: string) => (arg === "" ? '""' : /[\s"&|<>^]/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg)
 
-function run(args: string[], stdin: string, cwd: string, env: NodeJS.ProcessEnv) {
+function run(args: string[], stdin: string, cwd: string, env: NodeJS.ProcessEnv, timeoutMs = TIMEOUT_MS) {
   const command = claudeCommand()
   // A .exe runs directly; "claude" or a .cmd needs the Windows shell.
   const windows = process.platform === "win32" && !/\.exe$/i.test(command)
@@ -81,7 +81,7 @@ function run(args: string[], stdin: string, cwd: string, env: NodeJS.ProcessEnv)
       // Through the Windows shell, child is cmd.exe: end Claude Code under it too, not only the shell.
       if (windows && child.pid) spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true }).on("error", () => child.kill())
       else child.kill()
-    }, TIMEOUT_MS)
+    }, timeoutMs)
     // Decode as one stream, so a character split between two reads isn't garbled.
     child.stdout.setEncoding("utf8")
     child.stderr.setEncoding("utf8")
@@ -255,11 +255,35 @@ export async function askClaudeCode({ turns, situation, tools, userId }: AskInpu
   }
 }
 
+// One quick question with no tools and no chat instructions (e.g. scoring a phone call), ended
+// after `timeoutMs` so nothing keeps running in the background.
+export async function askClaudeCodePlain(system: string, prompt: string, timeoutMs: number): Promise<string> {
+  const dir = await mkdtemp(path.join(tmpdir(), "omcc-task-"))
+  try {
+    const file = path.join(dir, "system.txt")
+    await writeFile(file, system)
+    const args = [
+      "-p",
+      "--output-format",
+      "json",
+      "--tools",
+      "",
+      "--no-session-persistence",
+      ...(process.env.CLAUDE_CODE_MODEL?.trim() ? ["--model", process.env.CLAUDE_CODE_MODEL.trim()] : []),
+      "--system-prompt-file",
+      file,
+    ]
+    return await runClaude(args, prompt, dir, claudeEnv(), timeoutMs)
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 // Runs one `claude -p` question and returns the answer text, or throws a message for the chat.
-async function runClaude(args: string[], prompt: string, dir: string, env: NodeJS.ProcessEnv): Promise<string> {
+async function runClaude(args: string[], prompt: string, dir: string, env: NodeJS.ProcessEnv, timeoutMs?: number): Promise<string> {
   let result: Awaited<ReturnType<typeof run>>
   try {
-    result = await run(args, prompt, dir, env)
+    result = await run(args, prompt, dir, env, timeoutMs)
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new AssistantError(NOT_INSTALLED, 503, SETUP)
     throw error

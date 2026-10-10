@@ -75,6 +75,11 @@ export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?:
       const known = db.leads.find((l) => sameSource(l.inboxId, input.inboxId))
       if (known) return known
     }
+    // A phone call is added once, even if "Add as lead" is sent twice.
+    if (input.callId) {
+      const known = db.leads.find((l) => l.callId === input.callId)
+      if (known) return known
+    }
     const email = input.email?.toLowerCase()
     const phone = digits(input.phone)
     const same = db.leads.find(
@@ -96,7 +101,8 @@ export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?:
     // Only for leads that just arrived: a first sync with the website can bring in months of old
     // ones, and those aren't reported to Google Ads without you choosing.
     const fresh = Date.now() - Date.parse(at) < FRESH_MS
-    if (autoStatus && fresh && !lead.qrCodeId && !lead.score.unscored) {
+    // (Not for a phone call: you, or its motivation score, decide what Google Ads hears.)
+    if (autoStatus && fresh && !lead.qrCodeId && !lead.callId && !lead.score.unscored) {
       const rule = firstMatch(lead, rules)
       if (rule) applyRule(lead, rule)
     }

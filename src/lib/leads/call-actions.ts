@@ -8,11 +8,12 @@ import { revalidatePath } from "next/cache"
 import { getSession } from "@/lib/auth/session"
 import { runQuery } from "@/lib/google/ads"
 import { activeAccount } from "@/lib/google/active-account"
-import { sendPendingConversions, setLeadStatus } from "@/lib/google/offline-conversions"
+import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { callIdOf, type CallInfo } from "@/lib/leads/call-id"
-import { callQuestions, scoreCall, type CallAnswers } from "@/lib/leads/motivation"
+import { callQuestions, cleanAnswers, scoreCall, type CallAnswers } from "@/lib/leads/motivation"
+import { applyStatus } from "@/lib/leads/status"
 import { addLead, listLeads, updateLead } from "@/lib/leads/store"
-import { leadStatuses, type LeadStatus, type Motivation } from "@/lib/leads/types"
+import { leadStatuses, type Lead, type LeadStatus, type Motivation } from "@/lib/leads/types"
 
 
 // "2026-09-06 08:11:00" is in the Google Ads account's time zone; turn it into the real moment.
@@ -49,46 +50,50 @@ export async function addCallLeadAction(
   if ((await listLeads()).some((l) => l.callId === callId)) return { error: "This call is already a lead." }
 
   // How motivated the caller is, from the quick answers and notes (AI when set up).
-  const answers: CallAnswers = { ...input.answers, notes: input.notes }
+  const answers = cleanAnswers(input.answers, input.notes)
   const motivation = await scoreCall(answers)
   // "Decide from the score": Hot → Interested (Google Ads hears a qualified lead), not a seller →
   // Not interested (reported as an invalid lead), anything else stays New for you to follow up.
-  const status: LeadStatus =
-    input.status !== "auto" ? (input.status as LeadStatus) : motivation.grade === "hot" ? "interested" : motivation.grade === "junk" ? "not_interested" : "new"
+  const auto = input.status === "auto"
+  const status: LeadStatus = !auto ? (input.status as LeadStatus) : motivation.grade === "hot" ? "interested" : motivation.grade === "junk" ? "not_interested" : "new"
 
   const active = await activeAccount(session.sub).catch(() => null)
   const at = active ? await callTime(call.start, active) : new Date(call.start.replace(" ", "T"))
   const lead = await addLead(
     {
-      name: input.name.trim() || `Caller from (${call.areaCode || "?"})`,
-      phone: input.phone.trim(),
+      name: (typeof input.name === "string" ? input.name.trim().slice(0, 100) : "") || `Caller from (${call.areaCode || "?"})`,
+      phone: input.phone.trim().slice(0, 30),
       notes: [
         `Phone call from Google Ads, ${Math.round(call.seconds / 60)} min.`,
         ...(Object.keys(callQuestions) as (keyof typeof callQuestions)[])
           .filter((q) => answers[q])
           .map((q) => `${callQuestions[q].label}: ${(callQuestions[q].options as readonly (readonly [string, string])[]).find(([k]) => k === answers[q])?.[1] ?? answers[q]}`),
-        input.notes.trim(),
+        answers.notes,
       ]
         .filter(Boolean)
         .join("\n"),
-      motivation,
       source: "Google Ads phone call",
       tracking: { utmSource: "google", utmMedium: "cpc", utmCampaign: call.campaign || undefined },
       callId,
+      motivation,
     },
     Number.isNaN(at.getTime()) ? undefined : at.toISOString(),
   )
-  await updateLead(lead.id, (l) => {
-    l.callId = callId
-  })
-  if (status !== "new") await setLeadStatus(lead.id, status)
+  // Sent twice (a refresh while it was scoring): the first one already added it.
+  if (lead.motivation?.at !== motivation.at) return { error: "This call is already a lead." }
+  // The score's choice counts as the app's, not yours (the leads table shows it as automatic).
+  if (status !== "new") await updateLead(lead.id, (l) => applyStatus(l, status, auto ? "auto" : "you"))
+  let sentNow: Lead | null = null
   try {
     if (active) await sendPendingConversions(active.connection, active.account)
+    sentNow = (await listLeads()).find((l) => l.id === lead.id) ?? null
   } catch (error) {
     console.error("Couldn't send conversions to Google Ads:", error)
   }
   revalidatePath("/leads")
   const label = { hot: "Hot", warm: "Warm", cold: "Cold", junk: "Not a seller" }[motivation.grade]
-  const sent = status === "new" ? "" : status === "not_interested" ? " Reported to Google Ads as not a seller." : " Sent to Google Ads as a qualified lead, matched by the phone number."
+  // What Google Ads actually heard (or will), from the lead itself.
+  const c = sentNow?.conversions ?? {}
+  const sent = c.interested || c.closed ? " Sent to Google Ads as a qualified lead, matched by the phone number." : c.invalid ? " Reported to Google Ads as not a seller." : ""
   return { ok: `Motivation ${motivation.value} (${label}). Added to your leads.${sent}`, motivation }
 }

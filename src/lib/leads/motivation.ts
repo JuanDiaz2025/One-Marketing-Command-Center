@@ -2,7 +2,7 @@
 // right after the call, plus notes. The AI set up for the chat (Claude, OpenAI or Claude Code)
 // scores it 0-100 with its reasons; when no AI is set up, or it doesn't answer, a rule-based score
 // from the quick answers is used instead, so a call always gets a score.
-import { assistantProvider, type AskInput } from "@/lib/assistant/shared"
+import { assistantProvider } from "@/lib/assistant/shared"
 import { callQuestions, type CallAnswers } from "@/lib/leads/call-questions"
 import type { LeadGrade, Motivation } from "@/lib/leads/types"
 
@@ -29,7 +29,7 @@ export function ruleMotivation(a: CallAnswers): Motivation {
   let value = 15 // they called: some interest
   for (const q of Object.keys(POINTS) as (keyof typeof callQuestions)[]) {
     const v = a[q]
-    const p = v ? POINTS[q][v] : undefined
+    const p = v && Object.hasOwn(POINTS[q], v) ? POINTS[q][v] : undefined
     if (p === undefined) continue
     value += p
     if (p) reasons.push(`${p > 0 ? "+" : ""}${p} ${callQuestions[q].label}: ${label(q, v)}`)
@@ -50,50 +50,69 @@ function describe(a: CallAnswers) {
 const TASK = `You score how motivated a caller is to sell their house to a cash home buyer (Twin Home Buyer), from what was noted during a phone call from a Google ad. Highly motivated sellers have a pressing reason (foreclosure, inherited, divorce, relocation, tired landlord, repairs they can't afford), a short timeline, a house needing work, and flexibility on price. Low motivation: just curious, no deadline, wants full retail price, or not a seller at all (wrong number, real estate agent, buyer, renter, spam).
 Reply with only a JSON object, no other text: {"score": <0-100>, "notSeller": <true|false>, "reasons": ["<short reason>", ...up to 5], "summary": "<one sentence for the sales team>"}`
 
-function parse(text: string): { score: number; notSeller?: boolean; reasons?: string[]; summary?: string } | null {
-  const json = text.match(/\{[\s\S]*\}/)?.[0]
-  if (!json) return null
-  try {
-    const v = JSON.parse(json)
-    return typeof v.score === "number" ? v : null
-  } catch {
-    return null
+// Only the choices offered in the form (anything else is dropped), and notes as plain text of a
+// sensible length.
+export function cleanAnswers(raw: unknown, notes: unknown): CallAnswers {
+  const out: Record<string, string> = {}
+  const given = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>
+  for (const q of Object.keys(callQuestions) as (keyof typeof callQuestions)[]) {
+    const v = given[q]
+    if (typeof v === "string" && v && (callQuestions[q].options as readonly (readonly [string, string])[]).some(([k]) => k === v)) out[q] = v
   }
+  if (typeof notes === "string" && notes.trim()) out.notes = notes.trim().slice(0, 3000)
+  return out as CallAnswers
 }
 
+// The first {...} in the reply that parses as the score object.
+function parse(text: string): { score: number; notSeller?: boolean; reasons?: unknown; summary?: unknown } | null {
+  for (let start = text.indexOf("{"); start >= 0; start = text.indexOf("{", start + 1)) {
+    for (let end = text.lastIndexOf("}"); end > start; end = text.lastIndexOf("}", end - 1)) {
+      try {
+        const v = JSON.parse(text.slice(start, end + 1))
+        const score = Number(v?.score)
+        if (Number.isFinite(score)) return { ...v, score }
+      } catch {
+        // not this span
+      }
+    }
+  }
+  return null
+}
+
+const TIMEOUT_MS = 60_000
+
 // The AI's score, or the rule-based one if no AI is set up or it doesn't give a usable answer
-// within 60 seconds.
+// within a minute (the AI is stopped then, so nothing keeps running).
 export async function scoreCall(a: CallAnswers): Promise<Motivation> {
   const rules = ruleMotivation(a)
   const provider = assistantProvider()
   const facts = describe(a)
   if (!provider || !facts) return rules
-  const input: AskInput = {
-    turns: [{ role: "user", content: `${TASK}\n\nThe call:\n${facts}` }],
-    situation: "This is a scoring task, not a chat: no tools are needed. Reply with the JSON object only.",
-    tools: { connection: null, account: null },
-  }
+  const prompt = `The call:\n${facts}`
+  const stop = new AbortController()
+  const timer = setTimeout(() => stop.abort(), TIMEOUT_MS)
   try {
-    const ask =
+    const text =
       provider === "openai"
-        ? (await import("@/lib/assistant/openai")).askOpenAI
+        ? await (await import("@/lib/assistant/openai")).askOpenAIPlain(TASK, prompt, stop.signal)
         : provider === "anthropic"
-          ? (await import("@/lib/assistant/claude")).askClaude
-          : (await import("@/lib/assistant/claude-code")).askClaudeCode
-    const text = await Promise.race([ask(input), new Promise<string>((_, reject) => setTimeout(() => reject(new Error("timeout")), 60_000))])
+          ? await (await import("@/lib/assistant/claude")).askClaudePlain(TASK, prompt, stop.signal)
+          : await (await import("@/lib/assistant/claude-code")).askClaudeCodePlain(TASK, prompt, TIMEOUT_MS)
     const got = parse(text)
     if (!got) return { ...rules, reasons: [...rules.reasons, "(The AI didn't give a score, so this one is from the quick answers.)"] }
-    const notSeller = Boolean(got.notSeller) || a.reason === "not_seller"
+    const notSeller = got.notSeller === true || a.reason === "not_seller"
     const value = notSeller ? 0 : Math.max(0, Math.min(100, Math.round(got.score)))
     return {
       value,
       grade: gradeOf(value, notSeller),
-      reasons: (got.reasons ?? []).map(String).slice(0, 5),
-      summary: got.summary ? String(got.summary).slice(0, 300) : undefined,
+      reasons: (Array.isArray(got.reasons) ? got.reasons : []).map(String).slice(0, 5),
+      summary: typeof got.summary === "string" && got.summary ? got.summary.slice(0, 300) : undefined,
       by: "ai",
       at: new Date().toISOString(),
     }
   } catch {
-    return { ...rules, reasons: [...rules.reasons, "(The AI didn't answer, so this score is from the quick answers.)"] }
+    return { ...rules, reasons: [...rules.reasons, "(The AI didn't answer in time, so this score is from the quick answers.)"] }
+  } finally {
+    clearTimeout(timer)
   }
 }
