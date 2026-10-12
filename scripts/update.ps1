@@ -4,7 +4,7 @@
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 $repo = 'JuanDiaz2025/One-Marketing-Command-Center'
-$branch = 'claude/peaceful-einstein-53zbjx'
+$branch = 'backup/bryan-2026-10-05'
 $root = Split-Path -Parent $PSScriptRoot
 $versionFile = Join-Path $root '.data\app-version'
 
