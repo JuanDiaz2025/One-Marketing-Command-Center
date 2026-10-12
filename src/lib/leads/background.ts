@@ -9,12 +9,14 @@ import { senderAccount } from "@/lib/google/active-account"
 import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncSheetIfDue } from "@/lib/google/sheets-sync"
 import { scoreUnscored } from "@/lib/leads/store"
-import { syncWordPress } from "@/lib/leads/wordpress"
+import { claimSender, getWordPress, syncWordPress } from "@/lib/leads/wordpress"
 
 async function sendConversions(sub: string) {
   try {
     const active = await senderAccount(sub)
     if (active) {
+      // The team's site has no computer sending to Google Ads yet: this one does (team-sync.ts).
+      if ((await getWordPress()).sender === null) await claimSender(active.connection.email).catch(() => null)
       void syncSheetIfDue(active.connection, active.account).catch((error) => console.error("Couldn't update the spreadsheet:", error))
       await sendPendingConversions(active.connection, active.account)
     }

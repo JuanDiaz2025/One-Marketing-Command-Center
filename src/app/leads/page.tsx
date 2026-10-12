@@ -22,10 +22,13 @@ import { catchUp, leadsVersion } from "@/lib/leads/background"
 import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 import { leadChannel, pagePath } from "@/lib/leads/tracking"
+import { sharedKey, type Sender } from "@/lib/leads/team-sync"
 import type { Lead } from "@/lib/leads/types"
+import { sentElsewhere } from "@/lib/leads/wordpress"
 
 // One spreadsheet row per lead. Dates are formatted here, on this computer, in its time zone.
-function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
+// `elsewhere` is the team's computer that sends website leads to Google Ads, when it isn't this one.
+function toRow(lead: Lead, placements: Map<string, string>, elsewhere: Sender | null): LeadRow {
   const t = lead.tracking ?? {}
   return {
     id: lead.id,
@@ -55,8 +58,14 @@ function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
     status: lead.status ?? "new",
     statusBy: lead.statusBy,
     statusRule: lead.statusRule,
+    statusByName: lead.statusByName,
     score: lead.score,
-    google: googleState(lead),
+    google:
+      elsewhere && sharedKey(lead)
+        ? lead.status && lead.status !== "new"
+          ? { state: "elsewhere", detail: `Google Ads hears about it from ${elsewhere.name || "your team's main computer"}.` }
+          : undefined
+        : googleState(lead),
   }
 }
 
@@ -131,7 +140,7 @@ export const metadata: Metadata = { title: "Leads · One Marketing Command Cente
 
 export default async function LeadsPage() {
   const user = await requireSession("/leads")
-  // New leads from the WordPress site (checked at most every 30 seconds) and conversions for Google
+  // New leads from the WordPress site (checked at most every 10 seconds) and conversions for Google
   // Ads are handled after the page is sent, so it never waits on them; the page updates itself
   // when they change anything (LiveRefresh).
   after(() => catchUp(user.sub))
@@ -139,14 +148,18 @@ export default async function LeadsPage() {
   const version = await leadsVersion()
   const [qrCodes, leads, calls] = await Promise.all([listQrCodes(), listLeads(), loadCalls(user.sub)])
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
+  // Another computer on the team sends the website leads to Google Ads: their Google Ads state is
+  // that computer's to show, not this one's.
+  const elsewhere = await sentElsewhere()
+  const ownSending = elsewhere ? leads.filter((l) => !sharedKey(l)) : leads
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0
 
   // Conversions held back by a set-up step Google needs, so the page can say what to do.
-  const waiting = leads.flatMap((l) => Object.values(l.conversions ?? {})).filter((c) => c?.state === "pending" && c.waitingFor)
+  const waiting = ownSending.flatMap((l) => Object.values(l.conversions ?? {})).filter((c) => c?.state === "pending" && c.waitingFor)
 
   // Leads Google Ads hasn't taken yet (failed, or still waiting after a try), and the latest reason.
-  const stuckEntries = leads
+  const stuckEntries = ownSending
     .flatMap((l) => Object.values(l.conversions ?? {}))
     .filter((c) => c && (c.state === "failed" || (c.state === "pending" && c.lastTry)))
   const lastError = stuckEntries.sort((a, b) => (b!.lastTry ?? "").localeCompare(a!.lastTry ?? ""))[0]?.error
@@ -248,7 +261,7 @@ export default async function LeadsPage() {
                 </div>
               )}
               <div className="mt-4">
-                <LeadsTable rows={leads.map((l) => toRow(l, placements))} />
+                <LeadsTable rows={leads.map((l) => toRow(l, placements, elsewhere))} />
               </div>
             </>
           ) : (
@@ -267,7 +280,7 @@ export default async function LeadsPage() {
 
         <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} />
       </main>
-      <LiveRefresh version={version} />
+      <LiveRefresh version={version} seconds={5} />
       <AssistantLauncher enabled={assistantProvider() !== null} />
     </div>
   )
