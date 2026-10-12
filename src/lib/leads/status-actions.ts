@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache"
 
 import { guard } from "@/lib/guard"
 import { getSession } from "@/lib/auth/session"
-import { activeAccount } from "@/lib/google/active-account"
+import { senderAccount } from "@/lib/google/active-account"
 import { sendPendingConversions, setLeadStatus } from "@/lib/google/offline-conversions"
 import { leadStatuses, type LeadStatus } from "@/lib/leads/types"
 
@@ -16,7 +16,7 @@ async function setLeadStatusActionUnguarded(id: string, status: string): Promise
   const lead = await setLeadStatus(id, status as LeadStatus)
   if (!lead) return { error: "That lead is gone." }
   try {
-    const active = await activeAccount(session.sub)
+    const active = await senderAccount(session.sub)
     if (active) await sendPendingConversions(active.connection, active.account)
   } catch (error) {
     console.error("Couldn't send conversions to Google Ads:", error)

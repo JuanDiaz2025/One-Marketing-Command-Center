@@ -5,7 +5,7 @@ import { createHash } from "node:crypto"
 import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
 
-import { activeAccount } from "@/lib/google/active-account"
+import { senderAccount } from "@/lib/google/active-account"
 import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncSheetIfDue } from "@/lib/google/sheets-sync"
 import { scoreUnscored } from "@/lib/leads/store"
@@ -13,7 +13,7 @@ import { syncWordPress } from "@/lib/leads/wordpress"
 
 async function sendConversions(sub: string) {
   try {
-    const active = await activeAccount(sub)
+    const active = await senderAccount(sub)
     if (active) {
       void syncSheetIfDue(active.connection, active.account).catch((error) => console.error("Couldn't update the spreadsheet:", error))
       await sendPendingConversions(active.connection, active.account)

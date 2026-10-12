@@ -37,6 +37,12 @@ export async function getConnection(sub: string): Promise<AdsConnection | null> 
   return refreshToken ? { ...stored, refreshToken } : null
 }
 
+// Who has Google Ads connected (their sign-in ids), oldest connection first.
+export async function connectedPeople(): Promise<string[]> {
+  const db = await file.read()
+  return Object.keys(db).sort((a, b) => db[a].connectedAt.localeCompare(db[b].connectedAt))
+}
+
 export async function saveConnection(sub: string, email: string, refreshToken: string, scopes: string[] = []) {
   const sealed = await seal(refreshToken)
   await file.update((db) => {

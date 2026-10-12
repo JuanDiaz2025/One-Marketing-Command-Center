@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache"
 import { guard } from "@/lib/guard"
 import { getSession } from "@/lib/auth/session"
 import { runQuery } from "@/lib/google/ads"
-import { activeAccount } from "@/lib/google/active-account"
+import { senderAccount } from "@/lib/google/active-account"
 import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { callIdOf, type CallInfo } from "@/lib/leads/call-id"
 import { callQuestions, cleanAnswers, scoreCall, type CallAnswers } from "@/lib/leads/motivation"
@@ -20,7 +20,7 @@ import { leadStatuses, type Lead, type LeadStatus, type Motivation } from "@/lib
 type CallInput = { phone: string; name: string; status: string; notes: string; answers?: CallAnswers }
 
 // "2026-09-06 08:11:00" is in the Google Ads account's time zone; turn it into the real moment.
-async function callTime(start: string, { connection, account }: NonNullable<Awaited<ReturnType<typeof activeAccount>>>) {
+async function callTime(start: string, { connection, account }: NonNullable<Awaited<ReturnType<typeof senderAccount>>>) {
   const local = new Date(`${start.replace(" ", "T")}Z`) // the wall-clock time, read as if UTC
   if (Number.isNaN(local.getTime())) return local
   try {
@@ -60,7 +60,7 @@ async function addCallLeadActionUnguarded(
   const auto = input.status === "auto"
   const status: LeadStatus = !auto ? (input.status as LeadStatus) : motivation.grade === "hot" ? "interested" : motivation.grade === "junk" ? "not_interested" : "new"
 
-  const active = await activeAccount(session.sub).catch(() => null)
+  const active = await senderAccount(session.sub)
   const at = active ? await callTime(call.start, active) : new Date(call.start.replace(" ", "T"))
   const lead = await addLead(
     {
