@@ -10,16 +10,17 @@ import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncSheetIfDue } from "@/lib/google/sheets-sync"
 import { scoreUnscored } from "@/lib/leads/store"
 import { shared } from "@/lib/shared-state"
-import { claimSender, getWordPress, senderGone, syncWordPress } from "@/lib/leads/wordpress"
+import { claimSender, getWordPress, noteCanSend, senderGone, syncWordPress } from "@/lib/leads/wordpress"
 
 async function sendConversions(sub: string) {
   try {
     const active = await senderAccount(sub)
     if (active) {
+      noteCanSend()
       // The team's site has no computer sending to Google Ads yet: this one does (team-sync.ts).
       if ((await getWordPress()).sender === null) await claimSender(active.connection.email).catch(() => null)
       // The one that sent hasn't been heard from for a day: this one carries on.
-      else if (await senderGone()) await claimSender(active.connection.email, true).catch(() => null)
+      else if (await senderGone()) await claimSender(active.connection.email, "if_stale").catch(() => null)
       void syncSheetIfDue(active.connection, active.account).catch((error) => console.error("Couldn't update the spreadsheet:", error))
       await sendPendingConversions(active.connection, active.account)
     }

@@ -5,7 +5,7 @@
 // same check shares lead statuses with the rest of the team (team-sync.ts).
 import { jsonFileStore } from "@/lib/json-file-store"
 import { shared } from "@/lib/shared-state"
-import { saveTaps } from "@/lib/leads/call-taps"
+import { clearTaps, saveTaps } from "@/lib/leads/call-taps"
 import { addLead } from "@/lib/leads/store"
 import type { Lead } from "@/lib/leads/types"
 import { parseWebsiteLead, webhookSecret } from "@/lib/leads/webhook"
@@ -69,8 +69,10 @@ const bareHost = (site: string) => new URL(site).host.replace(/^www\./, "")
 // Saves the site's address. Typing the same site again (with or without www) keeps how far its
 // leads have been brought in; a different site starts from its first saved lead.
 export async function setWordPressSite(site: string | null) {
+  let other = false
   await file.update((s) => {
     const same = Boolean(site && s.site && bareHost(site) === bareHost(s.site))
+    other = Boolean(site && s.site && !same)
     const lastId = s.lastId
     for (const key of Object.keys(s)) delete s[key as keyof WordPressState]
     if (site) {
@@ -78,7 +80,16 @@ export async function setWordPressSite(site: string | null) {
       s.lastId = same ? (lastId ?? 0) : 0
     }
   })
+  // A different site: the taps on the old one's phone numbers aren't this one's.
+  if (other) await clearTaps()
   sync.lastAttempt = 0
+}
+
+// When this computer last had a working Google Ads connection to send with: only then does it check
+// in with the site as the sending computer (one that can't send shouldn't look alive).
+const canSend = shared("can-send", () => ({ at: 0 }))
+export function noteCanSend() {
+  canSend.at = Date.now()
 }
 
 // The site's answer for leads after `after`, trying the usual /wp-json/ address first and then
@@ -87,7 +98,8 @@ async function ask(state: WordPressState, key: string, after: number, statusAfte
   const order: NonNullable<WordPressState["api"]>[] = state.api === "rest_route" ? ["rest_route", "wp-json"] : ["wp-json", "rest_route"]
   let last: { status: number; answer: Answer | null } = { status: 0, answer: null }
   const get = async (api: NonNullable<WordPressState["api"]>, keyInAddress: boolean) => {
-    const params = `after=${after}&status_after=${statusAfter}&tap_after=${state.tapId ?? 0}&from=${encodeURIComponent(await installId())}${keyInAddress ? `&key=${encodeURIComponent(key)}` : ""}&t=${Date.now()}`
+    const from = Date.now() - canSend.at < 5 * 60_000 ? `&from=${encodeURIComponent(await installId())}` : ""
+    const params = `after=${after}&status_after=${statusAfter}&tap_after=${state.tapId ?? 0}${from}${keyInAddress ? `&key=${encodeURIComponent(key)}` : ""}&t=${Date.now()}`
     const url = api === "wp-json" ? `${state.site}/wp-json/omcc/v1/leads?${params}` : `${state.site}/?rest_route=/omcc/v1/leads&${params}`
     const res = await fetch(url, {
       headers: { "x-omcc-key": key, accept: "application/json", "user-agent": "OneMarketingCommandCenter/1.0" },
@@ -178,7 +190,7 @@ export function shareStatuses(): Promise<void> {
 
 // Makes this computer the one that sends shared leads to Google Ads: when none is yet (`take`
 // false), or from now on in place of another one (`take`).
-export async function claimSender(name: string, take = false) {
+export async function claimSender(name: string, take: boolean | "if_stale" = false) {
   const state = await file.read()
   if (!state.site) return null
   const answer = await post(state, await webhookSecret(), "sender", { id: await installId(), name, take })
@@ -194,8 +206,10 @@ export async function claimSender(name: string, take = false) {
 // replaced, or off): another computer with Google Ads connected takes over. Plugin 1.5+ (older
 // ones don't record check-ins).
 export async function senderGone() {
-  const { sender, plugin } = await file.read()
+  const { sender, plugin, lastSync, lastError } = await file.read()
   if (!sender || sender.id === (await installId())) return false
+  // Only on fresh news from the site (not a copy from before this computer was off).
+  if (lastError || !lastSync || Date.now() - Date.parse(lastSync) > 2 * 60_000) return false
   const [major = 0, minor = 0] = (plugin ?? "0").split(".").map(Number)
   if (major < 1 || (major === 1 && minor < 5)) return false
   const last = Math.max(Date.parse(sender.seen ?? "") || 0, Date.parse(sender.at ?? "") || 0)

@@ -362,7 +362,11 @@ function omcc_leads_sender_post($request) {
 	$body = $request->get_json_params();
 	$body = is_array($body) ? $body : array();
 	$id = isset($body['id']) ? omcc_leads_cut((string) $body['id'], 64) : '';
-	if ($id && (!empty($body['take']) || !omcc_leads_sender())) {
+	// "if_stale": only when the current one hasn't checked in for a day (the site's own clock decides).
+	$current = omcc_leads_sender();
+	$last = $current ? max(strtotime(isset($current['seen']) ? $current['seen'] : '') ?: 0, strtotime(isset($current['at']) ? $current['at'] : '') ?: 0) : 0;
+	$take = isset($body['take']) && $body['take'] === 'if_stale' ? $last < time() - DAY_IN_SECONDS : !empty($body['take']);
+	if ($id && ($take || !$current)) {
 		update_option('omcc_leads_sender', array(
 			'id' => $id,
 			'name' => isset($body['name']) ? omcc_leads_cut((string) $body['name'], 100) : '',

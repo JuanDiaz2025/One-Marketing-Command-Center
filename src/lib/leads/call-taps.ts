@@ -57,6 +57,13 @@ export async function saveTaps(raw: { id: number; at: string; fields?: Record<st
   })
 }
 
+// Connected to a different site: its taps aren't this one's.
+export async function clearTaps() {
+  await file.update((db) => {
+    db.taps = []
+  })
+}
+
 // The last `days` days of taps, newest first.
 export async function recentTaps(days = 30) {
   const since = Date.now() - days * 86_400_000

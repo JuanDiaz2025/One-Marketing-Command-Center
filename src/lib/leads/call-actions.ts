@@ -125,7 +125,13 @@ async function addPhoneLead(sub: string, input: CallInput, from: CallSource): Pr
   const sent = good
     ? told(good, `Sent to Google Ads as a qualified lead, matched by ${from.matchedBy}.`, "as a qualified lead")
     : told(c.invalid, "Reported to Google Ads as not a seller.", "as not a seller")
-  return { ok: `Motivation ${motivation.value} (${label}). Added to your leads.${sent}`, motivation }
+  // The same person may also have sent the form (a separate lead): say so, so it isn't worked, or
+  // marked Interested, twice.
+  const also = (await listLeads()).find(
+    (l) => l.id !== lead.id && l.phone?.replace(/\D/g, "").slice(-10) === digits.slice(-10) && Math.abs(Date.parse(l.createdAt) - Date.parse(lead.createdAt)) < 7 * 86_400_000,
+  )
+  const note = also ? ` Note: ${also.name} has the same phone number in your leads; it may be the same person.` : ""
+  return { ok: `Motivation ${motivation.value} (${label}). Added to your leads.${sent}${note}`, motivation }
 }
 
 async function addCallLeadActionUnguarded(call: CallInfo, input: CallInput): Promise<Result> {
