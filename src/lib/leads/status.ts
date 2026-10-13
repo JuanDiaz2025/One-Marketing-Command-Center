@@ -1,4 +1,16 @@
+import { createHash } from "node:crypto"
+
 import type { ConversionKind, Lead, LeadStatus } from "@/lib/leads/types"
+
+// A website lead or a Google Ads call is the same lead on every computer of the team, so its
+// conversions get the same id on all of them: if two computers ever send it, Google counts it once.
+// Other leads exist on one computer only; they keep the usual id (their own).
+export function teamTransactionId(lead: Pick<Lead, "inboxId" | "callId">, kind: ConversionKind) {
+  const base = lead.inboxId?.replace(/^wp:www\./, "wp:") ?? lead.callId
+  if (!base) return undefined
+  const id = `${base}-${kind}`.replace(/[^A-Za-z0-9._:-]/g, "_")
+  return id.length <= 64 ? id : `t-${createHash("sha256").update(id).digest("hex").slice(0, 40)}-${kind}`
+}
 
 // Which conversions each status means for Google Ads. A deal can close without "Interested"
 // being set first; Google still hears about both.
@@ -69,7 +81,7 @@ export function applyStatus(lead: Lead, status: LeadStatus, by: "auto" | "you", 
       // Taken back earlier and good again: send it as a new conversion.
       lead.conversions[kind] = { state: "pending", at: now, transactionId: `${lead.id}-${kind}-${Date.now().toString(36)}` }
     } else if (!entry || entry.state === "failed" || entry.state === "skipped") {
-      lead.conversions[kind] = { state: "pending", at: now, transactionId: entry?.transactionId }
+      lead.conversions[kind] = { state: "pending", at: now, transactionId: entry?.transactionId ?? teamTransactionId(lead, kind) }
     }
   }
 }
@@ -81,7 +93,7 @@ function reportInvalid(lead: Lead, now: string, rule?: string) {
   const entry = lead.conversions.invalid
   if (entry?.retraction && entry.retraction.state !== "sent") delete entry.retraction
   else if (entry?.retraction?.state === "sent") lead.conversions.invalid = { state: "pending", at: now, value: 0, rule, transactionId: `${lead.id}-invalid-${Date.now().toString(36)}` }
-  else if (!entry || entry.state === "failed" || entry.state === "skipped") lead.conversions.invalid = { state: "pending", at: now, value: 0, rule, transactionId: entry?.transactionId }
+  else if (!entry || entry.state === "failed" || entry.state === "skipped") lead.conversions.invalid = { state: "pending", at: now, value: 0, rule, transactionId: entry?.transactionId ?? teamTransactionId(lead, "invalid") }
 }
 
 // Queues what a Google Ads rule decided, without touching the lead's status.
@@ -101,6 +113,6 @@ export function applyRule(lead: Lead, rule: { name: string; then: "qualified" | 
     // A converted lead also counts as qualified; the value goes with the conversion the rule is
     // about, so Google doesn't count it twice.
     const value = rule.then === "converted" && kind === "interested" ? undefined : rule.value
-    if (!lead.conversions[kind]) lead.conversions[kind] = { state: "pending", at: now, value, rule: rule.name }
+    if (!lead.conversions[kind]) lead.conversions[kind] = { state: "pending", at: now, value, rule: rule.name, transactionId: teamTransactionId(lead, kind) }
   }
 }

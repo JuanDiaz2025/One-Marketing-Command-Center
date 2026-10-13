@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
+import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { CircleAlert, CircleCheck, Settings } from "lucide-react"
+import { CircleAlert, CircleCheck, Settings, TriangleAlert } from "lucide-react"
 
 import BrandLogo from "@/components/brand-logo"
 import GoogleButton from "@/components/google-button"
@@ -28,6 +29,10 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
   const error = typeof q.error === "string" ? (errors[q.error] ?? errors.failed) : null
   const missing = missingSignInSettings()
+  // go-online.bat's temporary address (new each time): Google only lets you sign in on addresses
+  // listed in the app's Google sign-in settings, and this one can't be listed.
+  const host = (await headers()).get("host") ?? ""
+  const temporary = /\.trycloudflare\.com$/i.test(host.split(":")[0]) && !process.env.SITE_URL
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-16">
@@ -51,6 +56,17 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             <p role="alert" className="mt-5 flex gap-2 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
               <CircleAlert className="mt-0.5 size-4 shrink-0" />
               {error}
+            </p>
+          )}
+
+          {temporary && (
+            <p className="mt-5 flex gap-2 rounded-xl bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-200">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+              <span>
+                This is a temporary address (from go-online.bat), and Google sign-in doesn&apos;t work on it. On the computer
+                running the app, open <strong>http://localhost:4000</strong> instead. To use the app from other computers, set
+                up a permanent address.
+              </span>
             </p>
           )}
 

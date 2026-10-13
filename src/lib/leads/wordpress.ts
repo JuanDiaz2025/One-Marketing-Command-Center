@@ -6,9 +6,10 @@
 import { jsonFileStore } from "@/lib/json-file-store"
 import { shared } from "@/lib/shared-state"
 import { addLead } from "@/lib/leads/store"
+import type { Lead } from "@/lib/leads/types"
 import { parseWebsiteLead, webhookSecret } from "@/lib/leads/webhook"
 import { logAttempt } from "@/lib/leads/webhook-log"
-import { applyChanges, installId, markShared, unsharedChanges, type Sender, type StatusChange } from "@/lib/leads/team-sync"
+import { applyChanges, installId, isTeamLead, markShared, unsharedChanges, type Sender, type StatusChange } from "@/lib/leads/team-sync"
 
 type WordPressState = {
   site?: string // e.g. https://twinhomebuyer.com
@@ -155,8 +156,9 @@ export function shareStatuses(): Promise<void> {
     do {
       sharing.again = false
       const state = await file.read()
-      const changes = await unsharedChanges()
-      if (!state.site || !changes.length) continue
+      if (!state.site) continue
+      const changes = await unsharedChanges(state.site)
+      if (!changes.length) continue
       const answer = await post(state, await webhookSecret(), "status", {
         from: await installId(),
         changes: changes.slice(0, 100).map(({ key, status, at, by }) => ({ key, status, at: Date.parse(at), by })),
@@ -185,13 +187,15 @@ export async function claimSender(name: string, take = false) {
   return answer?.sender ?? null
 }
 
-// Whether this computer should leave a shared lead's Google Ads conversions to another one.
-export async function sentElsewhere(): Promise<Sender | null> {
-  const { sender } = await file.read()
-  return sender && sender.id !== (await installId()) ? sender : null
+// When another computer on the team sends the team's website leads to Google Ads: that computer,
+// and which leads are the team's (this computer leaves their new conversions to it).
+export async function sentElsewhere(): Promise<{ sender: Sender; isTeamLead: (lead: Pick<Lead, "inboxId">) => boolean } | null> {
+  const { sender, site } = await file.read()
+  if (!sender || !site || sender.id === (await installId())) return null
+  return { sender, isTeamLead: (lead) => isTeamLead(lead, site) }
 }
 
-// Brings in leads saved in WordPress since the last time. At most every 30 seconds, and one at a
+// Brings in leads saved in WordPress since the last time. At most every 10 seconds, and one at a
 // time; `force` skips the wait (e.g. right after connecting).
 export function syncWordPress(force = false): Promise<void> {
   // A check already under way may be for the old address: let it finish, then check again.
@@ -209,6 +213,8 @@ export function syncWordPress(force = false): Promise<void> {
       let api = state.api
       let info: Answer = {}
       let statuses: StatusChange[] = []
+      // Whether every saved lead is in now (more than 2,000 new ones come in over several checks).
+      let complete = false
       // Up to 2,000 leads per check (200 at a time); anything beyond comes in on the next one.
       for (let page = 0; page < 10; page++) {
         const result = await ask({ ...state, api }, key, lastId)
@@ -250,11 +256,15 @@ export function syncWordPress(force = false): Promise<void> {
           if (s.site === state.site) s.lastId = lastId
         })
         if (page === 0) statuses = info.statuses ?? []
-        if (leads.length < 200) break
+        if (leads.length < 200) {
+          complete = true
+          break
+        }
       }
       // The statuses the team set (the first answer has up to 500), once their leads are in.
-      if (statuses.length) {
-        await applyChanges(statuses, await installId())
+      // While leads are still coming in, their statuses are read again next time.
+      if (statuses.length && complete) {
+        await applyChanges(statuses, await installId(), state.site)
         const seq = Math.max(state.statusSeq ?? 0, ...statuses.map((c) => c.seq))
         await file.update((s) => {
           if (s.site === state.site) s.statusSeq = seq

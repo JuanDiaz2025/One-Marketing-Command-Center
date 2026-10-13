@@ -1,4 +1,4 @@
-// The Leads page's background work: new leads from the WordPress site (checked at most every 30
+// The Leads page's background work: new leads from the WordPress site (checked at most every 10
 // seconds), scores for new leads, conversions for Google Ads and the spreadsheet (at most every
 // 6 hours). Run after a page is sent, so nothing waits on it.
 import { createHash } from "node:crypto"
@@ -9,6 +9,7 @@ import { senderAccount } from "@/lib/google/active-account"
 import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncSheetIfDue } from "@/lib/google/sheets-sync"
 import { scoreUnscored } from "@/lib/leads/store"
+import { shared } from "@/lib/shared-state"
 import { claimSender, getWordPress, syncWordPress } from "@/lib/leads/wordpress"
 
 async function sendConversions(sub: string) {
@@ -25,7 +26,19 @@ async function sendConversions(sub: string) {
   }
 }
 
+// Once the app has been opened, the same work goes on every 30 seconds while it runs, even with no
+// page open (the window minimized, the browser closed): a teammate's status still reaches Google
+// Ads, and website leads still come in. With no one signed in, the team's first Google Ads
+// connection is used (senderAccount).
+const loop = shared("background-loop", () => ({ timer: null as ReturnType<typeof setInterval> | null }))
+function keepRunning() {
+  if (loop.timer) return
+  loop.timer = setInterval(() => void catchUp("").catch(() => {}), 30_000)
+  loop.timer.unref?.()
+}
+
 export function catchUp(sub: string) {
+  keepRunning()
   return Promise.all([
     scoreUnscored()
       .then(() => syncWordPress())

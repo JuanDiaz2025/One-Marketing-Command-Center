@@ -46,9 +46,9 @@ export type StatusChange = { seq: number; key: string; status: string; at: strin
 export type Sender = { id: string; name?: string; at?: string }
 
 // Statuses set here and not yet reported, oldest first.
-export async function unsharedChanges() {
+export async function unsharedChanges(site: string) {
   return (await listLeads())
-    .filter((l) => l.statusShare === "pending" && sharedKey(l))
+    .filter((l) => l.statusShare === "pending" && isTeamLead(l, site))
     .map((l) => ({ id: l.id, key: sharedKey(l)!, status: l.status ?? "new", at: l.statusChangedAt ?? new Date().toISOString(), by: l.statusByName ?? "" }))
     .reverse()
 }
@@ -62,36 +62,47 @@ export async function markShared(changes: { id: string; at: string }[]) {
   }
 }
 
-// Applies the statuses others set. The latest one wins: a change made here after theirs stays.
-export async function applyChanges(changes: StatusChange[], me: string) {
+// Applies the statuses others set, in the order the website received them (its own numbering, so
+// computers whose clocks differ still agree): for each lead, the last change wins. A change made
+// here and not yet reported is newer than anything received so far, so it stays (and goes next).
+// `site` is the team's site: only its leads are shared.
+export async function applyChanges(changes: StatusChange[], me: string, site: string) {
   const latest = new Map<string, StatusChange>()
-  for (const c of changes) {
-    if (c.from !== me && leadStatuses.some((s) => s.id === c.status)) latest.set(c.key, c)
+  for (const c of [...changes].sort((a, b) => a.seq - b.seq)) {
+    if (leadStatuses.some((s) => s.id === c.status)) latest.set(c.key, c)
   }
-  if (!latest.size) return 0
   const leads = await listLeads()
   let applied = 0
   for (const [key, c] of latest) {
-    const lead = leads.find((l) => sharedKey(l) === key)
+    // The last word on this lead is this computer's own: nothing to do.
+    if (c.from === me) continue
+    const lead = leads.find((l) => isTeamLead(l, site) && sharedKey(l) === key)
     if (!lead) continue
-    // Milliseconds since 1970 (plugin 1.4).
-    const at = /^\d+$/.test(String(c.at)) ? Number(c.at) : Date.parse(String(c.at))
-    if (Number.isNaN(at)) continue
-    const ours = lead.statusBy === "you" && lead.statusChangedAt ? Date.parse(lead.statusChangedAt) : 0
-    if (at <= ours) continue
-    await updateLead(lead.id, (l) => {
+    // When it was set (milliseconds since 1970, plugin 1.4), never later than now: a teammate's
+    // clock running ahead mustn't give Google Ads a time in the future.
+    const sent = /^\d+$/.test(String(c.at)) ? Number(c.at) : Date.parse(String(c.at))
+    const at = new Date(Number.isNaN(sent) ? Date.now() : Math.min(sent, Date.now())).toISOString()
+    const changed = await updateLead(lead.id, (l) => {
+      // Changed here meanwhile (not reported yet): that one is newer.
+      if (l.statusShare === "pending") return
       if (l.status === c.status && l.statusBy === "you") {
         l.statusByName = c.by || l.statusByName
         return
       }
-      applyStatus(l, c.status as LeadStatus, "you", new Date(at).toISOString())
+      applyStatus(l, c.status as LeadStatus, "you", at)
       l.statusByName = c.by || undefined
-      // It came from the team: nothing to report back.
-      delete l.statusShare
     })
-    applied++
+    if (changed) applied++
   }
   return applied
+}
+
+// Whether a lead is one of the team's: a lead from the team's website (not from a site this copy
+// used before).
+export function isTeamLead(lead: Pick<Lead, "inboxId">, site: string | undefined) {
+  if (!site) return false
+  const host = new URL(site).host.replace(/^www\./, "")
+  return Boolean(sharedKey(lead)?.startsWith(`wp:${host}:`))
 }
 
 // The team code: the site and its key in one line, pasted on a teammate's computer to join.

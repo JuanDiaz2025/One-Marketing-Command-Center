@@ -18,7 +18,6 @@ import { jsonFileStore } from "@/lib/json-file-store"
 import { shared } from "@/lib/shared-state"
 import { applyStatus } from "@/lib/leads/status"
 import { listLeads, updateLead } from "@/lib/leads/store"
-import { sharedKey } from "@/lib/leads/team-sync"
 import { conversionKinds, type ConversionKind, type Lead, type LeadStatus } from "@/lib/leads/types"
 import { googleClick } from "@/lib/leads/tracking"
 import { sentElsewhere } from "@/lib/leads/wordpress"
@@ -495,11 +494,19 @@ export async function setLeadStatus(id: string, status: LeadStatus, by?: string)
   })
 }
 
-// The leads this computer sends to Google Ads: all of them, except the team's shared website
-// leads when another computer is the one that sends those (team-sync.ts), so none goes twice.
+// The leads this computer sends to Google Ads. When another computer on the team sends the team's
+// website leads (team-sync.ts), this one leaves their new conversions to it, so none goes twice,
+// but still looks after the ones it sent itself before: taking them back when the lead turns out
+// Not interested, and checking what Google decided.
 async function leadsToSend() {
   const leads = await listLeads()
-  return (await sentElsewhere()) ? leads.filter((l) => !sharedKey(l)) : leads
+  const elsewhere = await sentElsewhere()
+  if (!elsewhere) return leads
+  return leads.flatMap((l) => {
+    if (!elsewhere.isTeamLead(l)) return [l]
+    const sent = Object.fromEntries(Object.entries(l.conversions ?? {}).filter(([, c]) => c?.state === "sent"))
+    return Object.keys(sent).length ? [{ ...l, conversions: sent }] : []
+  })
 }
 
 // Sends every conversion waiting to go: new ones at once, retries at most hourly.

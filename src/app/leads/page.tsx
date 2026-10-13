@@ -22,13 +22,12 @@ import { catchUp, leadsVersion } from "@/lib/leads/background"
 import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 import { leadChannel, pagePath } from "@/lib/leads/tracking"
-import { sharedKey, type Sender } from "@/lib/leads/team-sync"
 import type { Lead } from "@/lib/leads/types"
 import { sentElsewhere } from "@/lib/leads/wordpress"
 
 // One spreadsheet row per lead. Dates are formatted here, on this computer, in its time zone.
 // `elsewhere` is the team's computer that sends website leads to Google Ads, when it isn't this one.
-function toRow(lead: Lead, placements: Map<string, string>, elsewhere: Sender | null): LeadRow {
+function toRow(lead: Lead, placements: Map<string, string>, elsewhere: Awaited<ReturnType<typeof sentElsewhere>>): LeadRow {
   const t = lead.tracking ?? {}
   return {
     id: lead.id,
@@ -61,9 +60,11 @@ function toRow(lead: Lead, placements: Map<string, string>, elsewhere: Sender | 
     statusByName: lead.statusByName,
     score: lead.score,
     google:
-      elsewhere && sharedKey(lead)
+      // Another computer sends it, unless this one sent it earlier (then this one still shows
+      // what Google did with it, and takes it back if needed).
+      elsewhere?.isTeamLead(lead) && !Object.values(lead.conversions ?? {}).some((c) => c?.state === "sent")
         ? lead.status && lead.status !== "new"
-          ? { state: "elsewhere", detail: `Google Ads hears about it from ${elsewhere.name || "your team's main computer"}.` }
+          ? { state: "elsewhere", detail: `Google Ads hears about it from ${elsewhere.sender.name || "your team's main computer"}.` }
           : undefined
         : googleState(lead),
   }
@@ -151,7 +152,7 @@ export default async function LeadsPage() {
   // Another computer on the team sends the website leads to Google Ads: their Google Ads state is
   // that computer's to show, not this one's.
   const elsewhere = await sentElsewhere()
-  const ownSending = elsewhere ? leads.filter((l) => !sharedKey(l)) : leads
+  const ownSending = elsewhere ? leads.filter((l) => !elsewhere.isTeamLead(l)) : leads
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0
 
