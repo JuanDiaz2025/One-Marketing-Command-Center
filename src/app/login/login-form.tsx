@@ -14,6 +14,11 @@ export default function LoginForm({ next }: { next: string }) {
     <form action={action} className="flex flex-col gap-4">
       <input type="hidden" name="next" value={next} />
       <div className="flex flex-col gap-2">
+        <Label htmlFor="name">Your name</Label>
+        {/* Shown to the team on the statuses you set, and on reviews and approvals. */}
+        <Input id="name" name="name" autoComplete="name" placeholder="e.g. Maria" defaultValue={state.name} key={state.name ?? ""} />
+      </div>
+      <div className="flex flex-col gap-2">
         <Label htmlFor="password">Team password</Label>
         <Input
           id="password"

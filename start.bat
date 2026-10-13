@@ -50,6 +50,8 @@ REM Build the fast version only when the code changed since the last build (afte
 REM instead of every start. If building fails, DealTrack still starts in the slower mode.
 set "VERSION="
 for /f %%v in ('git rev-parse HEAD 2^>nul') do set "VERSION=%%v"
+REM A copy from a download (no git) says its version in dealtrack-version instead.
+if not defined VERSION if exist dealtrack-version set /p VERSION=<dealtrack-version
 if not defined VERSION set "VERSION=unknown"
 set "NEED_BUILD="
 if not exist .next\BUILD_ID set "NEED_BUILD=1"

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache"
 import { after } from "next/server"
 
-import { isSignedIn } from "@/lib/auth"
+import { isSignedIn, signedInEmail } from "@/lib/auth"
 import { activeAccount } from "@/lib/conversions/google"
 import { sendPendingConversions, setLeadStatus } from "@/lib/conversions/offline-conversions"
 import { guard } from "@/lib/guard"
@@ -15,7 +15,9 @@ import { shareStatuses } from "@/lib/leads/wordpress"
 async function setLeadStatusActionUnguarded(id: string, status: string): Promise<{ error?: string }> {
   if (!(await isSignedIn())) return { error: "Sign in first." }
   if (!leadStatuses.some((s) => s.id === status)) return { error: "Unknown status." }
-  const lead = await setLeadStatus(id, status as LeadStatus, (await currentName()) || undefined)
+  // Who set it, for the team: the name they typed, or their Google email's name.
+  const by = (await currentName()) || (await signedInEmail())?.split("@")[0] || undefined
+  const lead = await setLeadStatus(id, status as LeadStatus, by)
   if (!lead) return { error: "That lead is gone." }
   // The rest of the team sees it within seconds (team-sync.ts).
   after(() => shareStatuses())
