@@ -38,6 +38,8 @@ export function isEmailAllowed(email: string) {
 // Where Google sends people back after they sign in. It must be listed exactly under
 // "Authorized redirect URIs" in the Google Cloud OAuth client.
 export function redirectUri(requestUrl: string) {
-  const base = process.env.SITE_URL?.replace(/\/$/, "") || appUrl("/", requestUrl).origin
+  // (An address on this computer, even one set in SITE_URL, always uses http: see local-url.ts.)
+  const site = process.env.SITE_URL?.trim()
+  const base = site ? appUrl("/", site).origin : appUrl("/", requestUrl).origin
   return `${base}/api/auth/google/callback`
 }
