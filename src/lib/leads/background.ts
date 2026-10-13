@@ -10,7 +10,7 @@ import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { syncSheetIfDue } from "@/lib/google/sheets-sync"
 import { scoreUnscored } from "@/lib/leads/store"
 import { shared } from "@/lib/shared-state"
-import { claimSender, getWordPress, syncWordPress } from "@/lib/leads/wordpress"
+import { claimSender, getWordPress, senderGone, syncWordPress } from "@/lib/leads/wordpress"
 
 async function sendConversions(sub: string) {
   try {
@@ -18,6 +18,8 @@ async function sendConversions(sub: string) {
     if (active) {
       // The team's site has no computer sending to Google Ads yet: this one does (team-sync.ts).
       if ((await getWordPress()).sender === null) await claimSender(active.connection.email).catch(() => null)
+      // The one that sent hasn't been heard from for a day: this one carries on.
+      else if (await senderGone()) await claimSender(active.connection.email, true).catch(() => null)
       void syncSheetIfDue(active.connection, active.account).catch((error) => console.error("Couldn't update the spreadsheet:", error))
       await sendPendingConversions(active.connection, active.account)
     }
@@ -52,7 +54,7 @@ export function catchUp(sub: string) {
 // website check's own "last checked" time doesn't count: it's saved every 30 seconds.
 export async function leadsVersion() {
   const dir = path.join(process.cwd(), ".data")
-  const [leads, sheet, site] = await Promise.all([
+  const [leads, sheet, site, taps] = await Promise.all([
     stat(path.join(dir, "leads.json")).then((s) => s.mtimeMs, () => 0),
     stat(path.join(dir, "sheet-sync.json")).then((s) => s.mtimeMs, () => 0),
     readFile(path.join(dir, "wordpress.json"), "utf8").then(
@@ -67,6 +69,7 @@ export async function leadsVersion() {
       },
       () => 0,
     ),
+    stat(path.join(dir, "call-taps.json")).then((s) => s.mtimeMs, () => 0),
   ])
-  return `${leads}-${sheet}-${site}`
+  return `${leads}-${sheet}-${site}-${taps}`
 }

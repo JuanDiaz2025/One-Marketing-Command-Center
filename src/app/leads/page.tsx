@@ -9,6 +9,8 @@ import { countSince } from "@/components/leads/lead-list"
 import LeadsTable, { type LeadRow } from "@/components/leads/leads-table"
 import LiveRefresh from "@/components/leads/live-refresh"
 import PhoneCalls from "@/components/leads/phone-calls"
+import WebsiteCalls from "@/components/leads/website-calls"
+import { recentTaps } from "@/lib/leads/call-taps"
 import SendingCheck from "@/components/leads/sending-check"
 import WebhookSetup from "@/components/leads/webhook-setup"
 import { formatNumber } from "@/components/dashboard/format"
@@ -23,7 +25,7 @@ import { leadSource } from "@/lib/leads/source"
 import { listLeads, listQrCodes } from "@/lib/leads/store"
 import { leadChannel, pagePath } from "@/lib/leads/tracking"
 import type { Lead } from "@/lib/leads/types"
-import { sentElsewhere } from "@/lib/leads/wordpress"
+import { getWordPress, sentElsewhere } from "@/lib/leads/wordpress"
 
 // One spreadsheet row per lead. Dates are formatted here, on this computer, in its time zone.
 // `elsewhere` is the team's computer that sends website leads to Google Ads, when it isn't this one.
@@ -152,6 +154,15 @@ export default async function LeadsPage() {
   // Another computer on the team sends the website leads to Google Ads: their Google Ads state is
   // that computer's to show, not this one's.
   const elsewhere = await sentElsewhere()
+  const [wp, taps] = await Promise.all([getWordPress(), recentTaps()])
+  // Taps on the site's phone numbers need the plugin 1.5 or later.
+  const [major = 0, minor = 0] = (wp.plugin ?? "0").split(".").map(Number)
+  const tapsSupported = major > 1 || (major === 1 && minor >= 5)
+  const tapsAdded: Record<number, { value: number; grade: "hot" | "warm" | "cold" | "junk" } | null> = {}
+  for (const l of leads) {
+    const id = l.inboxId?.match(/:tap(\d+)$/)?.[1]
+    if (id) tapsAdded[Number(id)] = l.motivation ? { value: l.motivation.value, grade: l.motivation.grade } : null
+  }
   const ownSending = elsewhere ? leads.filter((l) => !elsewhere.isTeamLead(l)) : leads
   const callCount = calls && "calls" in calls ? calls.calls.length : null
   const missed = calls && "calls" in calls ? calls.calls.filter((c) => c.missed).length : 0
@@ -271,6 +282,8 @@ export default async function LeadsPage() {
             </p>
           )}
         </section>
+
+        {wp.site && <WebsiteCalls taps={taps} added={tapsAdded} supported={tapsSupported} />}
 
         <PhoneCalls
           result={calls}

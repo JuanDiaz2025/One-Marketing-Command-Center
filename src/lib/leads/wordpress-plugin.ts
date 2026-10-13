@@ -12,7 +12,7 @@
 import { TRACKING_FIELDS, TRACKING_SNIPPET } from "@/lib/leads/wordpress-snippets"
 import { zipFiles } from "@/lib/zip"
 
-export const PLUGIN_VERSION = "1.4.0"
+export const PLUGIN_VERSION = "1.5.0"
 export const PLUGIN_FOLDER = "omcc-lead-saver"
 
 const phpString = (s: string) => `'${s.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}'`
@@ -34,11 +34,17 @@ if (!defined('ABSPATH')) {
 // The key the Command Center sends when it asks for leads. Keep it private.
 define('OMCC_LEADS_KEY', ${phpString(key)});
 define('OMCC_LEADS_VERSION', '${PLUGIN_VERSION}');
-define('OMCC_LEADS_DB_VERSION', '2');
+define('OMCC_LEADS_DB_VERSION', '3');
 
 function omcc_leads_table() {
 	global $wpdb;
 	return $wpdb->prefix . 'omcc_leads';
+}
+
+// Every tap on a phone number on the site, with where that visitor came from.
+function omcc_leads_tap_table() {
+	global $wpdb;
+	return $wpdb->prefix . 'omcc_call_taps';
 }
 
 // Every status someone on the team set in the app, in order (newest last).
@@ -69,6 +75,13 @@ function omcc_leads_install() {
 		by_name varchar(100) NOT NULL DEFAULT '',
 		from_id varchar(64) NOT NULL DEFAULT '',
 		PRIMARY KEY  (seq)
+	) $charset;");
+	$tap_table = omcc_leads_tap_table();
+	dbDelta("CREATE TABLE $tap_table (
+		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+		tapped datetime NOT NULL,
+		fields text NOT NULL,
+		PRIMARY KEY  (id)
 	) $charset;");
 	update_option('omcc_leads_db_version', OMCC_LEADS_DB_VERSION);
 }
@@ -110,6 +123,27 @@ add_action('wp_footer', function () {
 	echo <<<'OMCC_TRACKING'
 ${TRACKING_SNIPPET}
 OMCC_TRACKING;
+	echo "\n";
+	// A tap on any phone number (a tel: link) is noted, with where the visitor came from, so the
+	// Command Center sees calls from the site and which ad brought them.
+	echo '<script>(function(){var U=' . wp_json_encode(esc_url_raw(rest_url('omcc/v1/call-tap'))) . ';';
+	echo <<<'OMCC_TAPS'
+document.addEventListener("click", function (e) {
+  var a = e.target && e.target.closest ? e.target.closest('a[href^="tel:"]') : null;
+  if (!a) return;
+  var s = {};
+  try { s = JSON.parse(localStorage.getItem("thb_lead_tracking") || "{}"); } catch (x) {}
+  s.number = a.getAttribute("href").slice(4);
+  s.page = location.href;
+  s.mobile = /Mobi|Android|iPhone/i.test(navigator.userAgent) ? "1" : "";
+  var body = JSON.stringify(s);
+  try {
+    if (navigator.sendBeacon) navigator.sendBeacon(U, new Blob([body], { type: "text/plain" }));
+    else fetch(U, { method: "POST", body: body, keepalive: true });
+  } catch (x) {}
+}, true);
+})();</script>
+OMCC_TAPS;
 	echo "\n";
 });
 
@@ -210,6 +244,11 @@ add_action('rest_api_init', function () {
 		'callback' => 'omcc_leads_status_post',
 		'permission_callback' => '__return_true',
 	));
+	register_rest_route('omcc/v1', '/call-tap', array(
+		'methods' => 'POST',
+		'callback' => 'omcc_leads_call_tap',
+		'permission_callback' => '__return_true',
+	));
 	register_rest_route('omcc/v1', '/sender', array(
 		'methods' => 'POST',
 		'callback' => 'omcc_leads_sender_post',
@@ -227,6 +266,48 @@ function omcc_leads_denied($request) {
 		return new WP_REST_Response(array('ok' => false, 'code' => 'omcc_bad_key', 'error' => 'Wrong or missing key.'), 403);
 	}
 	return null;
+}
+
+// A tap on a phone number, sent by the visitor's browser (so it has no key): kept with where the
+// visitor came from, at most 20 an hour from one visitor, for 6 months. No address or IP is kept.
+function omcc_leads_call_tap($request) {
+	nocache_headers();
+	$ip = '';
+	foreach (array('HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR') as $header) {
+		if (!empty($_SERVER[$header])) {
+			$ip = trim(explode(',', (string) $_SERVER[$header])[0]);
+			break;
+		}
+	}
+	$limit = 'omcc_tap_' . md5($ip);
+	$count = intval(get_transient($limit));
+	if ($count >= 20) {
+		return new WP_REST_Response(array('ok' => true), 200);
+	}
+	set_transient($limit, $count + 1, HOUR_IN_SECONDS);
+	$body = json_decode((string) $request->get_body(), true);
+	$body = is_array($body) ? $body : array();
+	$keep = array('number', 'page', 'mobile', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'gbraid', 'wbraid', 'fbclid', 'msclkid', 'landing_page', 'referrer');
+	$fields = array();
+	foreach ($keep as $key) {
+		if (isset($body[$key]) && is_scalar($body[$key]) && (string) $body[$key] !== '') {
+			$fields[$key] = omcc_leads_cut(trim((string) $body[$key]), 500);
+		}
+	}
+	$number = isset($fields['number']) ? substr(preg_replace('/[^0-9+]/', '', $fields['number']), 0, 20) : '';
+	if ($number === '') {
+		return new WP_REST_Response(array('ok' => false), 400);
+	}
+	$fields['number'] = $number;
+	global $wpdb;
+	$table = omcc_leads_tap_table();
+	if (!$wpdb->insert($table, array('tapped' => gmdate('Y-m-d H:i:s'), 'fields' => wp_json_encode($fields)))) {
+		omcc_leads_install();
+	}
+	if (mt_rand(1, 50) === 1) {
+		$wpdb->query($wpdb->prepare("DELETE FROM $table WHERE tapped < %s", gmdate('Y-m-d H:i:s', time() - 180 * DAY_IN_SECONDS)));
+	}
+	return new WP_REST_Response(array('ok' => true), 200);
 }
 
 function omcc_leads_sender() {
@@ -333,11 +414,36 @@ function omcc_leads_list($request) {
 			'from' => $change['from_id'],
 		);
 	}
+	$taps = array();
+	$tap_table = omcc_leads_tap_table();
+	$tap_after = max(0, intval($request->get_param('tap_after')));
+	$tapped = $wpdb->get_results($wpdb->prepare("SELECT id, tapped, fields FROM $tap_table WHERE id > %d ORDER BY id ASC LIMIT 200", $tap_after), ARRAY_A);
+	if ($tapped === null || $wpdb->last_error) {
+		omcc_leads_install();
+		$tapped = array();
+	}
+	foreach ($tapped as $tap) {
+		$fields = json_decode($tap['fields'], true);
+		$taps[] = array(
+			'id' => intval($tap['id']),
+			'at' => str_replace(' ', 'T', $tap['tapped']) . 'Z',
+			'fields' => is_array($fields) ? $fields : new stdClass(),
+		);
+	}
+	// The sending computer checking in (at most every 10 minutes), so the others can see it's still
+	// around and take over when it's been gone a day.
+	$sender = omcc_leads_sender();
+	$from = (string) $request->get_param('from');
+	if ($sender && $from !== '' && hash_equals((string) $sender['id'], $from) && (empty($sender['seen']) || strtotime($sender['seen']) < time() - 600)) {
+		$sender['seen'] = gmdate('Y-m-d\TH:i:s\Z');
+		update_option('omcc_leads_sender', $sender, false);
+	}
 	update_option('omcc_leads_last_pull', gmdate('Y-m-d H:i:s'), false);
 	return new WP_REST_Response(array(
 		'ok' => true,
 		'plugin' => OMCC_LEADS_VERSION,
 		'statuses' => $statuses,
+		'taps' => $taps,
 		'sender' => omcc_leads_sender(),
 		'total' => intval($wpdb->get_var("SELECT COUNT(*) FROM $table")),
 		'events' => is_array(get_option('omcc_leads_events')) ? get_option('omcc_leads_events') : array(),

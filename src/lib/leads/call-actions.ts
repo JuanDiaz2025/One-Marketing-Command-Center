@@ -11,10 +11,13 @@ import { runQuery } from "@/lib/google/ads"
 import { senderAccount } from "@/lib/google/active-account"
 import { sendPendingConversions } from "@/lib/google/offline-conversions"
 import { callIdOf, type CallInfo } from "@/lib/leads/call-id"
+import { formatPhone, listTaps } from "@/lib/leads/call-taps"
 import { callQuestions, cleanAnswers, scoreCall, type CallAnswers } from "@/lib/leads/motivation"
 import { applyStatus } from "@/lib/leads/status"
 import { addLead, listLeads, updateLead } from "@/lib/leads/store"
+import { googleClick, pagePath } from "@/lib/leads/tracking"
 import { leadStatuses, type Lead, type LeadStatus, type Motivation } from "@/lib/leads/types"
+import { getWordPress } from "@/lib/leads/wordpress"
 
 
 type CallInput = { phone: string; name: string; status: string; notes: string; answers?: CallAnswers }
@@ -40,17 +43,27 @@ async function callTime(start: string, { connection, account }: NonNullable<Awai
   }
 }
 
-async function addCallLeadActionUnguarded(
-  call: CallInfo,
-  input: CallInput,
-): Promise<{ error?: string; ok?: string; motivation?: Motivation }> {
-  const session = await getSession()
-  if (!session) return { error: "Sign in first." }
+type Result = { error?: string; ok?: string; motivation?: Motivation }
+
+// Where the call came from: a Google Ads call, or a tap on a phone number on the website.
+type CallSource = {
+  key: Pick<Lead, "callId" | "inboxId">
+  at?: Date
+  defaultName: string
+  firstNote: string
+  source: string
+  tracking?: Lead["tracking"]
+  // How Google Ads matches it, for the message.
+  matchedBy: string
+}
+
+// Scores the caller and adds them as a lead; Google Ads hears about it like any other lead.
+async function addPhoneLead(sub: string, input: CallInput, from: CallSource): Promise<Result> {
   const digits = input.phone.replace(/\D/g, "")
   if (digits.length < 10) return { error: "Type the caller's full phone number (with area code)." }
   if (input.status !== "auto" && !leadStatuses.some((s) => s.id === input.status)) return { error: "Pick a status." }
-  const callId = callIdOf(call)
-  if ((await listLeads()).some((l) => l.callId === callId)) return { error: "This call is already a lead." }
+  const same = (l: Lead) => Boolean((from.key.callId && l.callId === from.key.callId) || (from.key.inboxId && l.inboxId === from.key.inboxId))
+  if ((await listLeads()).some(same)) return { error: "This call is already a lead." }
 
   // How motivated the caller is, from the quick answers and notes (AI when set up).
   const answers = cleanAnswers(input.answers, input.notes)
@@ -60,14 +73,13 @@ async function addCallLeadActionUnguarded(
   const auto = input.status === "auto"
   const status: LeadStatus = !auto ? (input.status as LeadStatus) : motivation.grade === "hot" ? "interested" : motivation.grade === "junk" ? "not_interested" : "new"
 
-  const active = await senderAccount(session.sub)
-  const at = active ? await callTime(call.start, active) : new Date(call.start.replace(" ", "T"))
+  const active = await senderAccount(sub)
   const lead = await addLead(
     {
-      name: (typeof input.name === "string" ? input.name.trim().slice(0, 100) : "") || `Caller from (${call.areaCode || "?"})`,
+      name: (typeof input.name === "string" ? input.name.trim().slice(0, 100) : "") || from.defaultName,
       phone: input.phone.trim().slice(0, 30),
       notes: [
-        `Phone call from Google Ads, ${Math.round(call.seconds / 60)} min.`,
+        from.firstNote,
         ...(Object.keys(callQuestions) as (keyof typeof callQuestions)[])
           .filter((q) => answers[q])
           .map((q) => `${callQuestions[q].label}: ${(callQuestions[q].options as readonly (readonly [string, string])[]).find(([k]) => k === answers[q])?.[1] ?? answers[q]}`),
@@ -75,12 +87,12 @@ async function addCallLeadActionUnguarded(
       ]
         .filter(Boolean)
         .join("\n"),
-      source: "Google Ads phone call",
-      tracking: { utmSource: "google", utmMedium: "cpc", utmCampaign: call.campaign || undefined },
-      callId,
+      source: from.source,
+      tracking: from.tracking,
+      ...from.key,
       motivation,
     },
-    Number.isNaN(at.getTime()) ? undefined : at.toISOString(),
+    from.at && !Number.isNaN(from.at.getTime()) ? from.at.toISOString() : undefined,
   )
   // Sent twice (a refresh while it was scoring): the first one already added it.
   if (lead.motivation?.at !== motivation.at) return { error: "This call is already a lead." }
@@ -111,11 +123,51 @@ async function addCallLeadActionUnguarded(
               : ` It will be sent to Google Ads (${what}) once Google Ads is connected.`
             : ""
   const sent = good
-    ? told(good, "Sent to Google Ads as a qualified lead, matched by the phone number.", "as a qualified lead")
+    ? told(good, `Sent to Google Ads as a qualified lead, matched by ${from.matchedBy}.`, "as a qualified lead")
     : told(c.invalid, "Reported to Google Ads as not a seller.", "as not a seller")
   return { ok: `Motivation ${motivation.value} (${label}). Added to your leads.${sent}`, motivation }
 }
 
-export async function addCallLeadAction(call: CallInfo, input: CallInput): Promise<{ error?: string; ok?: string; motivation?: Motivation }> {
+async function addCallLeadActionUnguarded(call: CallInfo, input: CallInput): Promise<Result> {
+  const session = await getSession()
+  if (!session) return { error: "Sign in first." }
+  const active = await senderAccount(session.sub)
+  return addPhoneLead(session.sub, input, {
+    key: { callId: callIdOf(call) },
+    at: active ? await callTime(call.start, active) : new Date(call.start.replace(" ", "T")),
+    defaultName: `Caller from (${call.areaCode || "?"})`,
+    firstNote: `Phone call from Google Ads, ${Math.round(call.seconds / 60)} min.`,
+    source: "Google Ads phone call",
+    tracking: { utmSource: "google", utmMedium: "cpc", utmCampaign: call.campaign || undefined },
+    matchedBy: "the phone number",
+  })
+}
+
+// A tap on a phone number on the website, added as a lead: it keeps where the visitor came from,
+// so Google Ads matches it to the very ad click when there was one.
+async function addTapLeadActionUnguarded(tapId: number, input: CallInput): Promise<Result> {
+  const session = await getSession()
+  if (!session) return { error: "Sign in first." }
+  const tap = (await listTaps()).find((t) => t.id === tapId)
+  const { site } = await getWordPress()
+  if (!tap || !site) return { error: "That call isn't in the list any more. Reload the page." }
+  const host = new URL(site).host.replace(/^www\./, "")
+  return addPhoneLead(session.sub, input, {
+    // Shared with the team like the site's form leads (team-sync.ts).
+    key: { inboxId: `wp:${host}:tap${tap.id}` },
+    at: new Date(tap.at),
+    defaultName: "Caller from the website",
+    firstNote: `Called from the website: tapped ${formatPhone(tap.number)}${tap.page ? ` on ${pagePath(tap.page)}` : ""}${tap.mobile ? " (phone)" : ""}.`,
+    source: "Website phone call",
+    tracking: tap.tracking,
+    matchedBy: googleClick(tap.tracking) ? "the Google ad click" : "the phone number",
+  })
+}
+
+export async function addTapLeadAction(tapId: number, input: CallInput): Promise<Result> {
+  return guard(() => addTapLeadActionUnguarded(tapId, input), (error) => ({ error }))
+}
+
+export async function addCallLeadAction(call: CallInfo, input: CallInput): Promise<Result> {
   return guard(() => addCallLeadActionUnguarded(call, input), (error) => ({ error }))
 }

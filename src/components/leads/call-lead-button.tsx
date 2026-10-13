@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { Sparkles, UserPlus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { addCallLeadAction } from "@/lib/leads/call-actions"
+import { addCallLeadAction, addTapLeadAction } from "@/lib/leads/call-actions"
 import type { CallInfo } from "@/lib/leads/call-id"
 import { callQuestions, type CallAnswers } from "@/lib/leads/call-questions"
 import type { Motivation } from "@/lib/leads/types"
@@ -30,12 +30,13 @@ export function MotivationBadge({ m }: { m: Pick<Motivation, "value" | "grade"> 
   )
 }
 
-// "Add as lead" on a Google Ads call: right after the call, pick a few quick answers (why they're
-// selling, when, the house, price, who lives there) and add notes; AI scores how motivated they
-// are, and the lead is sent to Google Ads like any other, matched by the caller's number.
-export default function CallLeadButton({ call, added }: { call: CallInfo; added: Pick<Motivation, "value" | "grade"> | null | false }) {
+// "Add as lead" on a Google Ads call, or on a tap on a phone number on the website (`tapId`):
+// right after the call, pick a few quick answers (why they're selling, when, the house, price, who
+// lives there) and add notes; AI scores how motivated they are, and the lead is sent to Google Ads
+// like any other, matched by the ad click when the website knows it, or else the caller's number.
+export default function CallLeadButton({ call, tapId, added }: { call?: CallInfo; tapId?: number; added: Pick<Motivation, "value" | "grade"> | null | false }) {
   const [open, setOpen] = useState(false)
-  const [phone, setPhone] = useState(call.areaCode ? `(${call.areaCode}) ` : "")
+  const [phone, setPhone] = useState(call?.areaCode ? `(${call.areaCode}) ` : "")
   const [name, setName] = useState("")
   const [status, setStatus] = useState("auto")
   const [notes, setNotes] = useState("")
@@ -71,7 +72,8 @@ export default function CallLeadButton({ call, added }: { call: CallInfo; added:
         setResult(null)
         start(async () => {
           try {
-            const res = await addCallLeadAction(call, { phone, name, status, notes, answers })
+            const input = { phone, name, status, notes, answers }
+            const res = tapId !== undefined ? await addTapLeadAction(tapId, input) : call ? await addCallLeadAction(call, input) : { error: "Nothing to add." }
             setResult(res.error ? { ok: false, text: res.error } : { ok: true, text: res.ok ?? "Added ✓", motivation: res.motivation })
           } catch {
             setResult({ ok: false, text: "Couldn't add it. Try again." })

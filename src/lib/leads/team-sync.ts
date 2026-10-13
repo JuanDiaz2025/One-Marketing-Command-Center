@@ -43,7 +43,7 @@ export async function newInstallId() {
 export const sharedKey = (lead: Pick<Lead, "inboxId">) => lead.inboxId?.replace(/^wp:www\./, "wp:")
 
 export type StatusChange = { seq: number; key: string; status: string; at: string | number; by?: string; from?: string }
-export type Sender = { id: string; name?: string; at?: string }
+export type Sender = { id: string; name?: string; at?: string; seen?: string }
 
 // Statuses set here and not yet reported, oldest first.
 export async function unsharedChanges(site: string) {
