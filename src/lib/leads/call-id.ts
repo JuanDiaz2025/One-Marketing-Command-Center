@@ -3,5 +3,5 @@ export type CallInfo = { start: string; areaCode: string; campaign: string; seco
 export const callIdOf = (c: Pick<CallInfo, "start" | "areaCode">) => `call:${c.start}:${c.areaCode}`
 
 // A lead made from a phone call: a Google Ads call, or a tap on a phone number on the website
-// ("wp:<site>:tap<id>"). You, or its motivation score, decide what Google Ads hears about it.
-export const isPhoneLead = (lead: { callId?: string; inboxId?: string }) => Boolean(lead.callId || /:tap\d+$/.test(lead.inboxId ?? ""))
+// (from PostHog, "tap:<visitor>:<id>"). You decide what Google Ads hears about it.
+export const isPhoneLead = (lead: { callId?: string; inboxId?: string }) => Boolean(lead.callId || /^tap:|:tap\d+$/.test(lead.inboxId ?? ""))

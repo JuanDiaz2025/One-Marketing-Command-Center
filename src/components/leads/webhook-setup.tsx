@@ -16,6 +16,7 @@ import { getWordPress, type SiteEvent } from "@/lib/leads/wordpress"
 import { PLUGIN_VERSION } from "@/lib/leads/wordpress-plugin"
 import { timeAgo } from "@/lib/leads/time"
 import { DATA_DIR } from "@/lib/store"
+import { isAdmin } from "@/lib/auth"
 import { installId, teamCode } from "@/lib/leads/team-sync"
 import { cn } from "@/lib/utils"
 
@@ -75,7 +76,9 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
   // Team sharing needs the plugin that keeps statuses (1.4+): it says which computer sends.
   const teamReady = connected && wp.sender !== undefined
   const me = await installId()
-  const code = wp.site ? teamCode(wp.site, await webhookSecret()) : ""
+  // The team code holds the website key: admins only, like the plugin download.
+  const admin = await isAdmin()
+  const code = wp.site && admin ? teamCode(wp.site, await webhookSecret()) : ""
 
   return (
     <Disclosure className="group rounded-2xl border bg-card shadow-xs" initialOpen={!connected || websiteLeads === 0 || usedSheet}>
@@ -229,7 +232,7 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
                     On their computer, open <strong>Leads → Website leads</strong> and paste this team code under{" "}
                     <strong>Joining someone&apos;s team?</strong>
                     <span className="mt-2 block">
-                      <CopyButton text={code} label="Copy team code" />
+                      {code ? <CopyButton text={code} label="Copy team code" /> : <span className="font-medium">Ask an admin for it.</span>}
                     </span>
                     <span className="mt-1 block">It opens your leads, so send it only to people on your team.</span>
                   </li>

@@ -117,7 +117,7 @@ export default function PhoneCalls({ result, addedCalls = {} }: Props) {
                         <th className="px-3 py-3 text-right font-medium">Length</th>
                         <th className="px-3 py-3 font-medium">Area code</th>
                         <th className="px-3 py-3 font-medium">Campaign</th>
-                        <th className="px-5 py-3 font-medium sm:px-6">Lead &amp; motivation</th>
+                        <th className="px-5 py-3 font-medium sm:px-6">Lead</th>
                       </tr>
                     </thead>
                   ),

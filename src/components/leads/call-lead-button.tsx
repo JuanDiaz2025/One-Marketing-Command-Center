@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
-import { Sparkles, UserPlus } from "lucide-react"
+import { Plus, UserPlus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { addCallLeadAction } from "@/lib/leads/call-actions"
@@ -31,13 +31,13 @@ export function MotivationBadge({ m }: { m: Pick<Motivation, "value" | "grade"> 
 }
 
 // "Add as lead" on a Google Ads call: right after the call, pick a few quick answers (why they're
-// selling, when, the house, price, who lives there) and add notes; AI scores how motivated they
-// are, and the lead is sent to Google Ads like any other, matched by the caller's number.
+// selling, when, the house, price, who lives there) and add notes; they're saved in the lead's
+// notes, and the lead is sent to Google Ads like any other, matched by the caller's number.
 export default function CallLeadButton({ call, added }: { call: CallInfo; added: Pick<Motivation, "value" | "grade"> | null | false }) {
   const [open, setOpen] = useState(false)
   const [phone, setPhone] = useState(call.areaCode ? `(${call.areaCode}) ` : "")
   const [name, setName] = useState("")
-  const [status, setStatus] = useState("auto")
+  const [status, setStatus] = useState("new")
   const [notes, setNotes] = useState("")
   const [answers, setAnswers] = useState<CallAnswers>({})
   const [result, setResult] = useState<{ ok: boolean; text: string; motivation?: Motivation } | null>(null)
@@ -71,9 +71,13 @@ export default function CallLeadButton({ call, added }: { call: CallInfo; added:
         setResult(null)
         start(async () => {
           try {
-            const input = { phone, name, status, notes, answers }
+            // The quick answers, in words, ahead of the typed notes.
+            const picked = (Object.keys(callQuestions) as (keyof typeof callQuestions)[])
+              .filter((q) => answers[q])
+              .map((q) => `${callQuestions[q].label}: ${(callQuestions[q].options as readonly (readonly [string, string])[]).find(([k]) => k === answers[q])?.[1] ?? answers[q]}`)
+            const input = { phone, name, status, notes: [...picked, notes.trim()].filter(Boolean).join("\n") }
             const res = await addCallLeadAction(call, input)
-            setResult(res.error ? { ok: false, text: res.error } : { ok: true, text: res.ok ?? "Added ✓", motivation: res.motivation })
+            setResult(res.error ? { ok: false, text: res.error } : { ok: true, text: res.ok ?? "Added ✓", motivation: "motivation" in res ? (res.motivation as Motivation | undefined) : undefined })
           } catch {
             setResult({ ok: false, text: "Couldn't add it. Try again." })
           }
@@ -108,7 +112,6 @@ export default function CallLeadButton({ call, added }: { call: CallInfo; added:
       />
       <div className="flex flex-wrap items-center gap-2">
         <select aria-label="Status" value={status} onChange={(e) => setStatus(e.target.value)} className={input}>
-          <option value="auto">Status: decide from the score</option>
           <option value="new">New</option>
           <option value="interested">Interested</option>
           <option value="appointment">Appointment</option>
@@ -117,8 +120,8 @@ export default function CallLeadButton({ call, added }: { call: CallInfo; added:
           <option value="not_interested">Not interested</option>
         </select>
         <Button type="submit" size="sm" disabled={pending}>
-          <Sparkles data-icon="inline-start" />
-          {pending ? "Scoring…" : "Score and add"}
+          <Plus data-icon="inline-start" />
+          {pending ? "Adding…" : "Add lead"}
         </Button>
         <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
           Cancel

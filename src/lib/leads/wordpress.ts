@@ -164,7 +164,8 @@ export function shareStatuses(): Promise<void> {
     do {
       sharing.again = false
       const state = await file.read()
-      if (!state.site) continue
+      // The site's plugin must keep statuses (1.4+: it then says which computer sends).
+      if (!state.site || state.sender === undefined) continue
       const changes = await unsharedChanges(state.site)
       if (!changes.length) continue
       const answer = await post(state, await webhookSecret(), "status", {

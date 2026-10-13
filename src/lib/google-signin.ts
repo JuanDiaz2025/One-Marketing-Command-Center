@@ -16,7 +16,12 @@ export type GoogleUser = { sub: string; email: string; email_verified?: boolean;
 // tunnel is marked https, and https://localhost can't be opened.
 export function redirectUri(requestUrl: string) {
   const site = process.env.SITE_URL?.trim()
-  const base = site ? appUrl("/", site).origin : appUrl("/", requestUrl).origin
+  let base = appUrl("/", requestUrl).origin
+  try {
+    if (site) base = appUrl("/", /^https?:\/\//i.test(site) ? site : `https://${site}`).origin
+  } catch {
+    // A SITE_URL that isn't an address: use the one in use.
+  }
   return `${base}/api/auth/google/callback`
 }
 

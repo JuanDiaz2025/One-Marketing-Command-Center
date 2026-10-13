@@ -102,7 +102,7 @@ export async function applyChanges(changes: StatusChange[], me: string, site: st
 // copy used before). A call from the site added as a lead isn't: only the computer that added it
 // has it, so that one sends it (if two add the same call, Google counts it once: same id).
 export function isTeamLead(lead: Pick<Lead, "inboxId">, site: string | undefined) {
-  if (!site || /:tap\d+$/.test(lead.inboxId ?? "")) return false
+  if (!site || /^tap:|:tap\d+$/.test(lead.inboxId ?? "")) return false
   const host = new URL(site).host.replace(/^www\./, "")
   return Boolean(sharedKey(lead)?.startsWith(`wp:${host}:`))
 }

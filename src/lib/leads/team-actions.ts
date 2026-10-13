@@ -17,6 +17,7 @@ async function joinTeamActionUnguarded(_: TeamFormState, formData: FormData): Pr
   if (!(await isAdmin())) return { error: "Only admins can join a team. Sign in as an admin." }
   const team = readTeamCode(String(formData.get("code") ?? ""))
   const site = team && normalizeSite(team.site)
+  if (process.env.LEADS_WEBHOOK_SECRET?.trim()) return { error: "This copy's website key is set in .env.local (LEADS_WEBHOOK_SECRET), so it can't join a team. Remove that line and restart DealTrack, then try again." }
   if (!team || !site) return { error: "That isn't a team code. Copy it again from the Leads page on the main computer (Website leads → Your team)." }
   await setWebhookSecret(team.key)
   await newInstallId()
