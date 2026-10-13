@@ -1,4 +1,5 @@
 // Settings read from .env.local (see .env.example). Nothing here is sent to the browser.
+import { appUrl } from "@/lib/auth/local-url"
 
 export const googleConfig = () => ({
   clientId: process.env.GOOGLE_CLIENT_ID?.trim() ?? "",
@@ -37,6 +38,6 @@ export function isEmailAllowed(email: string) {
 // Where Google sends people back after they sign in. It must be listed exactly under
 // "Authorized redirect URIs" in the Google Cloud OAuth client.
 export function redirectUri(requestUrl: string) {
-  const base = process.env.SITE_URL?.replace(/\/$/, "") || new URL(requestUrl).origin
+  const base = process.env.SITE_URL?.replace(/\/$/, "") || appUrl("/", requestUrl).origin
   return `${base}/api/auth/google/callback`
 }

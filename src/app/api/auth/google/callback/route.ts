@@ -2,6 +2,7 @@ import { cookies } from "next/headers"
 import { NextResponse, type NextRequest } from "next/server"
 
 import { isEmailAllowed, redirectUri } from "@/lib/auth/config"
+import { appUrl } from "@/lib/auth/local-url"
 import { takeOAuthState } from "@/lib/auth/oauth-state"
 import { getSession, sessionCookie } from "@/lib/auth/session"
 import { saveConnection } from "@/lib/google/connections"
@@ -11,7 +12,7 @@ import { ADS_SCOPE, exchangeCode, fetchUser, OAuthError } from "@/lib/google/oau
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
   const saved = await takeOAuthState()
-  const to = (path: string) => NextResponse.redirect(new URL(path, request.url))
+  const to = (path: string) => NextResponse.redirect(appUrl(path, request.url))
 
   if (!saved || saved.state !== params.get("state")) return to("/login?error=expired")
   const failed = (error: string) =>
