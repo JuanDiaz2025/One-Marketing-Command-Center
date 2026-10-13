@@ -22,6 +22,7 @@ const errors: Record<string, string> = {
   not_configured: "Google sign-in isn't set up yet. See the steps below.",
   failed: "Google sign-in didn't go through. Please try again.",
   temporary: "Google sign-in doesn't work on this temporary address.",
+  link: "That sign-in link was already used or has expired. Make a new one on the computer running the app (Open on another device, top right).",
 }
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
@@ -64,9 +65,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             <p className="mt-5 flex gap-2 rounded-xl bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-200">
               <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
               <span>
-                This is a temporary address (from go-online.bat), and Google sign-in doesn&apos;t work on it. On the computer
-                running the app, open <strong>http://localhost:4000</strong> instead. To use the app from other computers, set
-                up a permanent address.
+                This is a temporary address (from go-online.bat), and Google sign-in doesn&apos;t work on it. Instead, on the
+                computer running the app click <strong>Open on another device</strong> (top right) and scan the QR code with
+                this phone, or open its link here.
               </span>
             </p>
           )}

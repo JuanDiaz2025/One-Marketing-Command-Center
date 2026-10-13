@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils"
 import type { Session } from "@/lib/auth/session"
 import { signOutAction } from "@/lib/google/actions"
 import BrandLogo from "@/components/brand-logo"
+import DeviceLinkButton from "@/components/device-link-button"
 import LinkPending from "@/components/link-pending"
 import ThemeToggle from "@/components/theme-toggle"
 import GoogleAdsMark from "@/components/google-ads-mark"
@@ -69,6 +70,7 @@ export default function AppHeader({ current, user }: { current: Current; user: S
             {user.email}
           </span>
           {appVersion() && <span className="hidden text-xs whitespace-nowrap text-muted-foreground/70 xl:inline">Version {appVersion()}</span>}
+          <DeviceLinkButton />
           <ThemeToggle />
           <form action={signOutAction}>
             <Button type="submit" variant="ghost" size="lg">

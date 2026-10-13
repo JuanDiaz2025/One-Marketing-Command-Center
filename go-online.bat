@@ -1,8 +1,10 @@
 @echo off
-REM Double-click this (while the app is running) so WordPress can send website leads to the app.
+REM Double-click this (while the app is running) to open the app on your phone or another computer.
 REM It opens a free Cloudflare tunnel: a public https:// address that forwards to this computer.
+REM Google sign-in can't work on it (the address is new each time), so in the app click
+REM "Open on another device" (top right) for a one-time sign-in link and QR code.
 cd /d "%~dp0"
-title Command Center - online for WordPress
+title Command Center - online
 
 where curl >nul 2>nul
 if errorlevel 1 (
@@ -42,9 +44,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -Command ^
   "$key = $env:LEADS_WEBHOOK_SECRET; if (-not $key -and (Test-Path '.env.local')) { $l = Select-String -Path '.env.local' -Pattern '^LEADS_WEBHOOK_SECRET=(.+)$' | Select-Object -First 1; if ($l) { $key = $l.Matches[0].Groups[1].Value.Trim() } };" ^
   "if (-not $key -and (Test-Path '.data\webhook-secret')) { $key = (Get-Content '.data\webhook-secret' -Raw).Trim() };" ^
   "$hook = $null; if ($key) { $hook = $url + '/api/leads/webhook?key=' + [uri]::EscapeDataString($key) };" ^
-  "Write-Host ''; Write-Host 'The app is online for WordPress.' -ForegroundColor Green;" ^
-  "if ($hook) { Set-Clipboard -Value $hook; Write-Host ''; Write-Host 'Your webhook address (already copied, paste it into WordPress):'; Write-Host ''; Write-Host $hook -ForegroundColor Yellow } else { Write-Host 'Open the Leads page in the app once, then run this file again to get the webhook address.' };" ^
-  "Write-Host ''; Write-Host 'Keep this window open: leads only arrive while it and the app are running.'; Write-Host 'The address changes each time you run this, so paste the new one into WordPress each time.'"
+  "Write-Host ''; Write-Host 'The app is online.' -ForegroundColor Green;" ^
+  "Write-Host ''; Write-Host 'To open it on your phone or another computer: in the app on this computer, click'; Write-Host 'Open on another device (top right) and scan the QR code, or copy its link to the other computer.' -ForegroundColor Yellow;" ^
+  "Write-Host 'Google sign-in does not work on this temporary address; that one-time link signs the device in instead.';" ^
+  "if ($hook) { Write-Host ''; Write-Host 'Advanced (only if you use a form webhook instead of the Lead Saver plugin): webhook address'; Write-Host $hook };" ^
+  "Write-Host ''; Write-Host 'Keep this window open: other devices can only reach the app while it and the app are running.'"
 if errorlevel 1 (
   pause
   exit /b 1
