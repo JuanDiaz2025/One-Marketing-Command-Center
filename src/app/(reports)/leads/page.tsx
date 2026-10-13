@@ -19,11 +19,13 @@ import { countSince } from "@/lib/leads/time"
 import { leadChannel, pagePath } from "@/lib/leads/tracking"
 import type { Lead } from "@/lib/leads/types"
 import { load } from "@/lib/load"
+import { sentElsewhere } from "@/lib/leads/wordpress"
 
 export const metadata: Metadata = { title: "Leads · DealTrack" }
 
 // One spreadsheet row per lead, with the date in the account's time zone.
-function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
+// `elsewhere` is the team's computer that sends website leads to Google Ads, when it isn't this one.
+function toRow(lead: Lead, placements: Map<string, string>, elsewhere: Awaited<ReturnType<typeof sentElsewhere>>): LeadRow {
   const t = lead.tracking ?? {}
   return {
     id: lead.id,
@@ -54,8 +56,16 @@ function toRow(lead: Lead, placements: Map<string, string>): LeadRow {
     status: lead.status ?? "new",
     statusBy: lead.statusBy,
     statusRule: lead.statusRule,
+    statusByName: lead.statusByName,
     score: lead.score,
-    google: googleState(lead),
+    google:
+      // Another computer sends it, unless this one sent it earlier (then this one still shows
+      // what Google did with it, and takes it back if needed).
+      elsewhere?.isTeamLead(lead) && !Object.values(lead.conversions ?? {}).some((c) => c?.state === "sent")
+        ? lead.status && lead.status !== "new"
+          ? { state: "elsewhere", detail: `Google Ads hears about it from ${elsewhere.sender.name || "your team's main computer"}.` }
+          : undefined
+        : googleState(lead),
   }
 }
 
@@ -122,7 +132,7 @@ function mainGoogleState(lead: Lead): LeadRow["google"] {
 }
 
 export default async function LeadsPage() {
-  // New leads from the WordPress site (checked at most every 30 seconds) and conversions for Google
+  // New leads from the WordPress site (checked at most every 10 seconds) and conversions for Google
   // Ads are handled after the page is sent, so it never waits on them; the page updates itself
   // when they change anything (LiveRefresh).
   after(() => catchUp())
@@ -132,10 +142,14 @@ export default async function LeadsPage() {
   const placements = new Map(qrCodes.map((c) => [c.id, c.placement]))
   const callResult = calls.ok ? { calls: calls.data, counting } : { error: calls.kind === "missing" ? "Google Ads isn't connected." : calls.message }
   const missed = calls.ok ? calls.data.filter((c) => c.missed).length : 0
+  // Another computer on the team sends the website leads to Google Ads: their Google Ads state is
+  // that computer's to show, not this one's.
+  const elsewhere = await sentElsewhere()
+  const ownSending = elsewhere ? leads.filter((l) => !elsewhere.isTeamLead(l)) : leads
   // Conversions held back by a set-up step Google needs, so the page can say what to do.
-  const waiting = leads.flatMap((l) => Object.values(l.conversions ?? {})).filter((c) => c?.state === "pending" && c.waitingFor)
+  const waiting = ownSending.flatMap((l) => Object.values(l.conversions ?? {})).filter((c) => c?.state === "pending" && c.waitingFor)
   // Leads Google Ads hasn't taken yet (failed, or still waiting after a try), and the latest reason.
-  const stuckEntries = leads
+  const stuckEntries = ownSending
     .flatMap((l) => Object.values(l.conversions ?? {}))
     .filter((c) => c && (c.state === "failed" || (c.state === "pending" && c.lastTry)))
   const lastError = stuckEntries.sort((a, b) => (b!.lastTry ?? "").localeCompare(a!.lastTry ?? ""))[0]?.error
@@ -213,16 +227,21 @@ export default async function LeadsPage() {
       >
         {stuckEntries.length > 0 && <SendingCheck stuck={stuckEntries.length} lastError={lastError} />}
         {leads.length ? (
-          <LeadsTable rows={leads.map((l) => toRow(l, placements))} />
+          <LeadsTable rows={leads.map((l) => toRow(l, placements, elsewhere))} />
         ) : (
           <p className="py-6 text-sm text-muted-foreground">No leads yet. Connect the website form below.</p>
         )}
       </Section>
 
-      <PhoneCalls result={callResult} addedCalls={leads.map((l) => l.callId).filter((id): id is string => Boolean(id))} />
+      <PhoneCalls
+        result={callResult}
+        addedCalls={Object.fromEntries(
+          leads.filter((l) => l.callId).map((l) => [l.callId!, l.motivation ? { value: l.motivation.value, grade: l.motivation.grade } : null]),
+        )}
+      />
 
       <WebhookSetup websiteLeads={leads.filter((l) => !l.qrCodeId).length} />
-      <LiveRefresh version={version} />
+      <LiveRefresh version={version} seconds={5} />
     </>
   )
 }

@@ -1,15 +1,17 @@
 import { cookies } from "next/headers"
-import { NextResponse, type NextRequest } from "next/server"
+import type { NextRequest } from "next/server"
 
 import { SESSION_COOKIE, SESSION_DAYS, isAdmin, newSessionToken, roleForEmail, secureCookies } from "@/lib/auth"
 import { finishConnect, isConnectCallback } from "@/lib/conversions/connect"
 import { finishSignIn } from "@/lib/google-signin"
+import { redirectTo } from "@/lib/local-url"
 import { NAME_COOKIE, cleanName } from "@/lib/people"
 
 // Google sends people back here after they pick an account (or cancel).
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams
-  const back = (path: string) => NextResponse.redirect(new URL(path, request.url))
+  // Paths, so the browser stays on the address it's using (local-url.ts).
+  const back = (path: string) => redirectTo(path)
   const login = (error: string, next = "/overview") => back(`/login?error=${error}&next=${encodeURIComponent(next)}`)
   // "Connect Google for conversions" comes back here too (lib/conversions/connect.ts).
   if (await isConnectCallback(params.get("state"))) {

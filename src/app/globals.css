@@ -49,75 +49,79 @@
 }
 
 :root {
-  --background: oklch(0.985 0.012 85);
-  --foreground: oklch(0.2 0.04 280);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2 0.04 280);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0.04 280);
-  --primary: oklch(0.55 0.25 285);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.95 0.03 300);
-  --secondary-foreground: oklch(0.3 0.12 285);
-  --muted: oklch(0.955 0.015 80);
-  --muted-foreground: oklch(0.5 0.03 280);
-  --accent: oklch(0.95 0.04 295);
-  --accent-foreground: oklch(0.35 0.15 285);
+  --background: #ffffff;
+  --foreground: #051531;
+  --card: #ffffff;
+  --card-foreground: #051531;
+  --popover: #ffffff;
+  --popover-foreground: #051531;
+  --primary: #ff924c;
+  --primary-foreground: #051531;
+  --secondary: #fff1e8;
+  --secondary-foreground: #8a3c0b;
+  --muted: #f3f5f9;
+  --muted-foreground: #4a5671;
+  --accent: #fff1e8;
+  --accent-foreground: #8a3c0b;
   --destructive: oklch(0.6 0.23 22);
-  --border: oklch(0.9 0.02 80);
-  --input: oklch(0.88 0.025 80);
-  --ring: oklch(0.62 0.22 285);
-  --chart-1: oklch(0.55 0.25 285);
-  --chart-2: oklch(0.72 0.18 45);
+  --border: #e3e7ef;
+  --input: #d5dbe6;
+  --ring: #ff924c;
+  --chart-1: #ff924c;
+  --chart-2: #051531;
   --chart-3: oklch(0.7 0.14 180);
   --chart-4: oklch(0.65 0.24 350);
   --chart-5: oklch(0.82 0.16 90);
   --radius: 0.75rem;
-  --sidebar: oklch(0.975 0.012 85);
-  --sidebar-foreground: oklch(0.2 0.04 280);
-  --sidebar-primary: oklch(0.55 0.25 285);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.95 0.04 295);
-  --sidebar-accent-foreground: oklch(0.35 0.15 285);
-  --sidebar-border: oklch(0.9 0.02 80);
-  --sidebar-ring: oklch(0.62 0.22 285);
+  --sidebar: #f7f8fb;
+  --sidebar-foreground: #051531;
+  --sidebar-primary: #ff924c;
+  --sidebar-primary-foreground: #051531;
+  --sidebar-accent: #fff1e8;
+  --sidebar-accent-foreground: #8a3c0b;
+  --sidebar-border: #e3e7ef;
+  --sidebar-ring: #ff924c;
 }
 
 .dark {
   color-scheme: dark;
-  /* Warm, deep plum-gray to match the brand, not flat black (from One Marketing Command Center). */
-  --background: oklch(0.17 0.015 285);
-  --foreground: oklch(0.96 0.005 285);
-  --card: oklch(0.215 0.018 285);
-  --card-foreground: oklch(0.96 0.005 285);
-  --popover: oklch(0.235 0.02 285);
-  --popover-foreground: oklch(0.96 0.005 285);
-  --primary: oklch(0.68 0.19 285);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.28 0.03 290);
-  --secondary-foreground: oklch(0.94 0.01 290);
-  --muted: oklch(0.26 0.02 285);
-  --muted-foreground: oklch(0.72 0.02 285);
-  --accent: oklch(0.29 0.04 290);
-  --accent-foreground: oklch(0.94 0.02 290);
+  /* Twin Home Buyer's navy (#051531) with its orange. */
+  --background: #051531;
+  --foreground: #ffffff;
+  --card: #0b1f45;
+  --card-foreground: #ffffff;
+  --popover: #0e2650;
+  --popover-foreground: #ffffff;
+  --primary: #ff924c;
+  --primary-foreground: #051531;
+  --secondary: #13295a;
+  --secondary-foreground: #f1f4fa;
+  --muted: #0e2349;
+  --muted-foreground: #a9b4cc;
+  --accent: #1a2f5e;
+  --accent-foreground: #ffffff;
   --destructive: oklch(0.7 0.19 22);
-  --border: oklch(1 0 0 / 11%);
-  --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.68 0.19 285);
-  --chart-1: oklch(0.7 0.19 285);
-  --chart-2: oklch(0.76 0.16 50);
+  --border: rgb(255 255 255 / 12%);
+  --input: rgb(255 255 255 / 18%);
+  --ring: #ff924c;
+  --chart-1: #ff924c;
+  --chart-2: #e8ecf4;
   --chart-3: oklch(0.75 0.13 180);
   --chart-4: oklch(0.72 0.2 350);
   --chart-5: oklch(0.85 0.15 90);
-  --sidebar: oklch(0.2 0.016 285);
-  --sidebar-foreground: oklch(0.96 0.005 285);
-  --sidebar-primary: oklch(0.68 0.19 285);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.29 0.04 290);
-  --sidebar-accent-foreground: oklch(0.94 0.02 290);
-  --sidebar-border: oklch(1 0 0 / 11%);
-  --sidebar-ring: oklch(0.68 0.19 285);
+  --sidebar: #08193a;
+  --sidebar-foreground: #ffffff;
+  --sidebar-primary: #ff924c;
+  --sidebar-primary-foreground: #051531;
+  --sidebar-accent: #1a2f5e;
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgb(255 255 255 / 12%);
+  --sidebar-ring: #ff924c;
 }
+
+/* Light mode: Twin Home Buyer orange is too light for small text on white; text in the brand color
+   uses a deeper shade of it (buttons keep the true orange, with navy writing). */
+:root:not(.dark) .text-primary { color: #b4500f; }
 
 /* Dark mode: the status colors are made for a light page. Text gets light shades of the same
    colors, and the pale boxes (bg-*-50, -100) become faint tints of them. */

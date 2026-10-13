@@ -23,6 +23,15 @@ const tools: OpenAI.Responses.FunctionTool[] = toolSpecs.map((t) => ({
   strict: true,
 }))
 
+// One quick question with no tools (e.g. scoring a phone call); `signal` cancels it.
+export async function askOpenAIPlain(system: string, prompt: string, signal: AbortSignal): Promise<string> {
+  const response = await new OpenAI().responses.create(
+    { model: model(), instructions: system, input: prompt, max_output_tokens: 4000, reasoning: { effort: "low" } },
+    { signal },
+  )
+  return response.output_text ?? ""
+}
+
 export async function askOpenAI({ turns, situation }: AskInput): Promise<string> {
   const input: OpenAI.Responses.ResponseInputItem[] = turns.map((t) => ({
     role: t.role,

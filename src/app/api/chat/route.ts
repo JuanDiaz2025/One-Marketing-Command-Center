@@ -58,10 +58,11 @@ export async function POST(request: Request) {
   const input = { turns, situation }
   try {
     const reply = provider === "openai" ? await askOpenAI(input) : provider === "claude-code" ? await askClaudeCode(input) : await askClaude(input)
-    await saveReply(user, chatId, reply)
+    // The answer is shown even if saving it to the history fails (a busy file).
+    await saveReply(user, chatId, reply).catch((error) => console.error("Couldn't save the answer to the chat history:", error))
     return Response.json({ reply, chatId })
   } catch (error) {
-    await dropQuestion(user, chatId)
+    await dropQuestion(user, chatId).catch(() => {})
     if (error instanceof AssistantError) return Response.json({ error: error.message, code: error.code, chatId }, { status: error.status })
     console.error("Chat failed:", error)
     return fail("The chat couldn't be reached. Check your internet connection.", 502)

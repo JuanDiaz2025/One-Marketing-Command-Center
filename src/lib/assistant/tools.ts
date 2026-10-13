@@ -208,6 +208,8 @@ export async function recentLeads(days: number) {
       source: leadSource(l, placements),
       channel: leadChannel(l),
       score: l.score && { value: l.score.value, grade: l.score.grade, reasons: l.score.reasons },
+      // For leads from a phone call: how motivated the caller is to sell (0-100), from the call.
+      callMotivation: l.motivation && { value: l.motivation.value, grade: l.motivation.grade, summary: l.motivation.summary, reasons: l.motivation.reasons },
       status: l.status ?? "new",
       sentToGoogleAds: l.conversions
         ? Object.fromEntries(Object.entries(l.conversions).map(([kind, c]) => [kind, c?.retraction ? `taken back (${c.retraction.state})` : (c?.google?.status ?? c?.state)]))

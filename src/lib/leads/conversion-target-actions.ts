@@ -9,10 +9,11 @@ import { isAdmin, isSignedIn } from "@/lib/auth"
 import { activeAccount, forgetConnection } from "@/lib/conversions/google"
 import { checkSending, retryNow, sendPendingConversions, setConversionTarget, type CheckStep } from "@/lib/conversions/offline-conversions"
 import { dryRun } from "@/lib/google-ads/client"
+import { guard } from "@/lib/guard"
 import { DATA_DIR } from "@/lib/store"
 
 // Picks which Google Ads conversion action a lead stage is sent to (Leads page).
-export async function setConversionTargetAction(kind: string, resourceName: string): Promise<{ error?: string }> {
+async function setConversionTargetActionUnguarded(kind: string, resourceName: string): Promise<{ error?: string }> {
   if (!(await isAdmin())) return { error: "Only admins can change where leads are sent. Sign in as an admin." }
   if (kind !== "interested" && kind !== "closed" && kind !== "invalid") return { error: "Unknown stage." }
   try {
@@ -29,7 +30,7 @@ export async function setConversionTargetAction(kind: string, resourceName: stri
 
 // "Check sending to Google Ads" on the Leads page: which version of the app this is, then each
 // thing sending needs, in order.
-export async function checkSendingAction(): Promise<{ steps: CheckStep[] }> {
+async function checkSendingActionUnguarded(): Promise<{ steps: CheckStep[] }> {
   if (!(await isSignedIn())) return { steps: [{ ok: false, title: "Signed in", detail: "Sign in first." }] }
   let version = "unknown"
   try {
@@ -57,7 +58,7 @@ export async function checkSendingAction(): Promise<{ steps: CheckStep[] }> {
 }
 
 // "Try again now": sends every waiting or failed lead again right away.
-export async function retryNowAction(): Promise<{ error?: string }> {
+async function retryNowActionUnguarded(): Promise<{ error?: string }> {
   if (!(await isSignedIn())) return { error: "Sign in first." }
   if (dryRun()) return { error: "DealTrack is in test mode (DEALTRACK_VALIDATE_ONLY=1), so nothing is sent to Google Ads." }
   try {
@@ -77,4 +78,16 @@ export async function forgetConversionsConnectionAction(): Promise<{ error?: str
   await forgetConnection()
   revalidatePath("/leads", "layout")
   return {}
+}
+
+export async function setConversionTargetAction(kind: string, resourceName: string): Promise<{ error?: string }> {
+  return guard(() => setConversionTargetActionUnguarded(kind, resourceName), (error) => ({ error }))
+}
+
+export async function checkSendingAction(): Promise<{ steps: CheckStep[] }> {
+  return guard(() => checkSendingActionUnguarded(), (error) => ({ steps: [{ ok: false, title: "Check", detail: error }] }))
+}
+
+export async function retryNowAction(): Promise<{ error?: string }> {
+  return guard(() => retryNowActionUnguarded(), (error) => ({ error }))
 }

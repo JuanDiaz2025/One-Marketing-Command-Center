@@ -2,10 +2,11 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 
 import { headers } from "next/headers"
-import { CircleAlert, CircleCheck, Download, Globe, TriangleAlert } from "lucide-react"
+import { CircleAlert, CircleCheck, Download, Globe, TriangleAlert, Users } from "lucide-react"
 
 import CopyButton from "@/components/copy-button"
 import WordPressForm from "@/components/leads/wordpress-form"
+import { JoinTeamForm, TakeSenderButton } from "@/components/leads/team-forms"
 import { buttonVariants } from "@/components/ui/button"
 import Disclosure from "@/components/ui/disclosure"
 import { tunnelUrl, webhookSecret } from "@/lib/leads/webhook"
@@ -15,6 +16,7 @@ import { getWordPress, type SiteEvent } from "@/lib/leads/wordpress"
 import { PLUGIN_VERSION } from "@/lib/leads/wordpress-plugin"
 import { timeAgo } from "@/lib/leads/time"
 import { DATA_DIR } from "@/lib/store"
+import { installId, teamCode } from "@/lib/leads/team-sync"
 import { cn } from "@/lib/utils"
 
 // Google Ads fills in {campaignid}, {keyword} and {creative} for each click.
@@ -70,6 +72,10 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
   const connected = Boolean(wp.site && wp.lastSync && !wp.lastError)
   const siteName = wp.site?.replace(/^https?:\/\//, "")
   const usedSheet = await oldSheetInbox()
+  // Team sharing needs the plugin that keeps statuses (1.4+): it says which computer sends.
+  const teamReady = connected && wp.sender !== undefined
+  const me = await installId()
+  const code = wp.site ? teamCode(wp.site, await webhookSecret()) : ""
 
   return (
     <Disclosure className="group rounded-2xl border bg-card shadow-xs" initialOpen={!connected || websiteLeads === 0 || usedSheet}>
@@ -110,7 +116,7 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
               {connected ? `Connected to ${siteName}` : "Connect your WordPress site (Contact Form 7)"}
             </p>
             <p className="text-muted-foreground">
-              A small plugin on your site saves every Contact Form 7 lead in WordPress itself. The app picks them up every 30
+              A small plugin on your site saves every Contact Form 7 lead in WordPress itself. The app picks them up every 10
               seconds while it&apos;s open, so leads sent while this computer was off still show up here, with the time they
               were really sent. No Google Sheet, no go-online window, and the address never changes.
             </p>
@@ -192,7 +198,7 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
               </li>
               <li>Type your website&apos;s address below and click <strong>Connect</strong>.</li>
               <li>
-                Send a test lead from your form. It shows up in the leads list within 30 seconds. In WordPress you can also see
+                Send a test lead from your form. It shows up in the leads list within 10 seconds. In WordPress you can also see
                 every saved lead under <strong>Contact → Command Center leads</strong>.
               </li>
               <li>
@@ -202,7 +208,53 @@ export default async function WebhookSetup({ websiteLeads }: { websiteLeads: num
             </ol>
           </Disclosure>
           <WordPressForm current={wp.site} />
+          {!wp.site && <JoinTeamForm />}
         </section>
+
+        {connected && (
+          <section className="flex flex-col gap-3 rounded-xl border p-4">
+            <p className="flex items-center gap-2 text-base font-semibold">
+              <Users className="size-4 text-primary" />
+              Your team
+            </p>
+            <p className="text-muted-foreground">
+              Everyone can run the app on their own computer. A status anyone sets shows up on everyone&apos;s within seconds,
+              through {siteName}, with who set it.
+            </p>
+            {teamReady ? (
+              <>
+                <ol className="list-decimal space-y-2 pl-5 text-muted-foreground">
+                  <li>Give your teammate the app (the same download you use) and have them start it with start.bat.</li>
+                  <li>
+                    On their computer, open <strong>Leads → Website leads</strong> and paste this team code under{" "}
+                    <strong>Joining someone&apos;s team?</strong>
+                    <span className="mt-2 block">
+                      <CopyButton text={code} label="Copy team code" />
+                    </span>
+                    <span className="mt-1 block">It opens your leads, so send it only to people on your team.</span>
+                  </li>
+                </ol>
+                <div className="flex flex-col gap-2 rounded-lg border bg-card p-3">
+                  <p>
+                    <span className="font-medium">Google Ads is updated from </span>
+                    {wp.sender ? (wp.sender.id === me ? <strong>this computer ✓</strong> : <strong>{wp.sender.name || "another computer"}</strong>) : "the first computer that connects Google Ads"}
+                    <span className="text-muted-foreground">
+                      {" "}
+                      (only one computer sends, so no lead is counted twice; statuses set anywhere still reach Google Ads through it,
+                      next time it&apos;s open).
+                    </span>
+                  </p>
+                  {wp.sender && wp.sender.id !== me && <TakeSenderButton />}
+                </div>
+              </>
+            ) : (
+              <p className="flex gap-2 font-medium text-amber-950">
+                <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                <span>To share statuses with your team, update the Lead Saver plugin on your site first (download it above and upload it again).</span>
+              </p>
+            )}
+          </section>
+        )}
 
         <div className="flex flex-col gap-2">
           <p className="font-medium">What came in lately</p>

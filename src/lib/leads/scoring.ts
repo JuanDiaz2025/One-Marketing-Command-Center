@@ -68,7 +68,11 @@ export function scoreLead(lead: Lead, earlier: Lead[] = []): LeadScore {
   const status = lead.status ?? "new"
   // Once you've said a lead is real (Interested or further), the automatic junk checks don't apply.
   const vouched = VOUCHED.includes(status)
-  const base = baseScore(lead, earlier, vouched)
+  // A phone call scored for motivation: that's what counts, not the form fields it doesn't have.
+  const m = lead.motivation
+  const base: LeadScore = m
+    ? { value: m.value, grade: m.grade, reasons: [`${m.value} Motivation from the call (${m.by === "ai" ? "AI" : "quick answers"})${m.summary ? `: ${m.summary}` : ""}`, ...m.reasons] }
+    : baseScore(lead, earlier, vouched)
   if (status === "closed") {
     return { value: 100, grade: "hot", reasons: ["100 Closed deal: you closed it", ...base.reasons] }
   }

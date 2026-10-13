@@ -4,6 +4,7 @@
 import { randomBytes } from "node:crypto"
 
 import { jsonFileStore } from "@/lib/json-file-store"
+import { isPhoneLead } from "@/lib/leads/call-id"
 import { getScoringSettings, scoreLead } from "@/lib/leads/scoring"
 import { firstMatch } from "@/lib/leads/rules"
 import { getRules } from "@/lib/leads/rules-store"
@@ -55,14 +56,19 @@ export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?:
       const known = db.leads.find((l) => sameSource(l.inboxId, input.inboxId))
       if (known) return known
     }
+    // A phone call is added once, even if "Add as lead" is sent twice.
+    if (input.callId) {
+      const known = db.leads.find((l) => l.callId === input.callId)
+      if (known) return known
+    }
     const email = input.email?.toLowerCase()
     const phone = digits(input.phone)
     const same = db.leads.find(
       (l) =>
         !l.qrCodeId &&
         // A lead made from a phone call is its own lead: never merged with a form lead.
-        !l.callId &&
-        !input.callId &&
+        !isPhoneLead(l) &&
+        !isPhoneLead(input) &&
         Boolean(l.inboxId) !== Boolean(input.inboxId) &&
         Math.abs(Date.parse(l.createdAt) - Date.parse(at)) < SAME_LEAD_MS &&
         ((email && l.email?.toLowerCase() === email) || (phone && digits(l.phone) === phone)),
@@ -76,7 +82,8 @@ export async function addLead(input: Omit<Lead, "id" | "createdAt">, createdAt?:
     // Only for leads that just arrived: a first sync with the website can bring in months of old
     // ones, and those aren't reported to Google Ads without you choosing.
     const fresh = Date.now() - Date.parse(at) < FRESH_MS
-    if (autoStatus && fresh && !lead.qrCodeId && !lead.score.unscored) {
+    // (Not for a phone call: you, or its motivation score, decide what Google Ads hears.)
+    if (autoStatus && fresh && !lead.qrCodeId && !isPhoneLead(lead) && !lead.score.unscored) {
       const rule = firstMatch(lead, rules)
       if (rule) applyRule(lead, rule)
     }

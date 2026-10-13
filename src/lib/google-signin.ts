@@ -5,14 +5,18 @@ import { createHash, randomBytes } from "node:crypto"
 import { cookies } from "next/headers"
 
 import { googleClient, secureCookies, signValue, unsignValue } from "@/lib/auth"
+import { appUrl } from "@/lib/local-url"
 
 const STATE_COOKIE = "dt_oauth"
 
 export type GoogleUser = { sub: string; email: string; email_verified?: boolean; name?: string }
 
 // Where Google sends people back. Add it under "Authorized redirect URIs" in the Google client.
+// An address on this computer always uses http (local-url.ts): a request through go-online.bat's
+// tunnel is marked https, and https://localhost can't be opened.
 export function redirectUri(requestUrl: string) {
-  const base = process.env.SITE_URL?.replace(/\/$/, "") || new URL(requestUrl).origin
+  const site = process.env.SITE_URL?.trim()
+  const base = site ? appUrl("/", site).origin : appUrl("/", requestUrl).origin
   return `${base}/api/auth/google/callback`
 }
 

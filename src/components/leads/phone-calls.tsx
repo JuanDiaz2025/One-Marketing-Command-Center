@@ -7,7 +7,11 @@ import type { Call, CallCounting } from "@/lib/google-ads/calls"
 import { callIdOf } from "@/lib/leads/call-id"
 import { cn } from "@/lib/utils"
 
-type Props = { result: { calls: Call[]; counting?: CallCounting | null } | { error: string } | null; addedCalls?: string[] }
+// Calls already added as leads: their motivation score, or null when they were added without one.
+type Props = {
+  result: { calls: Call[]; counting?: CallCounting | null } | { error: string } | null
+  addedCalls?: Record<string, { value: number; grade: "hot" | "warm" | "cold" | "junk" } | null>
+}
 
 const duration = (s: number) => (s < 60 ? `${s} sec` : `${Math.floor(s / 60)} min ${s % 60 ? `${s % 60} sec` : ""}`.trim())
 
@@ -20,7 +24,7 @@ function when(start: string) {
 }
 
 // Calls from Google Ads over the last 30 days, missed calls first in the highlights.
-export default function PhoneCalls({ result, addedCalls = [] }: Props) {
+export default function PhoneCalls({ result, addedCalls = {} }: Props) {
   const counting = result && "calls" in result ? result.counting : undefined
   const countingPrimary = counting?.filter((c) => c.primary) ?? []
   const calls = result && "calls" in result ? result.calls : []
@@ -113,7 +117,7 @@ export default function PhoneCalls({ result, addedCalls = [] }: Props) {
                         <th className="px-3 py-3 text-right font-medium">Length</th>
                         <th className="px-3 py-3 font-medium">Area code</th>
                         <th className="px-3 py-3 font-medium">Campaign</th>
-                        <th className="px-5 py-3 font-medium sm:px-6">Lead</th>
+                        <th className="px-5 py-3 font-medium sm:px-6">Lead &amp; motivation</th>
                       </tr>
                     </thead>
                   ),
@@ -140,7 +144,7 @@ export default function PhoneCalls({ result, addedCalls = [] }: Props) {
                       ) : (
                         <CallLeadButton
                           call={{ start: c.start, areaCode: c.areaCode, campaign: c.campaign, seconds: c.seconds }}
-                          added={addedCalls.includes(callIdOf(c))}
+                          added={callIdOf(c) in addedCalls ? addedCalls[callIdOf(c)] : false}
                         />
                       )}
                     </td>

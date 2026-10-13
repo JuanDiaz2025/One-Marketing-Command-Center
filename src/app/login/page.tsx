@@ -13,6 +13,7 @@ const ERRORS: Record<string, string> = {
   expired: "The sign-in took too long or was opened twice. Try again.",
   failed: "Google couldn't sign you in. Try again, or use the team password.",
   google_off: "Google sign-in isn't set up. Add ALLOWED_EMAILS to .env.local and restart DealTrack.",
+  temporary: "Google sign-in doesn't work on go-online's temporary address (Google only returns to addresses it knows). Sign in with the team password instead.",
 }
 
 export const metadata: Metadata = { title: "Sign in · DealTrack" }

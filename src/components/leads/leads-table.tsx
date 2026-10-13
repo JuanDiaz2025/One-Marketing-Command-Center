@@ -31,9 +31,11 @@ export type LeadRow = {
   status: string
   statusBy?: "auto" | "you"
   statusRule?: string
+  // Who on the team set it (shared between computers, team-sync.ts).
+  statusByName?: string
   score?: { value: number; grade: "hot" | "warm" | "cold" | "junk"; reasons: string[] }
   // What Google Ads heard: a conversion sent, waiting to be sent, failed or skipped.
-  google?: { state: "sent" | "pending" | "failed" | "skipped" | "held" | "retracting" | "retracted" | "retract_failed" | "checking" | "accepted" | "rejected" | "invalid" | "invalid_pending"; detail?: string }
+  google?: { state: "sent" | "pending" | "failed" | "skipped" | "held" | "retracting" | "retracted" | "retract_failed" | "checking" | "accepted" | "rejected" | "invalid" | "invalid_pending" | "elsewhere"; detail?: string }
 }
 
 const PAGE = 25
@@ -136,11 +138,12 @@ const googleLabel = {
   invalid: { text: "Reported as invalid ✓", cls: "bg-muted text-foreground" },
   invalid_pending: { text: "Reporting as invalid", cls: "bg-muted text-muted-foreground" },
   retracted: { text: "Taken back from Google ✓", cls: "bg-muted text-foreground" },
+  elsewhere: { text: "Sent by the main computer", cls: "bg-muted text-muted-foreground" },
   retract_failed: { text: "Couldn't take back", cls: "bg-destructive/10 text-destructive" },
 } as const
 
 // The status picker in each row. Interested and later stages tell Google Ads this lead was good.
-function StatusCell({ id, status, auto, rule }: { id: string; status: string; auto: boolean; rule?: string }) {
+function StatusCell({ id, status, auto, rule, by }: { id: string; status: string; auto: boolean; rule?: string; by?: string }) {
   const [value, setValue] = useState(status)
   const [byApp, setByApp] = useState(auto)
   const [pending, start] = useTransition()
@@ -175,6 +178,7 @@ function StatusCell({ id, status, auto, rule }: { id: string; status: string; au
       {byApp && value !== "new" && (
         <span className="max-w-40 text-xs whitespace-normal text-muted-foreground">{rule ? `Set by rule: ${rule}` : "Set by its score"}</span>
       )}
+      {!byApp && by && <span className="max-w-40 truncate text-xs text-muted-foreground">by {by}</span>}
       {error && <span className="text-xs text-destructive">{error}</span>}
     </div>
   )
@@ -465,7 +469,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
                   <ScoreCell score={r.score} />
                 </td>
                 <td className={td}>
-                  <StatusCell key={`${r.id}-${r.status}-${r.statusBy ?? ""}`} id={r.id} status={r.status} auto={r.statusBy === "auto"} rule={r.statusRule} />
+                  <StatusCell key={`${r.id}-${r.status}-${r.statusBy ?? ""}-${r.statusByName ?? ""}`} id={r.id} status={r.status} auto={r.statusBy === "auto"} rule={r.statusRule} by={r.statusByName} />
                 </td>
                 <td className={td} title={r.google?.detail}>
                   {r.google ? (

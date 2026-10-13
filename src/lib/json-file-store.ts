@@ -18,32 +18,36 @@ export function jsonFileStore<T>(name: string, seed: () => T | Promise<T>) {
     const text = JSON.stringify(data, null, 2)
     try {
       await mkdir(path.dirname(file), { recursive: true })
-    } catch {
-      memory = data
-      return
+    } catch (error) {
+      // A read-only disk (e.g. serverless hosting): keep the data in memory instead. Anything else
+      // is a real failure and must not be hidden.
+      const code = (error as NodeJS.ErrnoException).code
+      if (code === "EROFS" || code === "EACCES" || code === "EPERM") {
+        memory = data
+        return
+      }
+      throw error
     }
-    // Write a copy and swap it in, so a read at the same moment never sees a half-written file.
-    // On Windows the swap fails for a moment while another program (antivirus, a reader) has the
-    // file open, so try a few times, then write the file directly rather than lose the change.
+    // Write a copy and swap it in, so a read at the same moment (or the app closing mid-save) never
+    // leaves a half-written file. On Windows the swap fails while another program (antivirus, a
+    // backup or search indexer) has the file open; keep trying for about 5 seconds, then fail
+    // loudly rather than lose or overwrite anything.
     const temp = `${file}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`
     try {
       await writeFile(temp, text)
       for (let attempt = 0; ; attempt++) {
         try {
           await rename(temp, file)
+          memory = null
           return
         } catch (error) {
-          if (attempt >= 5) throw error
-          await pause(40 * (attempt + 1))
+          if (attempt >= 20) throw error
+          await pause(Math.min(500, 50 * (attempt + 1)))
         }
       }
-    } catch {
+    } catch (error) {
       await rm(temp, { force: true }).catch(() => {})
-      try {
-        await writeFile(file, text)
-      } catch {
-        memory = data
-      }
+      throw new Error(`Couldn't save ${name}: another program has it open. Try again in a moment. (${(error as Error).message})`)
     }
   }
 

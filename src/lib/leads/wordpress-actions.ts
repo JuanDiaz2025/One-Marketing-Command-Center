@@ -3,12 +3,13 @@
 import { revalidatePath } from "next/cache"
 
 import { isAdmin } from "@/lib/auth"
+import { guard } from "@/lib/guard"
 import { getWordPress, normalizeSite, setWordPressSite, syncWordPress } from "@/lib/leads/wordpress"
 
 export type WordPressFormState = { error?: string; connected?: boolean; disconnected?: boolean } | undefined
 
 // Saves the website's address from the Leads page and checks the Lead Saver plugin answers.
-export async function connectWordPressAction(_: WordPressFormState, formData: FormData): Promise<WordPressFormState> {
+async function connectWordPressActionUnguarded(_: WordPressFormState, formData: FormData): Promise<WordPressFormState> {
   if (!(await isAdmin())) return { error: "Only admins can connect the website. Sign in as an admin." }
   if (formData.get("disconnect")) {
     await setWordPressSite(null)
@@ -22,4 +23,8 @@ export async function connectWordPressAction(_: WordPressFormState, formData: Fo
   revalidatePath("/leads", "layout")
   const state = await getWordPress()
   return state.lastError ? { error: state.lastError } : { connected: true }
+}
+
+export async function connectWordPressAction(state: WordPressFormState, formData: FormData): Promise<WordPressFormState> {
+  return guard(() => connectWordPressActionUnguarded(state, formData), (error) => ({ error }))
 }
