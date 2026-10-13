@@ -34,7 +34,7 @@ function appVersion() {
 export default async function AppHeader({ current, user }: { current: Current; user: Session }) {
   const passwordSet = await hasPassword()
   return (
-    <header className="sticky top-0 z-20 border-b border-border/70 bg-background print:hidden">
+    <header className="sticky top-0 z-20 border-b-2 border-b-primary bg-background print:hidden">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
         <div className="flex min-w-0 items-center gap-4 xl:gap-6">
           <BrandLogo href="/dashboard" compact />
