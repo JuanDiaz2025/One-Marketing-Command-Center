@@ -77,76 +77,76 @@
   /* Ad platform colors for charts: Meta blue-violet, Google amber */
   --platform-meta: #5b6cf0;
   --platform-google: #e2961b;
-  --background: oklch(0.985 0.012 85);
-  --foreground: oklch(0.2 0.04 280);
+  --background: oklch(0.985 0.008 75);
+  --foreground: oklch(0.21 0.02 250);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.2 0.04 280);
+  --card-foreground: oklch(0.21 0.02 250);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.2 0.04 280);
-  --primary: oklch(0.55 0.25 285);
+  --popover-foreground: oklch(0.21 0.02 250);
+  --primary: oklch(0.6 0.18 45);
   --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.95 0.03 300);
-  --secondary-foreground: oklch(0.3 0.12 285);
-  --muted: oklch(0.955 0.015 80);
-  --muted-foreground: oklch(0.5 0.03 280);
-  --accent: oklch(0.95 0.04 295);
-  --accent-foreground: oklch(0.35 0.15 285);
+  --secondary: oklch(0.96 0.025 65);
+  --secondary-foreground: oklch(0.4 0.12 45);
+  --muted: oklch(0.96 0.008 75);
+  --muted-foreground: oklch(0.5 0.02 250);
+  --accent: oklch(0.95 0.035 60);
+  --accent-foreground: oklch(0.42 0.13 45);
   --destructive: oklch(0.6 0.23 22);
-  --border: oklch(0.9 0.02 80);
-  --input: oklch(0.88 0.025 80);
-  --ring: oklch(0.62 0.22 285);
-  --chart-1: oklch(0.55 0.25 285);
-  --chart-2: oklch(0.72 0.18 45);
+  --border: oklch(0.91 0.015 70);
+  --input: oklch(0.88 0.02 70);
+  --ring: oklch(0.7 0.16 50);
+  --chart-1: oklch(0.68 0.17 50);
+  --chart-2: oklch(0.3 0.03 250);
   --chart-3: oklch(0.7 0.14 180);
   --chart-4: oklch(0.65 0.24 350);
   --chart-5: oklch(0.82 0.16 90);
   --radius: 0.75rem;
-  --sidebar: oklch(0.975 0.012 85);
-  --sidebar-foreground: oklch(0.2 0.04 280);
-  --sidebar-primary: oklch(0.55 0.25 285);
+  --sidebar: oklch(0.975 0.01 70);
+  --sidebar-foreground: oklch(0.21 0.02 250);
+  --sidebar-primary: oklch(0.6 0.18 45);
   --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.95 0.04 295);
-  --sidebar-accent-foreground: oklch(0.35 0.15 285);
-  --sidebar-border: oklch(0.9 0.02 80);
-  --sidebar-ring: oklch(0.62 0.22 285);
+  --sidebar-accent: oklch(0.95 0.035 60);
+  --sidebar-accent-foreground: oklch(0.42 0.13 45);
+  --sidebar-border: oklch(0.91 0.015 70);
+  --sidebar-ring: oklch(0.7 0.16 50);
 }
 
 .dark {
   color-scheme: dark;
   --platform-meta: #7b88f5;
   --platform-google: #efa935;
-  /* Warm, deep plum-gray to match the brand, not flat black. */
-  --background: oklch(0.17 0.015 285);
-  --foreground: oklch(0.96 0.005 285);
-  --card: oklch(0.215 0.018 285);
-  --card-foreground: oklch(0.96 0.005 285);
-  --popover: oklch(0.235 0.02 285);
-  --popover-foreground: oklch(0.96 0.005 285);
-  --primary: oklch(0.68 0.19 285);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.28 0.03 290);
-  --secondary-foreground: oklch(0.94 0.01 290);
-  --muted: oklch(0.26 0.02 285);
-  --muted-foreground: oklch(0.72 0.02 285);
-  --accent: oklch(0.29 0.04 290);
-  --accent-foreground: oklch(0.94 0.02 290);
+  /* Twin Home Buyer's near-black (#101820) with its orange, not flat black. */
+  --background: oklch(0.19 0.015 250);
+  --foreground: oklch(0.96 0.005 70);
+  --card: oklch(0.235 0.017 250);
+  --card-foreground: oklch(0.96 0.005 70);
+  --popover: oklch(0.25 0.018 250);
+  --popover-foreground: oklch(0.96 0.005 70);
+  --primary: oklch(0.74 0.16 52);
+  --primary-foreground: oklch(0.19 0.015 250);
+  --secondary: oklch(0.29 0.02 250);
+  --secondary-foreground: oklch(0.94 0.01 70);
+  --muted: oklch(0.27 0.017 250);
+  --muted-foreground: oklch(0.72 0.015 250);
+  --accent: oklch(0.3 0.04 50);
+  --accent-foreground: oklch(0.94 0.03 60);
   --destructive: oklch(0.7 0.19 22);
   --border: oklch(1 0 0 / 11%);
   --input: oklch(1 0 0 / 16%);
-  --ring: oklch(0.68 0.19 285);
-  --chart-1: oklch(0.7 0.19 285);
-  --chart-2: oklch(0.76 0.16 50);
+  --ring: oklch(0.74 0.16 52);
+  --chart-1: oklch(0.74 0.16 52);
+  --chart-2: oklch(0.85 0.01 250);
   --chart-3: oklch(0.75 0.13 180);
   --chart-4: oklch(0.72 0.2 350);
   --chart-5: oklch(0.85 0.15 90);
-  --sidebar: oklch(0.2 0.016 285);
-  --sidebar-foreground: oklch(0.96 0.005 285);
-  --sidebar-primary: oklch(0.68 0.19 285);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.29 0.04 290);
-  --sidebar-accent-foreground: oklch(0.94 0.02 290);
+  --sidebar: oklch(0.215 0.016 250);
+  --sidebar-foreground: oklch(0.96 0.005 70);
+  --sidebar-primary: oklch(0.74 0.16 52);
+  --sidebar-primary-foreground: oklch(0.19 0.015 250);
+  --sidebar-accent: oklch(0.3 0.04 50);
+  --sidebar-accent-foreground: oklch(0.94 0.03 60);
   --sidebar-border: oklch(1 0 0 / 11%);
-  --sidebar-ring: oklch(0.68 0.19 285);
+  --sidebar-ring: oklch(0.74 0.16 52);
 }
 
 /* Dark mode: the status colors used as text (green "sent", amber warnings, red errors) are dark
@@ -170,6 +170,12 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* A soft glow of Twin Home Buyer orange across the top of every page. */
+    background-image: radial-gradient(1400px 420px at 50% -120px, oklch(0.8 0.13 55 / 0.22), transparent 70%);
+    background-repeat: no-repeat;
+  }
+  .dark body {
+    background-image: radial-gradient(1400px 420px at 50% -120px, oklch(0.74 0.16 52 / 0.13), transparent 70%);
   }
   /* A faint pencil sketch of a street of homes along the bottom of the window, behind everything. */
   body::before {

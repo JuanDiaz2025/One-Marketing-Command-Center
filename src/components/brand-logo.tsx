@@ -54,7 +54,7 @@ export default function BrandLogo({
       aria-label="One Marketing Command Center"
       className="flex items-center gap-2.5 font-semibold tracking-tight whitespace-nowrap"
     >
-      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 via-pink-500 to-violet-600 text-white shadow-md shadow-pink-500/30">
+      <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-md shadow-orange-500/30">
         <LogoMark className="size-5" />
       </span>
       {name}
