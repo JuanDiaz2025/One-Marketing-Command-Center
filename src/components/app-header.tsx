@@ -4,6 +4,7 @@ import Link from "next/link"
 import { LogOut } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { hasPassword } from "@/lib/auth/password"
 import type { Session } from "@/lib/auth/session"
 import { signOutAction } from "@/lib/google/actions"
 import BrandLogo from "@/components/brand-logo"
@@ -30,7 +31,8 @@ function appVersion() {
   }
 }
 
-export default function AppHeader({ current, user }: { current: Current; user: Session }) {
+export default async function AppHeader({ current, user }: { current: Current; user: Session }) {
+  const passwordSet = await hasPassword()
   return (
     <header className="sticky top-0 z-20 border-b border-border/70 bg-background print:hidden">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
@@ -70,7 +72,7 @@ export default function AppHeader({ current, user }: { current: Current; user: S
             {user.email}
           </span>
           {appVersion() && <span className="hidden text-xs whitespace-nowrap text-muted-foreground/70 xl:inline">Version {appVersion()}</span>}
-          <DeviceLinkButton />
+          <DeviceLinkButton canSetPassword={!user.via} hasPassword={passwordSet} />
           <ThemeToggle />
           <form action={signOutAction}>
             <Button type="submit" variant="ghost" size="lg">

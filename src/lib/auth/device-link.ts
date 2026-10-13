@@ -18,7 +18,7 @@ export async function createDeviceLink(user: Omit<Session, "exp">) {
   const token = randomBytes(24).toString("base64url")
   await file.update((db) => {
     db.links = db.links.filter((l) => l.expires > Date.now())
-    db.links.push({ hash: fingerprint(token), user: { sub: user.sub, email: user.email, name: user.name, picture: user.picture }, expires: Date.now() + LIFETIME_MS })
+    db.links.push({ hash: fingerprint(token), user: { sub: user.sub, email: user.email, name: user.name, picture: user.picture, via: "link" }, expires: Date.now() + LIFETIME_MS })
   })
   return token
 }

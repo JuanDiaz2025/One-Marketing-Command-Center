@@ -5,12 +5,13 @@ import { Smartphone, X } from "lucide-react"
 import QRCode from "qrcode"
 
 import CopyButton from "@/components/dashboard/copy-button"
+import { SetPassword } from "@/components/password-forms"
 import { Button } from "@/components/ui/button"
 import { createDeviceLinkAction } from "@/lib/auth/device-link-actions"
 
 // "Open on another device": a one-time sign-in link (and QR code for a phone) for go-online.bat's
 // address, where Google sign-in can't work.
-export default function DeviceLinkButton() {
+export default function DeviceLinkButton({ canSetPassword, hasPassword }: { canSetPassword: boolean; hasPassword: boolean }) {
   const [open, setOpen] = useState(false)
   const [result, setResult] = useState<{ url?: string; qr?: string; error?: string } | null>(null)
   const [pending, start] = useTransition()
@@ -38,7 +39,7 @@ export default function DeviceLinkButton() {
         <span className="hidden lg:inline">Open on another device</span>
       </Button>
       {open && (
-        <div className="absolute right-0 z-30 mt-2 flex w-80 flex-col gap-3 rounded-xl border bg-popover p-4 text-sm text-popover-foreground shadow-xl">
+        <div className="absolute right-0 z-30 mt-2 flex max-h-[80vh] w-80 flex-col gap-3 overflow-y-auto rounded-xl border bg-popover p-4 text-sm text-popover-foreground shadow-xl">
           <div className="flex items-start justify-between gap-2">
             <p className="font-semibold">Open on your phone or another computer</p>
             <button type="button" aria-label="Close" className="text-muted-foreground hover:text-foreground" onClick={() => setOpen(false)}>
@@ -63,6 +64,7 @@ export default function DeviceLinkButton() {
               </Button>
             </>
           )}
+          {canSetPassword && <SetPassword hasPassword={hasPassword} />}
         </div>
       )}
     </div>

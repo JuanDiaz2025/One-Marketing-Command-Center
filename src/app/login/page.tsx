@@ -5,8 +5,10 @@ import { CircleAlert, CircleCheck, Settings, TriangleAlert } from "lucide-react"
 
 import BrandLogo from "@/components/brand-logo"
 import GoogleButton from "@/components/google-button"
+import { PasswordSignIn } from "@/components/password-forms"
 import { missingSignInSettings } from "@/lib/auth/config"
 import { temporaryTunnel } from "@/lib/auth/local-url"
+import { hasPassword } from "@/lib/auth/password"
 import { safeNext } from "@/lib/auth/oauth-state"
 import { getSession } from "@/lib/auth/session"
 
@@ -30,11 +32,13 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const next = safeNext(typeof q.next === "string" ? q.next : undefined)
   if (await getSession()) redirect(next)
 
-  const error = typeof q.error === "string" ? (errors[q.error] ?? errors.failed) : null
+  // (On the temporary address, the note below says it all.)
+  const error = typeof q.error === "string" && !(q.error === "temporary" && temporaryTunnel(await headers())) ? (errors[q.error] ?? errors.failed) : null
   const missing = missingSignInSettings()
   // go-online.bat's temporary address (new each time): Google only lets you sign in on addresses
   // listed in the app's Google sign-in settings, and this one can't be listed.
   const temporary = temporaryTunnel(await headers())
+  const password = await hasPassword()
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-16">
@@ -65,21 +69,29 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             <p className="mt-5 flex gap-2 rounded-xl bg-amber-500/10 p-3 text-sm text-amber-950 dark:text-amber-200">
               <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
               <span>
-                This is a temporary address (from go-online.bat), and Google sign-in doesn&apos;t work on it. Instead, on the
-                computer running the app click <strong>Open on another device</strong> (top right) and scan the QR code with
-                this phone, or open its link here.
+                This is a temporary address (from go-online.bat), and Google sign-in doesn&apos;t work on it.{" "}
+                {password ? "Sign in with the team password below, or o" : "O"}n the computer running the app click{" "}
+                <strong>Open on another device</strong> (top right) and scan the QR code with this phone, or open its link here.
               </span>
             </p>
           )}
 
-          <div className="mt-6">
-            <GoogleButton
-              href={`/api/auth/google?next=${encodeURIComponent(next)}`}
-              disabled={missing.length > 0}
-            >
-              Continue with Google
-            </GoogleButton>
-          </div>
+          {password && (
+            <div className="mt-6">
+              <PasswordSignIn next={next} />
+            </div>
+          )}
+
+          {!temporary && (
+            <div className="mt-6">
+              <GoogleButton
+                href={`/api/auth/google?next=${encodeURIComponent(next)}`}
+                disabled={missing.length > 0}
+              >
+                Continue with Google
+              </GoogleButton>
+            </div>
+          )}
         </div>
 
         {missing.length > 0 && (

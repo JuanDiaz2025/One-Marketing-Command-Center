@@ -12,6 +12,8 @@ export type Session = {
   email: string
   name: string
   picture?: string
+  // How they got in when it wasn't Google sign-in: the team password, or a one-time device link.
+  via?: "password" | "link"
   exp: number // ms since epoch
 }
 
