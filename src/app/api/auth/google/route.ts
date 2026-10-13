@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 
 import { missingSignInSettings, redirectUri } from "@/lib/auth/config"
-import { appUrl } from "@/lib/auth/local-url"
+import { redirectTo, temporaryTunnel } from "@/lib/auth/local-url"
 import { newState, safeNext, saveOAuthState } from "@/lib/auth/oauth-state"
 import { getSession } from "@/lib/auth/session"
 import { authorizationUrl, newPkce, type OAuthIntent } from "@/lib/google/oauth"
@@ -14,13 +14,17 @@ export async function GET(request: NextRequest) {
   const next = safeNext(params.get("next"))
 
   if (missingSignInSettings().length) {
-    return NextResponse.redirect(appUrl("/login?error=not_configured", request.url))
+    return redirectTo("/login?error=not_configured")
   }
 
   const session = await getSession()
   if (intent === "ads" && !session) {
-    return NextResponse.redirect(appUrl("/login?next=/dashboard", request.url))
+    return redirectTo("/login?next=/dashboard")
   }
+
+  // Through go-online.bat's temporary address, Google would send the person back to an address
+  // their browser can't use: explain instead.
+  if (temporaryTunnel(request.headers)) return redirectTo(`/login?error=temporary&next=${encodeURIComponent(next)}`)
 
   const state = newState()
   const { verifier, challenge } = newPkce()

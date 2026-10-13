@@ -6,6 +6,7 @@ import { CircleAlert, CircleCheck, Settings, TriangleAlert } from "lucide-react"
 import BrandLogo from "@/components/brand-logo"
 import GoogleButton from "@/components/google-button"
 import { missingSignInSettings } from "@/lib/auth/config"
+import { temporaryTunnel } from "@/lib/auth/local-url"
 import { safeNext } from "@/lib/auth/oauth-state"
 import { getSession } from "@/lib/auth/session"
 
@@ -20,6 +21,7 @@ const errors: Record<string, string> = {
     "That Google account isn't allowed to use this app. Ask the owner to add it to ALLOWED_EMAILS.",
   not_configured: "Google sign-in isn't set up yet. See the steps below.",
   failed: "Google sign-in didn't go through. Please try again.",
+  temporary: "Google sign-in doesn't work on this temporary address.",
 }
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
@@ -31,8 +33,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const missing = missingSignInSettings()
   // go-online.bat's temporary address (new each time): Google only lets you sign in on addresses
   // listed in the app's Google sign-in settings, and this one can't be listed.
-  const host = (await headers()).get("host") ?? ""
-  const temporary = /\.trycloudflare\.com$/i.test(host.split(":")[0]) && !process.env.SITE_URL
+  const temporary = temporaryTunnel(await headers())
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center px-4 py-16">
