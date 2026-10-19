@@ -17,7 +17,8 @@ export const TRACKING_FIELDS = [
 export const CF7_HIDDEN_FIELDS = TRACKING_FIELDS.map((name) => `[hidden ${name}]`).join("\n")
 
 // Remembers the UTM tags and ad click id from the address the visitor arrived on (the latest
-// visit with tags wins), plus the landing page and referring site, and puts them into any form
+// visit with tags wins), plus the landing page and referring site (www. or not, the site itself
+// isn't one), and puts them into any form
 // field with the same name, including after Contact Form 7 resets the form.
 export const TRACKING_SNIPPET = `<script>
 (function () {
@@ -28,8 +29,12 @@ export const TRACKING_SNIPPET = `<script>
   var params = new URLSearchParams(location.search), fresh = {};
   KEYS.forEach(function (k) { var v = params.get(k); if (v) fresh[k] = v; });
   if (fresh.gbraid || fresh.wbraid) fresh.gclid = fresh.gclid || fresh.gbraid || fresh.wbraid;
-  var external = document.referrer && document.referrer.indexOf(location.hostname) === -1;
-  if (Object.keys(fresh).length || !saved.landing_page) {
+  var bare = function (u) { try { return new URL(u).hostname.replace(/^www\\./, ""); } catch (e) { return ""; } };
+  var external = Boolean(document.referrer) && bare(document.referrer) !== location.hostname.replace(/^www\\./, "");
+  var tagged = KEYS.some(function (k) { return saved[k]; });
+  // A new visit with tags replaces the old; one from another site (Google, Facebook...) fills in
+  // a visit that so far had nothing to say where it came from.
+  if (Object.keys(fresh).length || !saved.landing_page || (external && !tagged && !saved.referrer)) {
     saved = Object.keys(fresh).length ? fresh : saved;
     saved.landing_page = location.href;
     saved.referrer = external ? document.referrer : (saved.referrer || "");

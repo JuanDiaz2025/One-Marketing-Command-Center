@@ -1,18 +1,26 @@
 // Taps on the website's phone number, brought in as leads the same way form submissions are.
-// PostHog (already on twinhomebuyer.com) records every tap on a "tel:" link with the page, device,
-// city and the visit's campaign tags (utm, gclid). The app checks for new taps at most once a
-// minute while it's open; PostHog shows a tap a minute or two after it happens.
+// Two places see them, so a tap is caught even when one misses it:
+// - PostHog (already on twinhomebuyer.com) records every tap on a "tel:" link with the page,
+//   device, city and the visit's campaign tags (utm, gclid). The app checks for new taps at most
+//   once a minute while it's open; PostHog shows a tap a minute or two after it happens. Browsers
+//   that block PostHog (ad blockers, some iPhones) don't show up there.
+// - The Lead Saver plugin (1.6+) notes each tap on the site itself, with where the visitor came
+//   from (the same memory the forms use), picked up with the website check (wordpress.ts).
+// A tap seen by both is one lead: they share the visitor's PostHog id when the page has it.
 //
 // A tap means someone started a call, not that it connected: the call itself (who, how long) is in
 // REI BlackBook. So these leads are never scored or sent to Google Ads on their own; once the team
 // sets a status (Interested…), they go to Google Ads like any other lead, matched by the ad click.
 import { jsonFileStore } from "@/lib/json-file-store"
 import { addLead, listLeads, updateLead } from "@/lib/leads/store"
+import { completeTracking } from "@/lib/leads/tracking"
 import { CALL_TAP_SOURCE, type LeadTracking } from "@/lib/leads/types"
 import { hogqlFresh } from "@/lib/posthog"
 import { shared } from "@/lib/shared-state"
 
-type State = { lastAt?: string; lastSync?: string; lastError?: string; added?: number; rechecked?: string[] }
+// `recent`: the last few days' taps from either place (lead: the lead each became or joined).
+type Recent = { key: string; at: string; visitor: string; number: string; lead: string }
+type State = { lastAt?: string; lastSync?: string; lastError?: string; added?: number; rechecked?: string[]; recent?: Recent[]; more?: boolean }
 const file = jsonFileStore<State>("call-taps.json", () => ({}))
 export const getCallTaps = () => file.read()
 
@@ -21,6 +29,11 @@ const SYNC_EVERY_MS = 60_000
 const FIRST_LOOK_BACK_MS = 7 * 86_400_000
 // Several taps by the same visitor within this long are one call attempt.
 const SAME_CALL_MS = 30 * 60_000
+// PostHog can show a tap late (phones send in batches): each check looks this far back again.
+const LATE_MS = 2 * 60 * 60_000
+// The same number tapped within this long, once seen by PostHog and once by the site, is one tap
+// even when the page didn't have the visitor's PostHog id yet.
+const SAME_TAP_MS = 3 * 60_000
 const sync = shared("call-tap-sync", () => ({ lastAttempt: 0, running: null as Promise<void> | null }))
 
 const configured = () => Boolean(process.env.POSTHOG_API_KEY && process.env.POSTHOG_PROJECT_ID)
@@ -74,10 +87,10 @@ async function tapRows(where: string, fields = FULL): Promise<Record<string, unk
     return await hogqlFresh(`
       select toString(uuid) as uuid, timestamp as at, distinct_id as visitor, properties.$current_url as current,
         properties.$device_type as device, properties.$geoip_city_name as city, properties.$geoip_subdivision_1_code as region,
-        extract(elements_chain, 'href="(tel:[^"]+)"') as tel, ${fields}
+        extract(elements_chain, '(?i)href="(tel:[^"]+)"') as tel, ${fields}
       from events
-      where event = '$autocapture' and elements_chain like '%href="tel:%'
-        and properties.$host in ('www.twinhomebuyer.com', 'twinhomebuyer.com')
+      where event = '$autocapture' and elements_chain ilike '%href="tel:%'
+        and (properties.$host = 'twinhomebuyer.com' or properties.$host like '%.twinhomebuyer.com')
         and ${where}
       order by timestamp asc limit 500`)
   } catch (error) {
@@ -97,7 +110,7 @@ async function fillMissingSources(state: State) {
   const done = new Set(state.rechecked ?? [])
   const missing = (await listLeads())
     .filter((l) => l.source === CALL_TAP_SOURCE && !knowsSource(l.tracking) && Date.now() - Date.parse(l.createdAt) < 30 * 86_400_000)
-    .map((l) => ({ id: l.id, uuid: l.inboxId?.split(":")[2] ?? "" }))
+    .map((l) => ({ id: l.id, uuid: (l.inboxId?.split(":")[2] ?? "").replace(/^ph/, "") }))
     .filter((l) => /^[0-9a-f-]{36}$/i.test(l.uuid) && !done.has(l.uuid))
     .slice(0, 50)
   if (!missing.length) return
@@ -114,14 +127,119 @@ async function fillMissingSources(state: State) {
 
 const shownNumber = (tel: string) => {
   const d = tel.replace(/\D/g, "").slice(-10)
-  return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : tel.replace(/^tel:/, "")
+  return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : tel.replace(/^tel:/i, "")
 }
+const digits = (tel: string) => tel.replace(/\D/g, "").slice(-10)
 const pathOf = (url: string) => {
   try {
     return new URL(url).pathname
   } catch {
     return url
   }
+}
+// Lead ids are "tap:<visitor>:<tap>", so neither may have a ":".
+const safe = (id: string) => id.replace(/[^\w.$-]/g, "_").slice(0, 100)
+
+type Tap = { key: string; at: number; visitor: string; number: string; page: string; device?: string; place?: string; tracking?: LeadTracking; via: "PostHog" | "website" }
+
+// One tap at a time, from either place, so the same tap can't become two leads.
+const queue = shared("call-tap-queue", () => ({ last: Promise.resolve() as Promise<unknown> }))
+function oneAtATime<T>(work: () => Promise<T>): Promise<T> {
+  const next = queue.last.then(work, work)
+  queue.last = next.catch(() => {})
+  return next
+}
+
+// Adds the taps as leads: a tap already in, or another tap of the same call attempt, joins that
+// lead instead (filling in where the caller came from, if it didn't know yet). Returns how many
+// leads were added.
+function addTaps(taps: Tap[]) {
+  return oneAtATime(async () => {
+    const state = await file.read()
+    const recent = (state.recent ?? []).filter((r) => Date.now() - Date.parse(r.at) < 3 * 86_400_000)
+    const leads = (await listLeads()).filter((l) => l.source === CALL_TAP_SOURCE)
+    let added = 0
+    for (const t of [...taps].sort((a, b) => a.at - b.at)) {
+      const key = safe(t.key)
+      // (No visitor id: on its own, not lumped in with others that have none.)
+      const visitor = safe(t.visitor) || key
+      const near = (r: { at: string }, ms: number) => Math.abs(Date.parse(r.at) - t.at) < ms
+      const before =
+        leads.find((l) => l.inboxId?.endsWith(`:${key}`))?.id ??
+        recent.find((r) => r.key === key)?.lead ??
+        recent.find((r) => r.visitor === visitor && near(r, SAME_CALL_MS))?.lead ??
+        leads.find((l) => l.inboxId?.split(":")[1] === visitor && near({ at: l.createdAt }, SAME_CALL_MS))?.id ??
+        recent.find((r) => r.number === digits(t.number) && near(r, SAME_TAP_MS) && !r.key.startsWith(t.via === "website" ? "wp" : "ph"))?.lead
+      if (before) {
+        if (!recent.some((r) => r.key === key)) recent.push({ key, at: new Date(t.at).toISOString(), visitor, number: digits(t.number), lead: before })
+        const lead = leads.find((l) => l.id === before)
+        if (lead && t.tracking && !knowsSource(lead.tracking) && knowsSource(t.tracking)) {
+          await updateLead(lead.id, (l) => void (l.tracking = { ...l.tracking, ...t.tracking }))
+          lead.tracking = { ...lead.tracking, ...t.tracking }
+        }
+        continue
+      }
+      const at = new Date(Math.min(t.at, Date.now())).toISOString()
+      const lead = await addLead(
+        {
+          name: "Website caller (tapped the phone number)",
+          source: CALL_TAP_SOURCE,
+          notes: `Tapped ${shownNumber(t.number)} on ${pathOf(t.page)}${t.device ? ` · ${t.device}` : ""}${t.place ? ` · ${t.place}` : ""}. The call is in REI BlackBook: find it there, add the caller's details, and set the status.`,
+          tracking: t.tracking,
+          inboxId: `tap:${visitor}:${key}`,
+        },
+        at,
+      )
+      leads.push(lead)
+      recent.push({ key, at, visitor, number: digits(t.number), lead: lead.id })
+      added++
+    }
+    await file.update((s) => {
+      s.recent = recent.slice(-2000)
+      s.added = (s.added ?? 0) + added
+    })
+    return added
+  })
+}
+
+// The taps the website's plugin noted (`fields` as the visitor's browser sent them).
+export async function addSiteTaps(raw: { id: number; at: string; fields?: Record<string, unknown> }[]) {
+  const text = (v: unknown, max = 500) => (typeof v === "string" && v.trim() ? v.trim().slice(0, max) : undefined)
+  const taps = raw.flatMap((r): Tap[] => {
+    const f = r.fields ?? {}
+    const number = text(f.number, 20)
+    const at = Date.parse(r.at)
+    if (!number || !Number.isFinite(r.id) || Number.isNaN(at)) return []
+    const tracking = completeTracking({
+      utmSource: text(f.utm_source),
+      utmMedium: text(f.utm_medium),
+      utmCampaign: text(f.utm_campaign),
+      utmTerm: text(f.utm_term),
+      utmContent: text(f.utm_content),
+      gclid: text(f.gclid),
+      gbraid: text(f.gbraid),
+      wbraid: text(f.wbraid),
+      fbclid: text(f.fbclid),
+      msclkid: text(f.msclkid),
+      landingPage: text(f.landing_page),
+      // The site itself isn't where they came from.
+      referrer: outside(text(f.referrer) ?? "") || undefined,
+    })
+    const kept = tracking && (Object.fromEntries(Object.entries(tracking).filter(([, v]) => v)) as LeadTracking)
+    return [
+      {
+        key: `wp${r.id}`,
+        at,
+        visitor: text(f.ph, 100) || (text(f.vid, 60) ? `wp-${text(f.vid, 60)}` : `wp${r.id}`),
+        number,
+        page: text(f.page) ?? "",
+        device: f.mobile === "1" ? "Mobile" : "Desktop",
+        tracking: kept && Object.keys(kept).length ? kept : undefined,
+        via: "website",
+      },
+    ]
+  })
+  return taps.length ? addTaps(taps) : 0
 }
 
 export function syncCallTaps(): Promise<void> {
@@ -131,44 +249,26 @@ export function syncCallTaps(): Promise<void> {
   sync.lastAttempt = Date.now()
   sync.running = (async () => {
     const state = await file.read()
-    const since = state.lastAt ? Date.parse(state.lastAt) : Date.now() - FIRST_LOOK_BACK_MS
+    // From the last tap brought in, and a while before it for taps PostHog showed late.
+    // (When the last check got a full page, the rest come first.)
+    const since = state.lastAt ? Date.parse(state.lastAt) - (state.more ? 0 : LATE_MS) : Date.now() - FIRST_LOOK_BACK_MS
     const seconds = Math.max(60, Math.ceil((Date.now() - since) / 1000) + 5)
     try {
       const rows = (await tapRows(`timestamp > now() - interval ${seconds} second`)).map(readRow)
-      const existing = (await listLeads()).filter((l) => l.source === CALL_TAP_SOURCE)
-      const lastByVisitor = new Map<string, number>()
-      for (const l of existing) {
-        const visitor = l.inboxId?.split(":")[1]
-        if (visitor) lastByVisitor.set(visitor, Math.max(lastByVisitor.get(visitor) ?? 0, Date.parse(l.createdAt)))
-      }
-      let lastAt = state.lastAt
-      let added = 0
-      for (const r of rows) {
-        const { uuid, at, visitor, current, device, city, region, tel, seen } = r
-        const when = Date.parse(at)
-        if (Number.isNaN(when) || (state.lastAt && when <= Date.parse(state.lastAt))) continue
-        lastAt = new Date(when).toISOString()
-        // Tapping twice (or again a few minutes later) is the same call attempt.
-        const previous = lastByVisitor.get(visitor)
-        lastByVisitor.set(visitor, when)
-        if (previous && when - previous < SAME_CALL_MS) continue
-        const place = [city, /^[A-Z]{2}$/.test(region) ? region : ""].filter(Boolean).join(", ")
-        await addLead(
-          {
-            name: "Website caller (tapped the phone number)",
-            source: CALL_TAP_SOURCE,
-            notes: `Tapped ${shownNumber(tel)} on ${pathOf(current)}${device ? ` · ${device}` : ""}${place ? ` · ${place}` : ""}. The call is in REI BlackBook: find it there, add the caller's details, and set the status.`,
-            tracking: trackingFrom(seen),
-            inboxId: `tap:${visitor}:${uuid}`,
-          },
-          lastAt,
-        )
-        added++
-      }
+      const taps = rows.flatMap((r): Tap[] => {
+        const at = Date.parse(r.at)
+        if (Number.isNaN(at) || !r.uuid) return []
+        const place = [r.city, /^[A-Z]{2}$/.test(r.region) ? r.region : ""].filter(Boolean).join(", ")
+        return [{ key: `ph${r.uuid}`, at, visitor: r.visitor, number: r.tel, page: r.current, device: r.device, place, tracking: trackingFrom(r.seen), via: "PostHog" }]
+      })
+      // Leads from before the "ph" prefix are "tap:<visitor>:<uuid>".
+      const old = new Set((await listLeads()).filter((l) => l.source === CALL_TAP_SOURCE).map((l) => l.inboxId?.split(":")[2]))
+      await addTaps(taps.filter((t) => !old.has(t.key.slice(2))))
+      const newest = Math.max(state.lastAt ? Date.parse(state.lastAt) : 0, ...taps.map((t) => t.at))
       await file.update((s) => {
-        s.lastAt = lastAt ?? s.lastAt ?? new Date(since).toISOString()
+        s.lastAt = newest ? new Date(newest).toISOString() : (s.lastAt ?? new Date(since).toISOString())
         s.lastSync = new Date().toISOString()
-        s.added = (s.added ?? 0) + added
+        s.more = rows.length >= 500
         delete s.lastError
       })
       await fillMissingSources(state).catch((error) => console.error("Couldn't look up where earlier callers came from:", error))

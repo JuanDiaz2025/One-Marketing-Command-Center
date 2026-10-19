@@ -3,6 +3,7 @@
 // most every 10 seconds. WordPress is always online and its address never changes, so leads sent
 // while this computer or the app was off still arrive, with the time they were really sent. The
 // same check shares lead statuses with the rest of the team (team-sync.ts).
+import { addSiteTaps } from "@/lib/leads/call-taps"
 import { jsonFileStore } from "@/lib/json-file-store"
 import { shared } from "@/lib/shared-state"
 import { addLead } from "@/lib/leads/store"
@@ -22,6 +23,7 @@ type WordPressState = {
   events?: SiteEvent[] // what happened to the latest form submissions on the site (plugin 1.2+)
   statusSeq?: number // the last team status change already picked up (plugin 1.4+)
   sender?: Sender | null // the computer that sends shared leads to Google Ads (plugin 1.4+)
+  tapId?: number // the last tap on a phone number already picked up (plugin 1.6+)
 }
 
 // One form submission as the site saw it: no names or numbers, just when, which form and the outcome.
@@ -39,6 +41,7 @@ type Answer = {
   events?: SiteEvent[]
   statuses?: StatusChange[]
   sender?: Sender | null
+  taps?: { id: number; at: string; fields?: Record<string, unknown> }[]
 }
 
 const file = jsonFileStore<WordPressState>("wordpress.json", () => ({}))
@@ -68,11 +71,12 @@ const bareHost = (site: string) => new URL(site).host.replace(/^www\./, "")
 export async function setWordPressSite(site: string | null) {
   await file.update((s) => {
     const same = Boolean(site && s.site && bareHost(site) === bareHost(s.site))
-    const lastId = s.lastId
+    const { lastId, tapId } = s
     for (const key of Object.keys(s)) delete s[key as keyof WordPressState]
     if (site) {
       s.site = site
       s.lastId = same ? (lastId ?? 0) : 0
+      if (same && tapId) s.tapId = tapId
     }
   })
   sync.lastAttempt = 0
@@ -92,7 +96,7 @@ async function ask(state: WordPressState, key: string, after: number, statusAfte
   let last: { status: number; answer: Answer | null } = { status: 0, answer: null }
   const get = async (api: NonNullable<WordPressState["api"]>, keyInAddress: boolean) => {
     const from = Date.now() - canSend.at < 5 * 60_000 ? `&from=${encodeURIComponent(await installId())}` : ""
-    const params = `after=${after}&status_after=${statusAfter}${from}${keyInAddress ? `&key=${encodeURIComponent(key)}` : ""}&t=${Date.now()}`
+    const params = `after=${after}&status_after=${statusAfter}&tap_after=${state.tapId ?? 0}${from}${keyInAddress ? `&key=${encodeURIComponent(key)}` : ""}&t=${Date.now()}`
     const url = api === "wp-json" ? `${state.site}/wp-json/omcc/v1/leads?${params}` : `${state.site}/?rest_route=/omcc/v1/leads&${params}`
     const res = await fetch(url, {
       headers: { "x-omcc-key": key, accept: "application/json", "user-agent": "OneMarketingCommandCenter/1.0" },
@@ -278,7 +282,17 @@ export function syncWordPress(force = false): Promise<void> {
         await file.update((s) => {
           if (s.site === state.site) s.lastId = lastId
         })
-        if (page === 0) statuses = info.statuses ?? []
+        if (page === 0) {
+          statuses = info.statuses ?? []
+          // Taps on the site's phone numbers (up to 200 a check; the rest come next time).
+          if (info.taps?.length) {
+            await addSiteTaps(info.taps)
+            const tapId = Math.max(state.tapId ?? 0, ...info.taps.map((t) => t.id))
+            await file.update((s) => {
+              if (s.site === state.site) s.tapId = tapId
+            })
+          }
+        }
         if (leads.length < 200) {
           complete = true
           break
