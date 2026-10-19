@@ -5,7 +5,12 @@
 
 import { countRequest, markLimitHit, operationsIn } from "@/lib/google-ads/usage"
 
-const API_VERSION = process.env.GOOGLE_ADS_API_VERSION || "v22"
+// Google retires each API version about a year after it comes out ("Version v22 is deprecated.
+// Requests to this version will be blocked."). When it says so, the next version is used from
+// then on, so the app keeps working until it's updated.
+let apiVersion = process.env.GOOGLE_ADS_API_VERSION?.trim() || "v26"
+const retired = (text: string) => /version\s+v?\d+[^.]*\b(deprecated|sunset|no longer|not supported|blocked)/i.test(text)
+const nextVersion = (v: string) => `v${Number(v.replace(/\D/g, "")) + 1}`
 const ADS_ENDPOINT = "https://googleads.googleapis.com"
 const TOKEN_ENDPOINT = "https://oauth2.googleapis.com/token"
 
@@ -181,7 +186,7 @@ async function call(cfg: AdsConfig, path: string, payload: unknown): Promise<unk
     if (cfg.loginCustomerId) headers["login-customer-id"] = cfg.loginCustomerId
     // A path is a service under the account ("googleAds:searchStream") or a method on the
     // account itself (":generateKeywordIdeas").
-    const url = `${ADS_ENDPOINT}/${API_VERSION}/customers/${cfg.customerId}${path.startsWith(":") ? "" : "/"}${path}`
+    const url = `${ADS_ENDPOINT}/${apiVersion}/customers/${cfg.customerId}${path.startsWith(":") ? "" : "/"}${path}`
     // For the "API used today" meter in the header.
     countRequest(operationsIn(path, payload)).catch(() => undefined)
     const res = await fetch(url, {
@@ -210,6 +215,18 @@ async function call(cfg: AdsConfig, path: string, payload: unknown): Promise<unk
   }
 
   let res = await sendWithRetry()
+  // A retired version: try the next ones (one that doesn't exist yet answers 404).
+  for (let i = 0; i < 3 && !res.ok && retired(res.text); i++) {
+    const was = apiVersion
+    apiVersion = nextVersion(apiVersion)
+    const again = await sendWithRetry()
+    if (again.status === 404) {
+      apiVersion = was
+      break
+    }
+    console.warn(`Google Ads API ${was} is retired; using ${apiVersion}.`)
+    res = again
+  }
   if (res.status === 401) {
     // The saved access token may have been revoked early. Get a fresh one and retry once.
     accessToken = null
