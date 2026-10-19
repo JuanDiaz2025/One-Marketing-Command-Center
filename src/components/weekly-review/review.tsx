@@ -67,9 +67,11 @@ export function MakeReview({ label, disabled, showName }: { label: string; disab
   const { name, setName } = useName()
   const [busy, start] = useTransition()
   const [result, setResult] = useState<ReviewResult | null>(null)
+  // Also here when the page doesn't know their name yet, so it's next to the button that asks for it.
+  const [unnamed] = useState(!name)
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {showName && <NameBox name={name} setName={setName} />}
+      {(showName || unnamed) && <NameBox name={name} setName={setName} />}
       <Button type="button" disabled={busy || disabled} onClick={() => start(async () => setResult(await makeReviewAction(name)))}>
         {busy ? <LoaderCircle className="animate-spin" data-icon="inline-start" /> : <Sparkles data-icon="inline-start" />}
         {busy ? "Reading Google Ads… (about a minute)" : label}

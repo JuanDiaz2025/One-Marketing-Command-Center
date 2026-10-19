@@ -4,6 +4,8 @@
 
 import { cookies } from "next/headers"
 
+import { signedInEmail } from "@/lib/auth"
+
 export const NAME_COOKIE = "dt_name"
 
 export function cleanName(value: unknown): string {
@@ -14,14 +16,21 @@ export function cleanName(value: unknown): string {
     .slice(0, 40)
 }
 
+// The name they typed, or else the one from the Google account they signed in with
+// ("bryan.smith@…" → "Bryan Smith"), so nobody is asked for a name the app already knows.
 export async function currentName(): Promise<string> {
-  return cleanName((await cookies()).get(NAME_COOKIE)?.value)
+  const typed = cleanName((await cookies()).get(NAME_COOKIE)?.value)
+  if (typed) return typed
+  const email = await signedInEmail().catch(() => null)
+  const local = email?.split("@")[0]?.replace(/[._-]+/g, " ").replace(/\d+/g, "").trim()
+  return cleanName(local?.replace(/\b\p{L}/gu, (c) => c.toUpperCase()))
 }
 
 // Saves the name someone typed, for next time. Call from server actions only (it sets a cookie).
 export async function rememberName(value: unknown): Promise<string | null> {
   const name = cleanName(value)
-  if (!name) return null
+  // Left empty (or the box isn't on that part of the page): the name they already gave.
+  if (!name) return (await currentName()) || null
   ;(await cookies()).set(NAME_COOKIE, name, { httpOnly: true, sameSite: "lax", path: "/", maxAge: 365 * 86_400 })
   return name
 }
