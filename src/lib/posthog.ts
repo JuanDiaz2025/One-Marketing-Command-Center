@@ -42,10 +42,11 @@ export async function hogqlFresh(query: string): Promise<Record<string, Value>[]
   }
 }
 
-// Real prospects only: the live site, minus anyone with more than 150 pageviews (the team
+// Real prospects only: the live site, minus anyone with more than 150 pageviews in 6 months (the team
 // editing pages generated thousands of views in June 2026).
 const PUBLIC = `properties.$host in ('www.twinhomebuyer.com', 'twinhomebuyer.com')
-  and person_id not in (select person_id from events where event = '$pageview' group by person_id having count() > 150)`
+  and person_id not in (select person_id from events where event = '$pageview' and timestamp > now() - interval 180 day
+    group by person_id having count() > 150)`
 
 const between = (r: DateRange) => `timestamp >= toDateTime('${r.from} 00:00:00', 'America/Los_Angeles')
   and timestamp < toDateTime('${r.to} 00:00:00', 'America/Los_Angeles') + interval 1 day`
@@ -167,24 +168,54 @@ export type SiteWeek = {
   formSubmits: number
 }
 
-// Weekly site totals for alerts. Only complete weeks.
+// Weekly site totals for alerts. Only complete weeks. Asked a few weeks at a time (in one go,
+// half a year of every event ran past PostHog's time limit), each part kept for half a day:
+// finished weeks don't change.
+const WEEKS_PER_PART = 4
 export async function getSiteWeeks(weeks = 26): Promise<SiteWeek[]> {
-  const rows = await hogql(`
-    select toStartOfWeek(timestamp, 1) as week,
-      countIf(event = '$pageview' and ${PUBLIC}) as public_pv,
-      countIf(event = '$pageview' and not (${PUBLIC})) as internal_pv,
-      countIf(event = '$pageview' and properties.$current_url ilike '%gclid=%') as ad_landings,
-      countIf(event = '$autocapture' and properties.$event_type = 'submit' and ${PUBLIC}) as submits
-    from events
-    where timestamp >= toStartOfWeek(now(), 1) - interval ${weeks} week and timestamp < toStartOfWeek(now(), 1)
-    group by week order by week`)
-  return rows.map((r) => ({
-    week: String(r.week).slice(0, 10),
-    publicPageviews: Number(r.public_pv ?? 0),
-    internalPageviews: Number(r.internal_pv ?? 0),
-    adLandings: Number(r.ad_landings ?? 0),
-    formSubmits: Number(r.submits ?? 0),
-  }))
+  const day = new Date().toISOString().slice(0, 10)
+  const since = `toStartOfWeek(now(), 1) - interval ${weeks} week`
+  // The team's own browsers (more than 150 pageviews in the period), looked up once.
+  const team = await cached(`posthog:team-people:${weeks}:${day}`, 12 * 60 * MINUTE, async () => {
+    const rows = await hogqlFresh(`
+      select person_id from events
+      where event = '$pageview' and timestamp >= ${since}
+      group by person_id having count() > 150 limit 1000`)
+    return rows.map((r) => String(r.person_id ?? "")).filter((id) => /^[0-9a-f-]{36}$/i.test(id))
+  })
+  const site = `properties.$host in ('www.twinhomebuyer.com', 'twinhomebuyer.com')`
+  const isPublic = team.length ? `${site} and toString(person_id) not in (${team.map((id) => `'${id}'`).join(", ")})` : site
+  const parts: [number, number][] = []
+  for (let from = 0; from < weeks; from += WEEKS_PER_PART) parts.push([from, Math.min(weeks, from + WEEKS_PER_PART)])
+  const results = await Promise.allSettled(
+    parts.map(([near, far]) =>
+      cached(`posthog:site-weeks:${near}:${far}:${day}`, 12 * 60 * MINUTE, () =>
+        hogqlFresh(`
+          select toStartOfWeek(timestamp, 1) as week,
+            countIf(event = '$pageview' and ${isPublic}) as public_pv,
+            countIf(event = '$pageview' and not (${isPublic})) as internal_pv,
+            countIf(event = '$pageview' and properties.$current_url ilike '%gclid=%') as ad_landings,
+            countIf(event = '$autocapture' and properties.$event_type = 'submit' and ${isPublic}) as submits
+          from events
+          where event in ('$pageview', '$autocapture')
+            and timestamp >= toStartOfWeek(now(), 1) - interval ${far} week and timestamp < toStartOfWeek(now(), 1) - interval ${near} week
+          group by week order by week`),
+      ),
+    ),
+  )
+  // A part PostHog couldn't answer is left out (its weeks just aren't compared), unless none worked.
+  const rows = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []))
+  const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected")
+  if (failed && !rows.length) throw failed.reason
+  return rows
+    .map((r) => ({
+      week: String(r.week).slice(0, 10),
+      publicPageviews: Number(r.public_pv ?? 0),
+      internalPageviews: Number(r.internal_pv ?? 0),
+      adLandings: Number(r.ad_landings ?? 0),
+      formSubmits: Number(r.submits ?? 0),
+    }))
+    .sort((a, b) => a.week.localeCompare(b.week))
 }
 
 // ---- Session replays ---------------------------------------------------------------------
