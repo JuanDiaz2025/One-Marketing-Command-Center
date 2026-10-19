@@ -38,6 +38,8 @@ export type LeadTracking = {
   gclid?: string
   gbraid?: string
   wbraid?: string
+  // Google Ads' own tag ("gad_source=1"), on ad clicks even when the click id is missing.
+  gadSource?: string
   fbclid?: string
   msclkid?: string
   // The page the visitor first landed on, and the site that sent them there.

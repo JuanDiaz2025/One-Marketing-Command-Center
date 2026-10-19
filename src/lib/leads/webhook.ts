@@ -151,7 +151,7 @@ function unbracket(payload: unknown): unknown {
 // them out of the notes.
 const THB_TRACKING: [string, string][] = [
   ["utm_source", "source"], ["utm_medium", "medium"], ["utm_campaign", "campaign"], ["utm_term", "term"],
-  ["utm_content", "content"], ["gclid", "gclid"], ["gbraid", "gbraid"], ["wbraid", "wbraid"], ["fbclid", "fbclid"],
+  ["utm_content", "content"], ["gclid", "gclid"], ["gbraid", "gbraid"], ["wbraid", "wbraid"], ["gad_source", "gad_source"], ["fbclid", "fbclid"],
   ["msclkid", "msclkid"], ["landing_page", "landing"], ["referrer", "referrer"],
 ]
 

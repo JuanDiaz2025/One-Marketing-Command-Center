@@ -139,7 +139,8 @@ document.addEventListener("click", function (e) {
   } catch (x) {}
   try { if (window.posthog && posthog.get_distinct_id) s.ph = String(posthog.get_distinct_id() || ""); } catch (x) {}
   s.vid = vid;
-  s.number = decodeURIComponent(a.getAttribute("href").slice(4));
+  s.number = a.getAttribute("href").slice(4);
+  try { s.number = decodeURIComponent(s.number); } catch (x) {}
   s.page = location.href;
   s.mobile = /Mobi|Android|iPhone/i.test(navigator.userAgent) ? "1" : "";
   var body = JSON.stringify(s);
@@ -285,15 +286,17 @@ function omcc_leads_call_tap($request) {
 			break;
 		}
 	}
-	$limit = 'omcc_tap_' . md5($ip);
+	$body = json_decode((string) $request->get_body(), true);
+	$body = is_array($body) ? $body : array();
+	// Per visitor (their browser's id and address), so visitors behind one address don't share it.
+	$vid = isset($body['vid']) && is_scalar($body['vid']) ? (string) $body['vid'] : '';
+	$limit = 'omcc_tap_' . md5($ip . '|' . $vid);
 	$count = intval(get_transient($limit));
 	if ($count >= 20) {
 		return new WP_REST_Response(array('ok' => true), 200);
 	}
 	set_transient($limit, $count + 1, HOUR_IN_SECONDS);
-	$body = json_decode((string) $request->get_body(), true);
-	$body = is_array($body) ? $body : array();
-	$keep = array('number', 'page', 'mobile', 'ph', 'vid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'gbraid', 'wbraid', 'fbclid', 'msclkid', 'landing_page', 'referrer');
+	$keep = array('number', 'page', 'mobile', 'ph', 'vid', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'gbraid', 'wbraid', 'gad_source', 'fbclid', 'msclkid', 'landing_page', 'referrer');
 	$fields = array();
 	foreach ($keep as $key) {
 		if (isset($body[$key]) && is_scalar($body[$key]) && (string) $body[$key] !== '') {

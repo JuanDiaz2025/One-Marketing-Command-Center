@@ -158,7 +158,7 @@ export default async function LeadsPage() {
     <>
       <PageHeader
         title="Leads"
-        description="Every lead from the website forms as it comes in (from WordPress), scored the moment it arrives, with where it came from, plus taps on the website's phone number (from PostHog) and phone calls from Google Ads. Good leads are sent back to Google Ads as conversions, so its bidding learns which clicks bring real sellers. The page updates on its own every few seconds. Leads are saved on this computer."
+        description="Every lead from the website forms as it comes in (from WordPress), scored the moment it arrives, with where it came from, plus taps on the website's phone numbers (seen by the website and by PostHog) and phone calls from Google Ads. Good leads are sent back to Google Ads as conversions, so its bidding learns which clicks bring real sellers. The page updates on its own every few seconds. Leads are saved on this computer."
       />
       <div className="-mt-2 flex flex-wrap items-center gap-3">
         {leads.length > 0 && (
@@ -206,9 +206,9 @@ export default async function LeadsPage() {
 
       <KpiGrid
         items={[
-          { label: "Form leads, last 7 days", value: formatNumber(countSince(leads, 7)) },
-          { label: "Form leads, last 30 days", value: formatNumber(countSince(leads, 30)) },
-          { label: "Form leads, all time", value: formatNumber(leads.length) },
+          { label: "Leads, last 7 days", value: formatNumber(countSince(leads, 7)) },
+          { label: "Leads, last 30 days", value: formatNumber(countSince(leads, 30)) },
+          { label: "Leads, all time", value: formatNumber(leads.length) },
           { label: "Ad calls, last 30 days", value: calls.ok ? formatNumber(calls.data.length) : "—", note: calls.ok ? undefined : "Google Ads not reachable" },
           { label: "Missed calls", value: calls.ok ? formatNumber(missed) : "—", tone: missed ? "bad" : "default" },
           { label: "Calls of 60s+", value: calls.ok ? formatNumber(calls.data.filter((c) => !c.missed && c.seconds >= 60).length) : "—" },

@@ -12,6 +12,7 @@ export const trackingAliases: Record<keyof LeadTracking, string[]> = {
   gclid: ["gclid"],
   gbraid: ["gbraid"],
   wbraid: ["wbraid"],
+  gadSource: ["gadsource"],
   fbclid: ["fbclid"],
   msclkid: ["msclkid"],
   landingPage: ["landingpage", "landingpageurl", "pageurl", "url", "sourceurl", "posturl", "page", "formpage"],
@@ -27,6 +28,7 @@ const fromUrl: [keyof LeadTracking, string[]][] = [
   ["gclid", ["gclid"]],
   ["gbraid", ["gbraid"]],
   ["wbraid", ["wbraid"]],
+  ["gadSource", ["gad_source"]],
   ["fbclid", ["fbclid"]],
   ["msclkid", ["msclkid"]],
 ]
@@ -83,18 +85,22 @@ export function leadChannel(lead: Lead): string {
   const source = t.utmSource?.toLowerCase() ?? ""
   const medium = t.utmMedium?.toLowerCase() ?? ""
   const paid = /cpc|ppc|paid|ads?$|display|search/.test(medium)
-  if (hasAdClick(t) || (/google|adwords/.test(source) && paid)) return "Google Ads"
+  if (hasAdClick(t) || t.gadSource || /[?&]gad_source=/.test(t.landingPage ?? "") || (/google|adwords/.test(source) && paid)) return "Google Ads"
   if (t.msclkid || (/bing|microsoft/.test(source) && paid)) return "Microsoft Ads"
-  if (t.fbclid || /facebook|instagram|(^|[^a-z])(fb|ig|meta)([^a-z]|$)/.test(source)) return paid || t.fbclid ? "Facebook / Instagram Ads" : "Facebook / Instagram"
+  // (Facebook adds fbclid to every link people click there, ads or not: only the tags say "paid".)
+  if (t.fbclid || /facebook|instagram|(^|[^a-z])(fb|ig|meta)([^a-z]|$)/.test(source)) return paid ? "Facebook / Instagram Ads" : "Facebook / Instagram"
   if (/lsa|localservices/.test(source)) return "Local Services Ads"
   if (/gbp|gmb|googlebusiness|maps/.test(source + medium)) return "Google Business Profile"
   if (/email|newsletter/.test(source + medium)) return "Email"
   if (/sms|text/.test(source + medium)) return "Text message"
   if (/postcard|mail|flyer|sign/.test(source + medium)) return "Direct mail"
   if (source) return t.utmMedium ? `${t.utmSource} / ${t.utmMedium}` : t.utmSource!
-  const from = host(t.referrer)
-  if (/google\.|bing\.|yahoo\.|duckduckgo\./.test(from)) return "Organic search"
-  if (/facebook\.|instagram\.|t\.co$|twitter\.|x\.com|linkedin\.|youtube\./.test(from)) return "Social"
+  // The site's own pages aren't where anyone came from.
+  const from = /(^|\.)twinhomebuyer\.com$/.test(host(t.referrer)) ? "" : host(t.referrer)
+  // (Apps show as e.g. "com.google.android.gm": Gmail is email, the Google app is search.)
+  if (/google\.android\.gm$/.test(from)) return "Email"
+  if (/(^|\.)(google|bing|yahoo|duckduckgo)\.(com|[a-z]{2})(\.[a-z]{2})?$/.test(from) || /googlequicksearchbox/.test(from)) return "Organic search"
+  if (/(^|\.)(facebook|instagram|twitter|x|linkedin|youtube|t)\.(com|co)$/.test(from) || /^(l|lm|m)\.facebook\.com$/.test(from)) return "Social"
   if (from && from !== host(t.landingPage)) return `Referral: ${from}`
   return "Direct"
 }

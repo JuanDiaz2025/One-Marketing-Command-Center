@@ -364,7 +364,7 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
           </div>
         )}
         <label className="flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">Channel</span>
+          <span className="text-muted-foreground">Came from</span>
           <select
             value={channel}
             onChange={(e) => {
@@ -434,13 +434,15 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
               <th className={th}>#</th>
               <th className={th}>Received</th>
               <th className={th}>Name</th>
+              <th className={th} title="Where the lead came from: the ad, search or site that brought them">
+                Came from
+              </th>
               <th className={th} title="Scored when the lead arrived, from 0 to 100">Score</th>
               <th className={th}>Status</th>
               <th className={th} title="Interested and closed leads are sent back to Google Ads as conversions">Google Ads</th>
               <th className={th}>Phone</th>
               <th className={th}>Email</th>
               <th className={th}>Property address</th>
-              <th className={th}>Channel</th>
               <th className={th}>UTM source</th>
               <th className={th}>UTM medium</th>
               <th className={th}>UTM campaign</th>
@@ -465,6 +467,17 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
                 <td className={`${td} text-muted-foreground`}>{current * PAGE + i + 1}</td>
                 <td className={td}>{r.received}</td>
                 <td className={`${td} font-medium`}>{r.name}</td>
+                <td className={td}>
+                  <span
+                    className={
+                      r.channel === "Unknown" || r.channel === "Direct"
+                        ? "rounded-full bg-muted px-2 py-0.5 text-xs font-medium"
+                        : "rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                    }
+                  >
+                    {r.channel}
+                  </span>
+                </td>
                 <td className={td}>
                   <ScoreCell score={r.score} />
                 </td>
@@ -506,17 +519,6 @@ export default function LeadsTable({ rows }: { rows: LeadRow[] }) {
                 </td>
                 <td className={`${td} max-w-64 truncate`} title={r.address}>
                   {r.address || empty}
-                </td>
-                <td className={td}>
-                  <span
-                    className={
-                      r.channel === "Unknown" || r.channel === "Direct"
-                        ? "rounded-full bg-muted px-2 py-0.5 text-xs font-medium"
-                        : "rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
-                    }
-                  >
-                    {r.channel}
-                  </span>
                 </td>
                 <td className={td}>{r.utmSource || empty}</td>
                 <td className={td}>{r.utmMedium || empty}</td>

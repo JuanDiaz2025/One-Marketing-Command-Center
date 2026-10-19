@@ -8,6 +8,9 @@ export const TRACKING_FIELDS = [
   "utm_term",
   "utm_content",
   "gclid",
+  "gbraid",
+  "wbraid",
+  "gad_source",
   "fbclid",
   "msclkid",
   "landing_page",
@@ -22,7 +25,7 @@ export const CF7_HIDDEN_FIELDS = TRACKING_FIELDS.map((name) => `[hidden ${name}]
 // field with the same name, including after Contact Form 7 resets the form.
 export const TRACKING_SNIPPET = `<script>
 (function () {
-  var KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "gbraid", "wbraid", "fbclid", "msclkid"];
+  var KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "gclid", "gbraid", "wbraid", "gad_source", "fbclid", "msclkid"];
   var STORE = "thb_lead_tracking";
   var saved = {};
   try { saved = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (e) {}

@@ -16,6 +16,7 @@ import { addLead, listLeads, updateLead } from "@/lib/leads/store"
 import { completeTracking } from "@/lib/leads/tracking"
 import { CALL_TAP_SOURCE, type LeadTracking } from "@/lib/leads/types"
 import { hogqlFresh } from "@/lib/posthog"
+import { ServiceError } from "@/lib/services"
 import { shared } from "@/lib/shared-state"
 
 // `recent`: the last few days' taps from either place (lead: the lead each became or joined).
@@ -43,7 +44,7 @@ const configured = () => Boolean(process.env.POSTHOG_API_KEY && process.env.POST
 // started on, then the page tapped on, then the visitor's very first visit (someone who clicked an
 // ad last week and came back to call). The referrer is the first outside site among those.
 type Seen = { current: string; referrer: string; entry: string; entryFrom: string; first: string; firstFrom: string }
-const TAGS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_keyword", "utm_content", "gclid", "gbraid", "wbraid", "fbclid", "msclkid"]
+const TAGS = ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_keyword", "utm_content", "gclid", "gbraid", "wbraid", "gad_source", "fbclid", "msclkid"]
 const params = (url: string) => {
   try {
     return new URL(url).searchParams
@@ -67,6 +68,7 @@ function trackingFrom(v: Seen): LeadTracking | undefined {
     gclid: get("gclid"),
     gbraid: get("gbraid"),
     wbraid: get("wbraid"),
+    gadSource: get("gad_source"),
     fbclid: get("fbclid"),
     msclkid: get("msclkid"),
     landingPage: (v.entry || v.first || v.current).split("?")[0] || undefined,
@@ -75,13 +77,13 @@ function trackingFrom(v: Seen): LeadTracking | undefined {
   const kept = Object.fromEntries(Object.entries(t).filter(([, x]) => x)) as LeadTracking
   return Object.keys(kept).length ? kept : undefined
 }
-const knowsSource = (t?: LeadTracking) => Boolean(t && (t.utmSource || t.gclid || t.gbraid || t.wbraid || t.fbclid || t.msclkid || t.referrer))
+const knowsSource = (t?: LeadTracking) => Boolean(t && (t.utmSource || t.gclid || t.gbraid || t.wbraid || t.gadSource || t.fbclid || t.msclkid || t.referrer))
 
 // The tap's details. Older PostHog projects may not have the visit or visitor fields; then the
 // tap still comes in, with what the tap itself says.
 const FULL = `properties.$referrer as referrer, session.$entry_current_url as entry, session.$entry_referring_domain as entry_from,
   person.properties.$initial_current_url as first, person.properties.$initial_referrer as first_from`
-const BASIC = `properties.$referrer as referrer, session.$entry_current_url as entry, '' as entry_from, '' as first, '' as first_from`
+const BASIC = `properties.$referrer as referrer, '' as entry, '' as entry_from, '' as first, '' as first_from`
 async function tapRows(where: string, fields = FULL): Promise<Record<string, unknown>[]> {
   try {
     return await hogqlFresh(`
@@ -94,7 +96,9 @@ async function tapRows(where: string, fields = FULL): Promise<Record<string, unk
         and ${where}
       order by timestamp asc limit 500`)
   } catch (error) {
-    if (fields === BASIC) throw error
+    // Only when PostHog didn't understand the question (not when it was busy or unreachable).
+    const detail = error instanceof ServiceError ? (error.detail ?? "") : ""
+    if (fields === BASIC || !/field|resolve|unknown|column|propert|session|person/i.test(detail)) throw error
     return tapRows(where, BASIC)
   }
 }
@@ -164,15 +168,35 @@ function addTaps(taps: Tap[]) {
       // (No visitor id: on its own, not lumped in with others that have none.)
       const visitor = safe(t.visitor) || key
       const near = (r: { at: string }, ms: number) => Math.abs(Date.parse(r.at) - t.at) < ms
-      const before =
-        leads.find((l) => l.inboxId?.endsWith(`:${key}`))?.id ??
-        recent.find((r) => r.key === key)?.lead ??
+      const mine = t.via === "website" ? "wp" : "ph"
+      // Already in: nothing to do.
+      if (leads.some((l) => l.inboxId?.endsWith(`:${key}`)) || recent.some((r) => r.key === key)) continue
+      // The same visitor tapping again within half an hour: the same call attempt.
+      const again =
         recent.find((r) => r.visitor === visitor && near(r, SAME_CALL_MS))?.lead ??
-        leads.find((l) => l.inboxId?.split(":")[1] === visitor && near({ at: l.createdAt }, SAME_CALL_MS))?.id ??
-        recent.find((r) => r.number === digits(t.number) && near(r, SAME_TAP_MS) && !r.key.startsWith(t.via === "website" ? "wp" : "ph"))?.lead
+        leads.find((l) => l.inboxId?.split(":")[1] === visitor && near({ at: l.createdAt }, SAME_CALL_MS))?.id
+      // This tap as the other place saw it (same number, within minutes): only a lead that place
+      // hasn't already been matched for, and never two different PostHog visitors.
+      const known = (v: string) => Boolean(v) && !v.startsWith("wp")
+      const other = again
+        ? undefined
+        : recent.find(
+            (r) =>
+              r.number === digits(t.number) &&
+              near(r, SAME_TAP_MS) &&
+              !r.key.startsWith(mine) &&
+              !recent.some((x) => x.lead === r.lead && x.key.startsWith(mine)) &&
+              !(known(r.visitor) && known(visitor) && r.visitor !== visitor),
+          )?.lead
+      const before = again ?? other
       if (before) {
-        if (!recent.some((r) => r.key === key)) recent.push({ key, at: new Date(t.at).toISOString(), visitor, number: digits(t.number), lead: before })
+        recent.push({ key, at: new Date(t.at).toISOString(), visitor, number: digits(t.number), lead: before })
         const lead = leads.find((l) => l.id === before)
+        // A new tap (not the same one seen from the other place): noted on the lead.
+        if (lead && again && recent.some((r) => r.lead === before && r.key !== key && r.key.startsWith(mine))) {
+          const when = new Date(t.at).toLocaleString("en-US", { timeZone: "America/Los_Angeles", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+          await updateLead(lead.id, (l) => void (l.notes = `${l.notes ?? ""}\nTapped ${shownNumber(t.number)} again, ${when}.`.trim()))
+        }
         if (lead && t.tracking && !knowsSource(lead.tracking) && knowsSource(t.tracking)) {
           await updateLead(lead.id, (l) => void (l.tracking = { ...l.tracking, ...t.tracking }))
           lead.tracking = { ...lead.tracking, ...t.tracking }
@@ -219,6 +243,7 @@ export async function addSiteTaps(raw: { id: number; at: string; fields?: Record
       gclid: text(f.gclid),
       gbraid: text(f.gbraid),
       wbraid: text(f.wbraid),
+      gadSource: text(f.gad_source),
       fbclid: text(f.fbclid),
       msclkid: text(f.msclkid),
       landingPage: text(f.landing_page),
@@ -264,7 +289,7 @@ export function syncCallTaps(): Promise<void> {
       // Leads from before the "ph" prefix are "tap:<visitor>:<uuid>".
       const old = new Set((await listLeads()).filter((l) => l.source === CALL_TAP_SOURCE).map((l) => l.inboxId?.split(":")[2]))
       await addTaps(taps.filter((t) => !old.has(t.key.slice(2))))
-      const newest = Math.max(state.lastAt ? Date.parse(state.lastAt) : 0, ...taps.map((t) => t.at))
+      const newest = Math.min(Date.now(), Math.max(state.lastAt ? Date.parse(state.lastAt) : 0, ...taps.map((t) => t.at)))
       await file.update((s) => {
         s.lastAt = newest ? new Date(newest).toISOString() : (s.lastAt ?? new Date(since).toISOString())
         s.lastSync = new Date().toISOString()
