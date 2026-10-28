@@ -1,0 +1,18 @@
+{
+  "name": "whatsapp-alerts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Posts @all Google Chat alerts for WhatsApp group instructions nobody has answered.",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "groups": "node src/index.js --list-groups",
+    "test": "node --test test/tracker.test.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "baileys": "6.7.24",
+    "pino": "^9.0.0",
+    "qrcode-terminal": "^0.12.0"
+  }
+}

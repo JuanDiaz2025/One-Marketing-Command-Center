@@ -1,0 +1,6 @@
+{
+  "groups": ["972 Norton Street", "TEST"],
+  "givers": ["+1 408 555 0000"],
+  "timing": { "first": 15, "second": 30, "escalate": 60 },
+  "timeZone": "America/Los_Angeles"
+}
